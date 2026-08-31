@@ -47,18 +47,18 @@ afterEach(() => {
 describe('P5 Windows Bridge connections', () => {
   it('pairs, probes and revokes a revision-bound device', async () => {
     render(<ConnectionsPage {...props} />);
-    expect(await screen.findByText('No Bridge devices')).toBeVisible();
-    fireEvent.change(screen.getByPlaceholderText('6-12 digits'), { target: { value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Pair' }));
-    await waitFor(() => expect(calls[0]).toMatchObject({ url: '/api/v2/bridge/pairing', body: { label: 'Windows workstation', confirmation_code: '123456' }, revision: '0' }));
+    expect(await screen.findByText('暂无 Bridge 设备')).toBeVisible();
+    fireEvent.change(screen.getByPlaceholderText('6-12 位数字'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: '配对' }));
+    await waitFor(() => expect(calls[0]).toMatchObject({ url: '/api/v2/bridge/pairing', body: { label: 'Windows 工作站', confirmation_code: '123456' }, revision: '0' }));
 
-    expect(await screen.findByText('Transcript aaaaaaaaaa | r1')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Probe Bridge' }));
+    expect(await screen.findByText('配对记录 aaaaaaaaaa | r1')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '探测 Bridge' }));
     await waitFor(() => expect(calls[1]).toMatchObject({ url: `/api/v2/bridge/devices/${deviceId}/probe`, revision: '1' }));
     expect(await screen.findByText('conpty, git_bundle')).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke Bridge' }));
+    fireEvent.click(screen.getByRole('button', { name: '撤销 Bridge' }));
     await waitFor(() => expect(calls[2]).toMatchObject({ url: `/api/v2/bridge/devices/${deviceId}/revoke`, revision: '2' }));
-    expect(await screen.findByText('revoked')).toBeVisible();
+    expect(await screen.findByText('已撤销')).toBeVisible();
   });
 });

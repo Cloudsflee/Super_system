@@ -33,7 +33,7 @@ it('keeps the six-entry drawer closed by default and traps, closes, and restores
   expect(drawer).toHaveAttribute('aria-hidden', 'true');
   expect(document.querySelector('.nav-scrim')).toBeNull();
   expect(screen.queryByText('Final parity')).toBeNull();
-  for (const tool of ['Assist', '审批中心，0 项待处理', '文件', 'Terminal']) expect(screen.getByRole('button', { name: tool })).toBeInTheDocument();
+  for (const tool of ['Assist', '审批中心，0 项待处理', '文件', '终端']) expect(screen.getByRole('button', { name: tool })).toBeInTheDocument();
 
   fireEvent.click(opener);
   const dialog = await screen.findByRole('dialog', { name: '工作区导航' });
@@ -92,7 +92,7 @@ it('renders a bounded Offline shell when bootstrap cannot reach the API', async 
   const online = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
   vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network unavailable'); }));
   render(<App />);
-  expect(await screen.findByRole('status')).toHaveTextContent('Offline');
+  expect(await screen.findByRole('status')).toHaveTextContent('离线');
   expect(screen.queryByTestId('system-onboarding')).toBeNull();
   online.mockRestore();
 });

@@ -63,7 +63,7 @@ function createReleaseBundle() {
   const dist = path.join(root, 'apps', 'web', 'dist');
   for (const name of ['index.html', 'sw.js', 'manifest.webmanifest']) if (!fs.existsSync(path.join(dist, name))) throw new Error(`web_build_missing_${name}`);
   const target = path.join(reportRoot, 'modified-release-bundle.tgz');
-  const archive = run('tar', ['-czf', target, '-C', dist, '.'], 120_000);
+  const archive = run(tarExecutable(), ['-czf', target, '-C', dist, '.'], 120_000);
   if (archive.status !== 0) throw new Error('release_bundle_archive_failed');
   const manifest = JSON.parse(fs.readFileSync(path.join(dist, '.vite', 'manifest.json'), 'utf8'));
   return { path: path.relative(root, target).replaceAll('\\', '/'), sha256: sha256File(target), byte_length: fs.statSync(target).size, manifest_entries: Object.keys(manifest).length, service_worker_sha256: sha256File(path.join(dist, 'sw.js')) };
@@ -134,12 +134,12 @@ async function verifyBrowser() {
     const layout = await inspectLayout(page); if (layout.horizontal_overflow || layout.overlaps.length) throw new Error(`p9_layout_${name}`);
     layouts.push({ name, width, height, screenshot: path.basename(screenshot), screenshot_sha256: sha256File(screenshot), keyboard_focus: focus, ...layout });
   }
-  await page.goto(`${base}/#/operations`, { waitUntil: 'networkidle' }); await page.getByRole('heading', { name: 'Operations' }).waitFor();
+  await page.goto(`${base}/#/operations`, { waitUntil: 'networkidle' }); await page.getByRole('heading', { name: '运维' }).waitFor();
   const onlineErrors = [...errors]; const onlineHttpErrors = [...httpErrors];
   await page.evaluate(async () => { await navigator.serviceWorker.ready; if (!navigator.serviceWorker.controller) location.reload(); });
   await page.waitForLoadState('networkidle');
   await context.setOffline(true); errors.length = 0; httpErrors.length = 0;
-  await page.reload({ waitUntil: 'domcontentloaded' }); await page.getByRole('status').filter({ hasText: 'Offline' }).first().waitFor({ timeout: 10_000 });
+  await page.reload({ waitUntil: 'domcontentloaded' }); await page.getByRole('status').filter({ hasText: '离线' }).first().waitFor({ timeout: 10_000 });
   const offlineScreenshot = path.join(reportRoot, 'offline.png'); await page.screenshot({ path: offlineScreenshot, fullPage: true });
   const cacheEntries = await page.evaluate(async () => { const result = []; for (const name of await caches.keys()) for (const request of await (await caches.open(name)).keys()) result.push(new URL(request.url).pathname); return result.sort(); });
   if (cacheEntries.some((value) => value.startsWith('/api/v2') || ['/livez', '/readyz'].includes(value) || value.startsWith('/cas/') || value.startsWith('/downloads/'))) throw new Error('p9_protected_cache_entry');
@@ -199,6 +199,7 @@ function sha256(value) { return createHash('sha256').update(value).digest('hex')
 function sha256File(file) { return sha256(fs.readFileSync(file)); }
 function git(...args) { const result=run('git',args); if(result.status!==0)throw new Error(`git_${args[0]}_failed`); return result.stdout.trim(); }
 function run(command,args,timeout=30_000){return spawnSync(command,args,{cwd:root,encoding:'utf8',timeout,windowsHide:true,maxBuffer:128*1024*1024});}
+function tarExecutable(){const systemTar=path.join(process.env.SystemRoot||'C:\\Windows','System32','tar.exe');return process.platform==='win32'&&fs.existsSync(systemTar)?systemTar:'tar';}
 async function freePort(){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});const port=server.address().port;await new Promise((resolve)=>server.close(resolve));return port;}
 async function waitFor(url,timeout=60_000){const deadline=Date.now()+timeout;while(Date.now()<deadline){try{const response=await fetch(url);if(response.ok)return;}catch{}await new Promise((resolve)=>setTimeout(resolve,150));}throw new Error('release_server_timeout');}
 async function stop(processHandle){if(processHandle.exitCode!=null)return;processHandle.kill();await new Promise((resolve)=>{const timer=setTimeout(resolve,1500);processHandle.once('exit',()=>{clearTimeout(timer);resolve();});});if(processHandle.exitCode==null&&process.platform==='win32')await new Promise((resolve)=>{const killer=spawn('taskkill',['/PID',String(processHandle.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});killer.once('exit',resolve);});}

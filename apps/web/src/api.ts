@@ -143,7 +143,7 @@ export function formatBytes(bytes: number): string {
 }
 
 export function shortHash(value = ''): string {
-  return value ? value.slice(0, 10) : 'uncommitted';
+  return value ? value.slice(0, 10) : '未提交';
 }
 
 export function formatTime(value?: string): string {

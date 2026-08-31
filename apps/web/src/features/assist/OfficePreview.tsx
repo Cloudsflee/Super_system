@@ -33,9 +33,9 @@ export default function OfficePreview({ url, kind }: { url: string; kind: 'docx'
       if (!response.ok) throw new Error(`preview_${response.status}`);
       const value = await response.text();
       setHtml(sanitizeOfficePreviewHtml(value));
-    }).catch((reason) => { if (reason?.name !== 'AbortError') setError(String(reason?.message || 'preview_failed')); });
+    }).catch((reason) => { if (reason?.name !== 'AbortError') setError(String(reason?.message || '预览加载失败')); });
     return () => controller.abort();
   }, [url]);
-  if (error) return <p role="alert">Office preview unavailable: {error}</p>;
-  return html ? <div className={`office-preview ${kind}`} dangerouslySetInnerHTML={{ __html: html }} /> : <p>Loading {kind} preview</p>;
+  if (error) return <p role="alert">Office 预览不可用：{error}</p>;
+  return html ? <div className={`office-preview ${kind}`} dangerouslySetInnerHTML={{ __html: html }} /> : <p>正在加载 {kind} 预览</p>;
 }

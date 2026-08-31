@@ -56,16 +56,16 @@ describe('P4 Clean Context workspace', () => {
     }));
 
     render(<ContextPage {...props} />);
-    expect(await screen.findByRole('heading', { name: 'Context' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '上下文' })).toBeVisible();
     expect(await screen.findByText('Architecture note')).toBeVisible();
     expect(await screen.findByText('Projected document content')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Pin node' }));
+    fireEvent.click(screen.getByRole('button', { name: '固定节点' }));
     await waitFor(() => expect(mutations.some((item) => item.url.endsWith('/context/policy') && (item.body.policy as { pinned_node_ids: string[] }).pinned_node_ids.includes(node.id))).toBe(true));
-    fireEvent.click(screen.getByRole('button', { name: 'Create Selection' }));
+    fireEvent.click(screen.getByRole('button', { name: '创建选择' }));
     await waitFor(() => expect(mutations.some((item) => item.url.endsWith('/context/selections'))).toBe(true));
-    fireEvent.click(screen.getByRole('button', { name: 'Seal Pack v5' }));
+    fireEvent.click(screen.getByRole('button', { name: '封存 Pack v5' }));
     await waitFor(() => expect(mutations.some((item) => item.url.endsWith('/context/packs'))).toBe(true));
-    fireEvent.click(screen.getByRole('button', { name: 'Rebuild' }));
+    fireEvent.click(screen.getByRole('button', { name: '重建投影' }));
     await waitFor(() => expect(mutations.some((item) => item.url.endsWith('/context/rebuild'))).toBe(true));
   });
 
@@ -86,9 +86,9 @@ describe('P4 Clean Context workspace', () => {
       return envelope({});
     }));
     render(<McpSettingsPage {...props} />);
-    await screen.findByRole('heading', { name: 'MCP clients' });
-    fireEvent.click(screen.getByRole('button', { name: 'Create client' }));
-    expect(await screen.findByText('One-time token')).toBeVisible();
+    await screen.findByRole('heading', { name: 'MCP 客户端' });
+    fireEvent.click(screen.getByRole('button', { name: '创建客户端' }));
+    expect(await screen.findByText('一次性令牌')).toBeVisible();
     expect(screen.getByText('aiws_mcp_one_time_fixture_token_1234567890')).toBeVisible();
     expect(calls.every((url) => !url.includes('/api/v1/'))).toBe(true);
   });

@@ -20,7 +20,7 @@ it('renders Outcome generations and queues evaluation through API v2', async () 
   render(<OutcomePage {...props} />);
   expect(await screen.findByText('1/2')).toBeVisible();
   expect(screen.getByText('review')).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Evaluate' }));
+  fireEvent.click(screen.getByRole('button', { name: '评估' }));
   await waitFor(() => expect(calls.some((call) => call.url.endsWith('/outcome/evaluate') && call.method === 'POST')).toBe(true));
   expect(calls.every((call) => !call.url.includes('/api/v1/'))).toBe(true);
 });
@@ -39,10 +39,10 @@ it('renders Delivery policies, unknown result reconciliation and submit controls
     return envelope({});
   }));
   render(<DeliveryPage {...props} />);
-  expect(await screen.findByText('External result unknown')).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Reconcile' }));
+  expect(await screen.findByText('外部结果未知')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '对账' }));
   await waitFor(() => expect(calls.some((call) => call.url.endsWith('/reconcile') && call.method === 'POST')).toBe(true));
-  fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+  fireEvent.click(screen.getByRole('button', { name: '提交' }));
   await waitFor(() => expect(calls.some((call) => call.url === '/api/v2/deliveries' && call.method === 'POST')).toBe(true));
   expect(calls.every((call) => !call.url.includes('/api/v1/'))).toBe(true);
 });

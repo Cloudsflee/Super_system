@@ -9,6 +9,7 @@ import {
 import { ApiError, apiV2, formatBytes, mutateV2, shortHash } from '../../api';
 import type { TerminalCapabilities, TerminalRuntime } from '../../types';
 import type { WorkspacePageProps } from '../../workspace';
+import { runtimeLabel, statusLabel } from '../../i18n';
 
 type TerminalSession = {
   id: string;
@@ -132,13 +133,13 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
   }, [selectedId]);
 
   useEffect(() => {
-    void load().catch((error) => notify(error instanceof Error ? error.message : 'Terminal failed to load', 'error'));
+    void load().catch((error) => notify(error instanceof Error ? error.message : '终端加载失败', 'error'));
   }, [load, notify]);
 
   useEffect(() => {
     setConnected(false);
     setReconnecting(false);
-    void loadSelected().catch((error) => notify(error instanceof Error ? error.message : 'Terminal session failed to load', 'error'));
+    void loadSelected().catch((error) => notify(error instanceof Error ? error.message : '终端会话加载失败', 'error'));
   }, [loadSelected, notify]);
 
   useEffect(() => {
@@ -175,7 +176,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
         if (frame.type === 'ack') setFrameBusy(false);
         if (frame.type === 'error') {
           setFrameBusy(false);
-          notify(frame.error?.message || frame.error?.code || 'Terminal frame failed', 'error');
+           notify(frame.error?.message || frame.error?.code || '终端帧处理失败', 'error');
           if (frame.error?.code === 'revision_conflict' || frame.error?.code === 'client_sequence_conflict') void loadSelected();
         }
       };
@@ -222,7 +223,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
       socket.send(JSON.stringify(frame));
       return;
     }
-    if (type === 'input') throw new Error('Terminal is reconnecting');
+    if (type === 'input') throw new Error('终端正在重新连接');
     setFrameBusy(true);
     try {
       const result = await mutateV2<TerminalReceipt>(`/api/v2/terminals/${encodeURIComponent(terminal.id)}/${type}`, { ...values, client_sequence: clientSequence }, 'POST', terminal.revision);
@@ -234,7 +235,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
 
   const requestApproval = async () => {
     const workspace = workspaces.find((item) => item.id === workspaceId);
-    if (!workspace) return notify('Select an available repository workspace.', 'error');
+    if (!workspace) return notify('请选择可用的代码仓库工作区。', 'error');
     setBusy('request');
     try {
       await mutateV2('/api/v2/approvals', {
@@ -244,9 +245,9 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
         ttl_seconds: 3600
       }, 'POST', workspace.revision);
       await load();
-      notify('Terminal approval requested');
+      notify('终端审批请求已提交');
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'Terminal approval request failed', 'error');
+      notify(error instanceof Error ? error.message : '终端审批请求失败', 'error');
     } finally {
       setBusy('');
     }
@@ -255,7 +256,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
   const openTerminal = async (approval: Approval) => {
     const requestedWorkspace = String(approval.request.workspace_id || workspaceId);
     const workspace = workspaces.find((item) => item.id === requestedWorkspace);
-    if (!workspace) return notify('The approved repository workspace is unavailable.', 'error');
+    if (!workspace) return notify('已批准的代码仓库工作区不可用。', 'error');
     setBusy(`open:${approval.id}`);
     try {
       const result = await mutateV2<TerminalReceipt>('/api/v2/terminals', {
@@ -272,9 +273,9 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
       setOutput('');
       cursorRef.current = 0;
       await load();
-      notify('Terminal opened');
+      notify('终端已打开');
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'Terminal failed to open', 'error');
+      notify(error instanceof Error ? error.message : '终端打开失败', 'error');
     } finally {
       setBusy('');
     }
@@ -288,7 +289,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
       await sendFrame('input', { data: `${value}\r` });
       setCommand('');
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'Terminal input failed', 'error');
+      notify(error instanceof Error ? error.message : '终端输入失败', 'error');
     }
   };
 
@@ -299,7 +300,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
       await load();
     } catch (error) {
       if (error instanceof ApiError && error.code === 'revision_conflict') await loadSelected().catch(() => undefined);
-      notify(error instanceof Error ? error.message : 'Terminal stop failed', 'error');
+      notify(error instanceof Error ? error.message : '终端停止失败', 'error');
     } finally {
       setBusy('');
     }
@@ -308,7 +309,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
   const handleOutputKeyDown = (event: KeyboardEvent<HTMLPreElement>) => {
     if (event.ctrlKey && event.key.toLowerCase() === 'c') {
       event.preventDefault();
-      void sendFrame('signal', { signal: 'SIGINT' }).catch((error) => notify(error instanceof Error ? error.message : 'SIGINT failed', 'error'));
+      void sendFrame('signal', { signal: 'SIGINT' }).catch((error) => notify(error instanceof Error ? error.message : 'SIGINT 操作失败', 'error'));
     }
   };
 
@@ -332,73 +333,73 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
   const pendingApprovals = approvals.filter((approval) => approval.status === 'pending');
   const activeSession = sessions.find((terminal) => ACTIVE_TERMINAL.has(terminal.status));
 
-  if (!projectId) return <div className="empty-state"><TerminalIcon size={28} /><h2>Select a project to open Terminal</h2><button className="button" onClick={() => navigate('projects')}>Projects</button></div>;
+  if (!projectId) return <div className="empty-state"><TerminalIcon size={28} /><h2>请选择项目以打开终端</h2><button className="button" onClick={() => navigate('projects')}>项目</button></div>;
 
   return (
     <div className="page terminal-page">
       <div className="page-heading">
-        <div><p className="eyebrow">Interactive workspace</p><h1>Terminal</h1></div>
-        <button className="icon-button" title="Refresh Terminal" aria-label="Refresh Terminal" onClick={() => void load()}><RefreshCw size={17} /></button>
+        <div><p className="eyebrow">交互式工作区</p><h1>终端</h1></div>
+        <button className="icon-button" title="刷新终端" aria-label="刷新终端" onClick={() => void load()}><RefreshCw size={17} /></button>
       </div>
       <section className="health-band terminal-capabilities">
-        <div><span>Transport</span><strong className="mono">{capabilities?.transport || 'checking'}</strong></div>
-        <div><span>Default runtime</span><Status value={capabilities?.default_runtime || 'checking'} /></div>
-        <div><span>Linux native</span><Status value={capabilities?.linux_native?.available ? 'available' : 'unavailable'} /></div>
-        <div><span>Windows native</span><Status value={capabilities?.windows_native?.available ? 'available' : 'unavailable'} /></div>
+        <div><span>传输方式</span><strong className="mono">{capabilities?.transport || '检查中'}</strong></div>
+        <div><span>默认运行时</span><Status value={capabilities?.default_runtime || 'checking'} /></div>
+        <div><span>Linux 原生</span><Status value={capabilities?.linux_native?.available ? 'available' : 'unavailable'} /></div>
+        <div><span>Windows 原生</span><Status value={capabilities?.windows_native?.available ? 'available' : 'unavailable'} /></div>
       </section>
 
       <div className="terminal-layout">
         <section className="panel terminal-session-panel">
-          <SectionTitle title="Sessions" meta={`${sessions.length} recorded`} />
+          <SectionTitle title="会话" meta={`${sessions.length} 条记录`} />
           <div className="terminal-session-list">
             {sessions.map((session) => <button key={session.id} className={session.id === selectedId ? 'terminal-session-row selected' : 'terminal-session-row'} onClick={() => setSelectedId(session.id)}>
-              <span><strong>{session.runtime.replace('_', ' ')}</strong><small className="mono">{shortHash(session.id)}</small></span><Status value={session.status} />
+               <span><strong>{runtimeLabel(session.runtime)}</strong><small className="mono">{shortHash(session.id)}</small></span><Status value={session.status} />
             </button>)}
-            {!sessions.length && <div className="list-empty">No terminal sessions</div>}
+            {!sessions.length && <div className="list-empty">暂无终端会话</div>}
           </div>
-          {activeSession && <div className="terminal-lock-note"><TerminalIcon size={15} /><span>Workspace write lease held by <b className="mono">{shortHash(activeSession.id)}</b></span></div>}
+          {activeSession && <div className="terminal-lock-note"><TerminalIcon size={15} /><span>工作区写入租约由 <b className="mono">{shortHash(activeSession.id)}</b> 持有</span></div>}
         </section>
 
         <section className="panel terminal-console-panel">
           <div className="section-title terminal-title">
-            <div><h2>{selected ? `${selected.runtime.replace('_', ' ')} shell` : 'Open a managed shell'}</h2><span>{selected ? `${selected.cwd || 'workspace root'} | ${selected.cols}x${selected.rows} | r${selected.revision}` : 'One-time approval is required'}</span></div>
+            <div><h2>{selected ? `${runtimeLabel(selected.runtime)} Shell` : '打开托管 Shell'}</h2><span>{selected ? `${selected.cwd || '工作区根目录'} | ${selected.cols}x${selected.rows} | r${selected.revision}` : '需要一次性审批'}</span></div>
             {selected && <div className="terminal-toolbar-actions">
-              <span className={connected ? 'terminal-connection connected' : 'terminal-connection'}>{connected ? <Wifi size={14} /> : <WifiOff size={14} />}{connected ? 'connected' : reconnecting ? 'reconnecting' : selected.status}</span>
-              <button className="icon-button" title="Reconnect Terminal" aria-label="Reconnect Terminal" disabled={!ACTIVE_TERMINAL.has(selected.status)} onClick={() => setConnectionNonce((value) => value + 1)}><RotateCcw size={15} /></button>
-              <button className="icon-button" title="Send SIGINT" aria-label="Send SIGINT" disabled={!ACTIVE_TERMINAL.has(selected.status) || frameBusy} onClick={() => void sendFrame('signal', { signal: 'SIGINT' })}><Keyboard size={15} /></button>
-              <button className="icon-button" title="Stop Terminal" aria-label="Stop Terminal" disabled={!ACTIVE_TERMINAL.has(selected.status) || busy === 'stop' || frameBusy} onClick={() => void stop()}><Square size={15} /></button>
+              <span className={connected ? 'terminal-connection connected' : 'terminal-connection'}>{connected ? <Wifi size={14} /> : <WifiOff size={14} />}{connected ? '已连接' : reconnecting ? '重新连接中' : statusLabel(selected.status)}</span>
+              <button className="icon-button" title="重新连接终端" aria-label="重新连接终端" disabled={!ACTIVE_TERMINAL.has(selected.status)} onClick={() => setConnectionNonce((value) => value + 1)}><RotateCcw size={15} /></button>
+              <button className="icon-button" title="发送 SIGINT" aria-label="发送 SIGINT" disabled={!ACTIVE_TERMINAL.has(selected.status) || frameBusy} onClick={() => void sendFrame('signal', { signal: 'SIGINT' })}><Keyboard size={15} /></button>
+              <button className="icon-button" title="停止终端" aria-label="停止终端" disabled={!ACTIVE_TERMINAL.has(selected.status) || busy === 'stop' || frameBusy} onClick={() => void stop()}><Square size={15} /></button>
             </div>}
           </div>
 
           {!selected && <>
             <div className="terminal-open-form">
-              <label><span>Runtime</span><select value={runtime} onChange={(event) => setRuntime(event.target.value as TerminalRuntime)}><option value="linux_native" disabled={!capabilities?.linux_native?.available}>Linux native</option><option value="windows_native" disabled={!capabilities?.windows_native?.available}>Windows native</option></select></label>
-              <label><span>Workspace</span><select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}><option value="">No workspace</option>{workspaces.map((workspace) => <option key={workspace.id} value={workspace.id} disabled={!['ready', 'released'].includes(workspace.status)}>{workspace.relative_path || shortHash(workspace.id)} | {workspace.status}</option>)}</select></label>
-              <label><span>Working directory</span><input className="mono" value={cwd} onChange={(event) => setCwd(event.target.value)} placeholder="workspace root" /></label>
-              <button className="button primary" disabled={!capabilities?.available || busy === 'request' || Boolean(activeSession) || selectedProject?.status === 'archived' || !workspaceId} onClick={() => void requestApproval()}>{busy === 'request' ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />}Request access</button>
+              <label><span>运行时</span><select value={runtime} onChange={(event) => setRuntime(event.target.value as TerminalRuntime)}><option value="linux_native" disabled={!capabilities?.linux_native?.available}>Linux 原生</option><option value="windows_native" disabled={!capabilities?.windows_native?.available}>Windows 原生</option></select></label>
+              <label><span>工作区</span><select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}><option value="">不使用工作区</option>{workspaces.map((workspace) => <option key={workspace.id} value={workspace.id} disabled={!['ready', 'released'].includes(workspace.status)}>{workspace.relative_path || shortHash(workspace.id)} | {statusLabel(workspace.status)}</option>)}</select></label>
+              <label><span>工作目录</span><input className="mono" value={cwd} onChange={(event) => setCwd(event.target.value)} placeholder="工作区根目录" /></label>
+              <button className="button primary" disabled={!capabilities?.available || busy === 'request' || Boolean(activeSession) || selectedProject?.status === 'archived' || !workspaceId} onClick={() => void requestApproval()}>{busy === 'request' ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />}申请访问</button>
             </div>
             <div className="terminal-approval-list">
-              <div className="terminal-subheading"><span>Access requests</span><small>{pendingApprovals.length} pending | {availableApprovals.length} ready</small></div>
-              {pendingApprovals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{String(approval.request.runtime || runtime)}</strong><small className="mono">{shortHash(approval.id)}</small></div><Status value={approval.status} /><button className="button" onClick={() => navigate('approvals')}>Review</button></div>)}
-              {availableApprovals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{String(approval.request.runtime || runtime)}</strong><small className="mono">{shortHash(approval.id)}</small></div><Status value={approval.status} /><button className="button primary" disabled={busy === `open:${approval.id}` || Boolean(activeSession)} onClick={() => void openTerminal(approval)}>{busy === `open:${approval.id}` ? <LoaderCircle className="spin" size={15} /> : <TerminalIcon size={15} />}Open</button></div>)}
-              {!pendingApprovals.length && !availableApprovals.length && <div className="list-empty">Request an approval to begin</div>}
+              <div className="terminal-subheading"><span>访问请求</span><small>{pendingApprovals.length} 项待处理 | {availableApprovals.length} 项就绪</small></div>
+              {pendingApprovals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{runtimeLabel(approval.request.runtime || runtime)}</strong><small className="mono">{shortHash(approval.id)}</small></div><Status value={approval.status} /><button className="button" onClick={() => navigate('approvals')}>查看</button></div>)}
+              {availableApprovals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{runtimeLabel(approval.request.runtime || runtime)}</strong><small className="mono">{shortHash(approval.id)}</small></div><Status value={approval.status} /><button className="button primary" disabled={busy === `open:${approval.id}` || Boolean(activeSession)} onClick={() => void openTerminal(approval)}>{busy === `open:${approval.id}` ? <LoaderCircle className="spin" size={15} /> : <TerminalIcon size={15} />}打开</button></div>)}
+              {!pendingApprovals.length && !availableApprovals.length && <div className="list-empty">请先申请审批</div>}
             </div>
           </>}
 
           {selected && <>
-            {selected.status === 'orphaned' && <div className="state-banner error"><span>Terminal process was lost. The workspace lease has been released.</span></div>}
-            <pre className="terminal-output" ref={(element) => { outputRef.current = element; viewportRef.current = element; }} tabIndex={0} role="log" aria-label="Terminal output" onKeyDown={handleOutputKeyDown}>{output || 'Waiting for shell output...'}</pre>
+            {selected.status === 'orphaned' && <div className="state-banner error"><span>终端进程已丢失，工作区租约已释放。</span></div>}
+            <pre className="terminal-output" ref={(element) => { outputRef.current = element; viewportRef.current = element; }} tabIndex={0} role="log" aria-label="终端输出" onKeyDown={handleOutputKeyDown}>{output || '等待 Shell 输出……'}</pre>
             <form className="terminal-input-row" onSubmit={(event) => void submitCommand(event)}>
-              <label className="terminal-command-field"><span>Command</span><input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Run a command" autoComplete="off" disabled={!ACTIVE_TERMINAL.has(selected.status)} /></label>
-              <button className="button primary" disabled={!command.trim() || !connected || frameBusy || !ACTIVE_TERMINAL.has(selected.status)}>{frameBusy ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}Send</button>
+              <label className="terminal-command-field"><span>命令</span><input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="输入要运行的命令" autoComplete="off" disabled={!ACTIVE_TERMINAL.has(selected.status)} /></label>
+              <button className="button primary" disabled={!command.trim() || !connected || frameBusy || !ACTIVE_TERMINAL.has(selected.status)}>{frameBusy ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}发送</button>
             </form>
             <div className="terminal-meta-grid">
-              <div><span>Output</span><strong>{formatBytes(selected.output_bytes)}</strong></div>
+              <div><span>输出</span><strong>{formatBytes(selected.output_bytes)}</strong></div>
               <div><span>SHA-256</span><strong className="mono">{shortHash(selected.output_sha256 || '')}</strong></div>
-              <div><span>Cursor</span><strong>{Math.max(cursorRef.current, selected.latest_cursor)}</strong></div>
-              <div><span>Exit</span><strong>{selected.exit_code ?? 'active'}</strong></div>
+              <div><span>游标</span><strong>{Math.max(cursorRef.current, selected.latest_cursor)}</strong></div>
+              <div><span>退出码</span><strong>{selected.exit_code ?? '运行中'}</strong></div>
             </div>
-            {selected.output_truncated && <div className="state-banner conflict"><span>Output reached the bounded terminal limit.</span><Download size={15} /></div>}
+            {selected.output_truncated && <div className="state-banner conflict"><span>输出已达到终端限制。</span><Download size={15} /></div>}
           </>}
         </section>
       </div>
@@ -418,5 +419,5 @@ function Status({ value }: { value: string }) {
   const tone = ['available', 'ready', 'running', 'approved', 'closed', 'stopped'].includes(value) ? 'positive'
     : ['pending', 'checking'].includes(value) ? 'working'
       : ['failed', 'orphaned', 'unavailable', 'rejected', 'expired'].includes(value) ? 'negative' : 'neutral';
-  return <span className={`status ${tone}`}><span />{value.replaceAll('_', ' ')}</span>;
+  return <span className={`status ${tone}`}><span />{['linux_native', 'windows_native', 'host', 'docker', 'windows_bridge'].includes(value) ? runtimeLabel(value) : statusLabel(value)}</span>;
 }

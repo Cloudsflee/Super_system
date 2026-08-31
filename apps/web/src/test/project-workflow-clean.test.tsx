@@ -62,12 +62,12 @@ describe('ProjectWorkflowPage clean slice', () => {
     }));
     render(<ProjectWorkflowPage {...props} />);
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Clean project' })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('tab', { name: 'Intake' }));
+    fireEvent.click(screen.getByRole('tab', { name: '来源接入' }));
     expect(screen.getByTestId('project-workflow-drift')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry intake' }));
+    fireEvent.click(screen.getByRole('button', { name: '重试接入' }));
     await waitFor(() => expect(calls.some(({ url, options }) => url.endsWith('/intake/retry') && new Headers(options?.headers).get('X-Expected-Revision') === '2')).toBe(true));
-    fireEvent.click(screen.getByRole('tab', { name: 'Workflow' }));
-    expect(screen.getByText('Workflow draft')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '工作流' }));
+    expect(screen.getByText('工作流草稿')).toBeInTheDocument();
     expect(calls.every(({ url }) => !url.includes('/api/v1/'))).toBe(true);
   });
 
@@ -89,8 +89,8 @@ describe('ProjectWorkflowPage clean slice', () => {
     render(<ProjectWorkflowPage {...props} />);
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Clean project' })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
-    fireEvent.change(screen.getByLabelText('Objective'), { target: { value: 'Updated objective' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save revision' }));
+    fireEvent.change(screen.getByLabelText('目标'), { target: { value: 'Updated objective' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存修订' }));
     await waitFor(() => expect(screen.getByTestId('project-workflow-conflict')).toBeInTheDocument());
     expect(screen.getByText('Project changed')).toBeInTheDocument();
   });

@@ -30,9 +30,9 @@ describe('IdentityAccessPage', () => {
       return envelope({});
     }));
     render(<IdentityAccessPage {...props} />);
-    await waitFor(() => expect(screen.getByText('Identity and teams')).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Renamed' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('身份与团队')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('显示名称'), { target: { value: 'Renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(calls.some((call) => call.startsWith('PATCH /api/v2/account'))).toBe(true));
     expect(calls.every((call) => !call.includes('/api/v1/'))).toBe(true);
   });
@@ -41,7 +41,7 @@ describe('IdentityAccessPage', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { code: 'permission_denied', message: 'Denied', retryable: false, details: {} } }), { status: 403, headers: { 'content-type': 'application/json' } })));
     render(<IdentityAccessPage {...props} />);
     await waitFor(() => expect(screen.getByTestId('identity-denied')).toBeInTheDocument());
-    expect(screen.getByText('Access denied')).toBeInTheDocument();
+    expect(screen.getByText('访问被拒绝')).toBeInTheDocument();
   });
 
   it('surfaces revision conflict and rebind-required responses', async () => {
@@ -61,13 +61,13 @@ describe('IdentityAccessPage', () => {
       return envelope({});
     }));
     render(<IdentityAccessPage {...props} />);
-    await waitFor(() => expect(screen.getByText('Identity and teams')).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Renamed' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('身份与团队')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('显示名称'), { target: { value: 'Renamed' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(screen.getByTestId('identity-conflict')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('tab', { name: /Profiles/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /Probe Default/ })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Probe Default/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Profile/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /探测 Default/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /探测 Default/ }));
     await waitFor(() => expect(screen.getByTestId('identity-rebind')).toBeInTheDocument());
     expect(probe).toBe(true);
   });
@@ -101,20 +101,20 @@ describe('IdentityAccessPage', () => {
     }));
 
     render(<IdentityAccessPage {...props} projectId="project_alpha" />);
-    await waitFor(() => expect(screen.getByText('Identity and teams')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('tab', { name: /Permissions/ }));
-    await waitFor(() => expect(screen.getByText('ALLOW · read')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('身份与团队')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: /权限/ }));
+    await waitFor(() => expect(screen.getByText('允许 · 读取')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText('Principal'), { target: { value: 'actor_service_1' } });
-    fireEvent.change(screen.getByLabelText('Effect'), { target: { value: 'deny' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add rule' }));
+    fireEvent.change(screen.getByLabelText('主体'), { target: { value: 'actor_service_1' } });
+    fireEvent.change(screen.getByLabelText('效果'), { target: { value: 'deny' } });
+    fireEvent.click(screen.getByRole('button', { name: '添加规则' }));
     await waitFor(() => expect(mutations).toHaveLength(1));
     expect(mutations[0].revision).toBe('7');
     expect(mutations[0].body).toMatchObject({ principal_actor_id: 'actor_service_1', effect: 'deny' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit permission acl_1' }));
-    fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'write' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save rule' }));
+    fireEvent.click(screen.getByRole('button', { name: '编辑权限 acl_1' }));
+    fireEvent.change(screen.getByLabelText('动作'), { target: { value: 'write' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存规则' }));
     await waitFor(() => expect(mutations).toHaveLength(2));
     expect(mutations[1].revision).toBe('3');
     expect(mutations[1].body).toMatchObject({ id: 'acl_1', action: 'write' });
@@ -136,10 +136,10 @@ describe('IdentityAccessPage', () => {
     }));
 
     render(<IdentityAccessPage {...props} projectId="project_empty" />);
-    await waitFor(() => expect(screen.getByText('Identity and teams')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('tab', { name: /Permissions/ }));
+    await waitFor(() => expect(screen.getByText('身份与团队')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('tab', { name: /权限/ }));
     await waitFor(() => expect(screen.getByTestId('permissions-empty')).toBeInTheDocument());
-    fireEvent.change(screen.getByLabelText('Project ID'), { target: { value: 'project_denied' } });
+    fireEvent.change(screen.getByLabelText('项目 ID'), { target: { value: 'project_denied' } });
     await waitFor(() => expect(screen.getByTestId('permissions-denied')).toBeInTheDocument());
     expect(screen.getByText('Project denied')).toBeInTheDocument();
   });

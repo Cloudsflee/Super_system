@@ -32,10 +32,10 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe('P6 Execution workspace', () => {
   it('renders seven stages, deduplicates events and submits revision-bound replay and replan commands', async () => {
     render(<ExecutionPage {...props} />);
-    expect(await screen.findByText('deliver · generation 1')).toBeVisible(); expect(screen.getByLabelText('Execution stages').children).toHaveLength(7);
+    expect(await screen.findByText('交付 · 第 1 代')).toBeVisible(); expect(screen.getByLabelText('执行阶段').children).toHaveLength(7);
     expect(await screen.findByText('execution.completed')).toBeVisible(); expect(await screen.findByText('inspect')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Replay deliver' }));
+    fireEvent.click(screen.getByRole('button', { name: '重放交付' }));
     await waitFor(() => expect(calls[0]).toMatchObject({ url: `/api/v2/executions/${executionId}/stages/deliver/replay`, revision: '7', body: { generation: 1, checkpoint_token: 'checkpoint-token-ui', workspace_hash: 'd'.repeat(64), pins_hash: 'e'.repeat(64) } }));
-    expect(await screen.findByRole('button', { name: /draft · generation 2/ })).toBeVisible();
+    expect(await screen.findByRole('button', { name: /草稿 · 第 2 代/ })).toBeVisible();
   });
 });

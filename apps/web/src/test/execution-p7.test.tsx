@@ -25,7 +25,7 @@ beforeEach(() => {
     if (method === 'GET' && url === `/api/v2/executions/${executionId}/evidence`) return envelope(evidence);
     if (method === 'GET' && url === `/api/v2/executions/${executionId}/quality-reviews`) return envelope({ quality_reviews: [review] });
     if (method === 'GET' && url === `/api/v2/quality-reviews/${reviewId}`) return envelope({ quality_review: review });
-    if (method === 'GET' && url === `/api/v2/quality-reviews/${reviewId}/report`) return envelope({ report: { deterministic_checks: [{ asset_id: assetId, active: true, current: true, cas_verified: true }], suggestions: [], anchors: [{ asset_id: assetId, version_id: 'version_ui', offset: 0, length: 20, content_sha256: '5'.repeat(64) }], anchor_count: 1, report_sha256: review.report_sha256 } });
+    if (method === 'GET' && url === `/api/v2/quality-reviews/${reviewId}/report`) { await new Promise((resolve) => setTimeout(resolve, 25)); return envelope({ report: { deterministic_checks: [{ asset_id: assetId, active: true, current: true, cas_verified: true }], suggestions: [], anchors: [{ asset_id: assetId, version_id: 'version_ui', offset: 0, length: 20, content_sha256: '5'.repeat(64) }], anchor_count: 1, report_sha256: review.report_sha256 } }); }
     if (method === 'GET' && url === `/api/v2/executions/${executionId}/outcome`) return envelope({ evaluation: { id: 'evaluation_ui', generation: 3, status: waivers.length ? 'waived' : 'blocked', requirement_count: 1, passed_count: 0, score: 0, evaluation: { results: [{ requirement_id: 'requirement_ui', requirement_key: 'tests-pass', evaluator: 'test_pass', passed: false, blocked: true, waived: Boolean(waivers.length), actual: { total: 0 }, expected: {} }] }, evaluation_sha256: '6'.repeat(64), created_at: execution.updated_at }, waivers });
     const headers = new Headers(options?.headers); const body = JSON.parse(String(options?.body || '{}')) as Record<string, unknown>; calls.push({ url, method, revision: headers.get('X-Expected-Revision'), body });
     if (url.endsWith('/decision')) { review = { ...review, status: 'completed', revision: 5, human_review: { decision: String(body.decision), weighted_score: 80, decision_sha256: '7'.repeat(64), reasoning: String(body.reasoning) } }; return envelope({ quality_review: review }); }
@@ -39,26 +39,28 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe('P7 Execution Evidence, Quality and Outcome views', () => {
   it('loads evidence and records complete human scoring plus a revision-bound waiver', async () => {
     render(<ExecutionPage {...props} />);
-    expect(await screen.findByText('deliver · generation 1')).toBeVisible();
+    expect(await screen.findByText('交付 · 第 1 代')).toBeVisible();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Evidence' }));
+    fireEvent.click(screen.getByRole('tab', { name: '证据' }));
     expect(await screen.findByText('verified-result.json')).toBeVisible();
     expect(screen.getByText('pnpm-test')).toBeVisible();
     expect(screen.getByText('src/result.ts')).toBeVisible();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Quality' }));
-    expect(await screen.findByText('CAS verified · current')).toBeVisible();
-    fireEvent.change(screen.getByLabelText('Correctness reasoning'), { target: { value: 'checks pass' } });
-    fireEvent.change(screen.getByLabelText('Evidence reasoning'), { target: { value: 'hashes verified' } });
-    fireEvent.change(screen.getByText('Decision reasoning').parentElement!.querySelector('textarea')!, { target: { value: 'reviewed against pinned hashes' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Record decision' }));
+    fireEvent.click(screen.getByRole('tab', { name: '质量' }));
+    const correctnessReason = await screen.findByLabelText('正确性说明');
+    fireEvent.change(correctnessReason, { target: { value: 'checks pass' } });
+    expect(await screen.findByText('CAS 已验证 · 当前')).toBeVisible();
+    expect(correctnessReason).toHaveValue('checks pass');
+    fireEvent.change(screen.getByLabelText('证据说明'), { target: { value: 'hashes verified' } });
+    fireEvent.change(screen.getByText('决策说明').parentElement!.querySelector('textarea')!, { target: { value: 'reviewed against pinned hashes' } });
+    fireEvent.click(screen.getByRole('button', { name: '记录决策' }));
     await waitFor(() => expect(calls.some((call) => call.url.endsWith('/decision') && call.revision === '4' && Array.isArray(call.body.dimensions) && call.body.dimensions.length === 2)).toBe(true));
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Outcome' }));
+    fireEvent.click(screen.getByRole('tab', { name: '结果' }));
     expect(await screen.findAllByText('tests-pass')).toHaveLength(2);
-    fireEvent.change(screen.getByLabelText('Waiver requirement'), { target: { value: 'requirement_ui' } });
-    fireEvent.change(screen.getByLabelText('Waiver reason'), { target: { value: 'accepted bounded gap' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Waive' }));
+    fireEvent.change(screen.getByLabelText('豁免要求'), { target: { value: 'requirement_ui' } });
+    fireEvent.change(screen.getByLabelText('豁免原因'), { target: { value: 'accepted bounded gap' } });
+    fireEvent.click(screen.getByRole('button', { name: '授予豁免' }));
     await waitFor(() => expect(calls.some((call) => call.url.endsWith('/outcome/waivers') && call.revision === '7' && call.body.requirement_id === 'requirement_ui')).toBe(true));
     expect(await screen.findByText(/accepted bounded gap/)).toBeVisible();
   });

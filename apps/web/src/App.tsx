@@ -32,6 +32,7 @@ import type { WorkspacePageProps, WorkspaceRoute } from './workspace';
 import { clearWorkspaceScope, queryClient, workspaceQueryKey } from './query';
 import { ProjectEventSynchronizer, type EventSyncState } from './events';
 import { OutboxStatus } from './offline/OutboxStatus';
+import { statusLabel } from './i18n';
 
 export type PageKey = WorkspaceRoute;
 
@@ -45,10 +46,10 @@ const PRIMARY_NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentTy
 ];
 
 const PAGE_LABELS: Record<WorkspaceRoute, string> = {
-  setup: '系统配置', identity: '身份', projects: '项目', onboarding: '项目引导', brief: 'Brief', repository: 'Repository', workflow: '工作区', context: '上下文',
-  assist: 'Assist', execution: 'Execution', evidence: '资产', outcome: 'Outcome', delivery: 'Delivery', operations: '审计', files: '文件',
-  terminals: 'Terminal', approvals: '审批', connections: 'Connections', exchange: 'Exchange', gateway: 'Gateway', runner: 'Runner', parser: 'Parser',
-  deployment: 'Deployment', backup: 'Backup & Restore', importer: 'Importer', settings: '设置', governance: 'Final parity'
+  setup: '系统配置', identity: '身份', projects: '项目', onboarding: '项目引导', brief: 'Brief', repository: '代码仓库', workflow: '工作区', context: '上下文',
+  assist: 'Assist', execution: '执行', evidence: '资产', outcome: '结果', delivery: '交付', operations: '审计', files: '文件',
+  terminals: '终端', approvals: '审批', connections: '连接', exchange: '交换', gateway: '网关', runner: '执行器', parser: '解析器',
+  deployment: '部署', backup: '备份与恢复', importer: '导入器', settings: '设置', governance: '项目控制'
 };
 
 const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
@@ -322,7 +323,7 @@ function WorkspaceLayout() {
   }, [projectId, setupReady]);
 
   if (!bootstrapLoaded) return <div className="onboarding-loader"><LoaderCircle className="spin" size={20} />加载本地工作区</div>;
-  if (bootstrapFailure && !systemSnapshot && !online) return <div className="onboarding-loader" role="status"><WifiOff size={22} />Offline</div>;
+  if (bootstrapFailure && !systemSnapshot && !online) return <div className="onboarding-loader" role="status"><WifiOff size={22} />离线</div>;
   if (bootstrapFailure && !systemSnapshot) return <div className="onboarding-loader error" role="alert">{bootstrapFailure}<button className="button" onClick={() => void refreshSetup()}>重试</button></div>;
 
   const systemOnboardingRequired = Boolean(systemSnapshot && (!setupReady || (systemSnapshot.account && !hasSystemOnboardingCompletion(systemSnapshot))));
@@ -337,7 +338,7 @@ function WorkspaceLayout() {
   return <div className="app-shell" data-route={page} data-setup-ready={String(setupReady)} data-setup-status={setup?.status || 'pending'}>
     {menuOpen && <button className="nav-scrim" tabIndex={-1} aria-label="关闭导航" onClick={closeNavigation} />}
     <aside ref={drawerRef} id="workspace-navigation" className={`sidebar ${menuOpen ? 'is-open' : ''}`} role="dialog" aria-modal="true" aria-label="工作区导航" aria-hidden={!menuOpen} onKeyDown={trapDrawerFocus}>
-      <div className="brand-row"><div className="brand-mark">A3</div><div><strong>AIWS 3.0</strong><span>Local workspace</span></div><button tabIndex={menuOpen ? 0 : -1} className="icon-button sidebar-close" aria-label="关闭导航" title="关闭导航" onClick={closeNavigation}><X size={18} /></button></div>
+      <div className="brand-row"><div className="brand-mark">A3</div><div><strong>AIWS 3.0</strong><span>本地工作区</span></div><button tabIndex={menuOpen ? 0 : -1} className="icon-button sidebar-close" aria-label="关闭导航" title="关闭导航" onClick={closeNavigation}><X size={18} /></button></div>
       <nav aria-label="一级导航">{PRIMARY_NAV.map(({ key, label, icon: Icon }) => <button tabIndex={menuOpen ? 0 : -1} key={key} className={navIsActive(key, page) ? 'nav-item active' : 'nav-item'} onClick={() => navigate(key)}><Icon size={18} /><span>{label}</span></button>)}</nav>
       <div className="sidebar-foot"><FolderGit2 size={15} /><span>{selectedProject?.name || '未选择项目'}</span></div>
     </aside>
@@ -345,20 +346,20 @@ function WorkspaceLayout() {
     <div className="workspace-shell">
       <header className="topbar">
         <button ref={menuButtonRef} className="icon-button menu-button" aria-label="打开导航" title="打开导航" aria-expanded={menuOpen} aria-controls="workspace-navigation" onClick={() => setMenuOpen(true)}><Menu size={19} /></button>
-        <div className="page-title"><span>{PAGE_LABELS[page]}</span>{eventState !== 'idle' && <small className={`sync-state ${eventState}`} role="status">{eventState.replaceAll('_', ' ')}</small>}</div>
+        <div className="page-title"><span>{PAGE_LABELS[page]}</span>{eventState !== 'idle' && <small className={`sync-state ${eventState}`} role="status">{statusLabel(eventState)}</small>}</div>
         <label className="project-switcher"><span>项目</span><div><select value={projectId} disabled={!setupReady} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">{!projects.length && <option value="">无项目</option>}{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><ChevronDown size={15} /></div></label>
         <div className="topbar-tools" aria-label="项目工具">
           <button ref={quickToolButtonRef} className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="Assist" title="Assist" onClick={() => openQuickTool('assist')}><MessageSquare size={17} /></button>
           <button className="icon-button topbar-tool topbar-approval" disabled={projectToolsDisabled} aria-label={`审批中心，${pendingInteractions} 项待处理`} title="审批中心" onClick={() => openQuickTool('approvals')}><ShieldCheck size={17} />{pendingInteractions > 0 && <span>{pendingInteractions > 99 ? '99+' : pendingInteractions}</span>}</button>
           <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="文件" title="文件" onClick={() => openQuickTool('files')}><Paperclip size={17} /></button>
-          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="Terminal" title="Terminal" onClick={() => openQuickTool('terminals')}><TerminalIcon size={17} /></button>
+          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="终端" title="终端" onClick={() => openQuickTool('terminals')}><TerminalIcon size={17} /></button>
           <OutboxStatus actorId={sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor'} teamId={String((selectedProject as Project & { team_id?: string } | undefined)?.team_id || 'default-team')} projectId={projectId} />
         </div>
-        {!online && <span className="network-pill offline" role="status"><WifiOff size={14} />Offline</span>}
-        {updateAvailable && <button className="network-pill update" onClick={() => window.location.reload()}>Update</button>}
+        {!online && <span className="network-pill offline" role="status"><WifiOff size={14} />离线</span>}
+        {updateAvailable && <button className="network-pill update" onClick={() => window.location.reload()}>更新</button>}
         <span className="local-pill"><span />127.0.0.1</span>
       </header>
-      <main className={!online ? 'offline-main' : undefined}><Page {...pageProps} />{!online && <div className="offline-overlay" role="status"><WifiOff size={24} /><div><strong>Offline</strong><small>已加载内容保留；受保护的网络操作将在恢复连接后继续。</small></div></div>}</main>
+      <main className={!online ? 'offline-main' : undefined}><Page {...pageProps} />{!online && <div className="offline-overlay" role="status"><WifiOff size={24} /><div><strong>离线</strong><small>已加载内容保留；受保护的网络操作将在恢复连接后继续。</small></div></div>}</main>
     </div>
     {quickTool && <QuickToolDrawer tool={quickTool} pageProps={pageProps} onClose={closeQuickTool} />}
     {notice && <div className={`toast ${notice.tone}`} role="status">{notice.text}</div>}
@@ -381,12 +382,12 @@ function QuickToolDrawer({ tool, pageProps, onClose }: { tool: Extract<Workspace
     return () => { cancelAnimationFrame(focus); document.removeEventListener('keydown', onKeyDown, true); };
   }, []);
   const Page = PAGES[tool];
-  return <div className="quick-tool-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside ref={ref} className="quick-tool-drawer" role="dialog" aria-modal="true" aria-label={`${PAGE_LABELS[tool]} drawer`}><header><strong>{PAGE_LABELS[tool]}</strong><div><button className="button" onClick={() => { window.location.hash = pageProps.projectId ? projectDeepLink(pageProps.projectId, tool) : `#/${tool}`; onClose(); }}>Open full page</button><button className="icon-button" aria-label="Close tool drawer" title="Close" onClick={onClose}><X size={16} /></button></div></header><div className="quick-tool-content"><Page {...pageProps} /></div></aside></div>;
+  return <div className="quick-tool-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside ref={ref} className="quick-tool-drawer" role="dialog" aria-modal="true" aria-label={`${PAGE_LABELS[tool]} 抽屉`}><header><strong>{PAGE_LABELS[tool]}</strong><div><button className="button" onClick={() => { window.location.hash = pageProps.projectId ? projectDeepLink(pageProps.projectId, tool) : `#/${tool}`; onClose(); }}>打开完整页面</button><button className="icon-button" aria-label="关闭工具抽屉" title="关闭" onClick={onClose}><X size={16} /></button></div></header><div className="quick-tool-content"><Page {...pageProps} /></div></aside></div>;
 }
 
 function RouteErrorBoundary() {
   const error = useRouteError();
-  return <div className="page error-page" role="alert"><h1>Workspace route error</h1><p>{error instanceof Error ? error.message : 'The requested workspace view is unavailable.'}</p></div>;
+  return <div className="page error-page" role="alert"><h1>工作区路由错误</h1><p>{error instanceof Error ? error.message : '请求的工作区页面不可用。'}</p></div>;
 }
 
 export function App() {

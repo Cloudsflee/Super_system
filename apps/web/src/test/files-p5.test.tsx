@@ -41,17 +41,17 @@ describe('P5 Files drawer', () => {
   it('keeps quarantined attachments download-only and advances a revisioned batch through undo', async () => {
     render(<FilesDrawer open projectId={projectId} notify={vi.fn()} onClose={vi.fn()} />);
     expect(await screen.findByText('unsafe.svg')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Preview unsafe.svg' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '预览 unsafe.svg' })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Changes' }));
-    expect(await screen.findByText(/replace README.md/)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(screen.getByRole('button', { name: '变更' }));
+    expect(await screen.findByText(/替换 README.md/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '批准' }));
     await waitFor(() => expect(mutations[0]).toEqual({ url: `/api/v2/change-batches/${batchId}/approve`, revision: '1' }));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
+    fireEvent.click(await screen.findByRole('button', { name: '应用' }));
     await waitFor(() => expect(mutations[1]).toEqual({ url: `/api/v2/change-batches/${batchId}/apply`, revision: '2' }));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    fireEvent.click(await screen.findByRole('button', { name: '撤销' }));
     await waitFor(() => expect(mutations[2]).toEqual({ url: `/api/v2/change-batches/${batchId}/undo`, revision: '3' }));
   });
 });

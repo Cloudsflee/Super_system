@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, CircleAlert, ClipboardCheck, LoaderCircle, RefreshCw, RotateCcw, Send, X } from 'lucide-react';
 import { ApiError, apiV2, formatTime, mutateV2, shortHash } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
+import { commandLabel, fieldLabel, statusLabel } from '../../i18n';
 
 type Approval = {
   id: string;
@@ -77,7 +78,7 @@ export function ApprovalPage({ projectId, navigate, notify }: WorkspacePageProps
   }, [projectId]);
 
   useEffect(() => {
-    void load().catch((error) => notify(error instanceof Error ? error.message : 'Approval Center failed to load', 'error'));
+    void load().catch((error) => notify(error instanceof Error ? error.message : '审批中心加载失败', 'error'));
   }, [load, notify]);
 
   const handleError = async (error: unknown, fallback: string) => {
@@ -90,9 +91,9 @@ export function ApprovalPage({ projectId, navigate, notify }: WorkspacePageProps
     try {
       await mutateV2(`/api/v2/approvals/${encodeURIComponent(approval.id)}/decide`, { decision }, 'POST', approval.revision);
       await load();
-      notify(`Approval ${decision}`);
+      notify(`审批${decision === 'approved' ? '已批准' : '已拒绝'}`);
     } catch (error) {
-      await handleError(error, 'Approval decision failed');
+      await handleError(error, '审批决定失败');
     } finally {
       setBusy('');
     }
@@ -100,15 +101,15 @@ export function ApprovalPage({ projectId, navigate, notify }: WorkspacePageProps
 
   const answerInput = async (input: UserInput) => {
     const value = answers[input.id]?.trim() || '';
-    if (!value) return notify('Enter a response before answering.', 'error');
+    if (!value) return notify('请先填写回答内容。', 'error');
     setBusy(input.id);
     try {
       await mutateV2(`/api/v2/user-inputs/${encodeURIComponent(input.id)}/answer`, { response: parseResponse(value) }, 'POST', input.revision);
       setAnswers((current) => ({ ...current, [input.id]: '' }));
       await load();
-      notify('Input answered');
+      notify('输入已回答');
     } catch (error) {
-      await handleError(error, 'Input response failed');
+      await handleError(error, '输入回答失败');
     } finally {
       setBusy('');
     }
@@ -119,9 +120,9 @@ export function ApprovalPage({ projectId, navigate, notify }: WorkspacePageProps
     try {
       await mutateV2(`/api/v2/user-inputs/${encodeURIComponent(input.id)}/cancel`, {}, 'POST', input.revision);
       await load();
-      notify('Input cancelled');
+      notify('输入已取消');
     } catch (error) {
-      await handleError(error, 'Input cancellation failed');
+      await handleError(error, '取消输入失败');
     } finally {
       setBusy('');
     }
@@ -132,9 +133,9 @@ export function ApprovalPage({ projectId, navigate, notify }: WorkspacePageProps
     try {
       await mutateV2(`/api/v2/proposals/${encodeURIComponent(proposal.id)}/${action}`, {}, 'POST', proposal.revision);
       await load();
-      notify(`Proposal ${action === 'apply' ? 'applied' : action === 'reject' ? 'rejected' : 'undone'}`);
+      notify(`提案${action === 'apply' ? '已应用' : action === 'reject' ? '已拒绝' : '已撤销'}`);
     } catch (error) {
-      await handleError(error, `Proposal ${action} failed`);
+      await handleError(error, `提案${action === 'apply' ? '应用' : action === 'reject' ? '拒绝' : '撤销'}失败`);
     } finally {
       setBusy('');
     }
@@ -147,74 +148,74 @@ export function ApprovalPage({ projectId, navigate, notify }: WorkspacePageProps
   }), [approvals, inputs, proposals]);
 
   if (!projectId) {
-    return <div className="empty-state"><ClipboardCheck size={28} /><h2>Select a project to review interactions</h2><button className="button" onClick={() => navigate('projects')}>Projects</button></div>;
+    return <div className="empty-state"><ClipboardCheck size={28} /><h2>请选择项目以查看待处理事项</h2><button className="button" onClick={() => navigate('projects')}>项目</button></div>;
   }
 
   return (
     <div className="page approval-page">
       <div className="page-heading">
-        <div><p className="eyebrow">Runtime control</p><h1>Approval Center</h1></div>
-        <button className="icon-button" title="Refresh Approval Center" aria-label="Refresh Approval Center" disabled={loading} onClick={() => void load()}>{loading ? <LoaderCircle className="spin" size={17} /> : <RefreshCw size={17} />}</button>
+        <div><p className="eyebrow">运行时控制</p><h1>审批中心</h1></div>
+        <button className="icon-button" title="刷新审批中心" aria-label="刷新审批中心" disabled={loading} onClick={() => void load()}>{loading ? <LoaderCircle className="spin" size={17} /> : <RefreshCw size={17} />}</button>
       </div>
-      <div className="approval-tabs" role="tablist" aria-label="Approval Center views">
-        <TabButton value="approvals" current={tab} count={counts.approvals} onSelect={setTab}>Approvals</TabButton>
-        <TabButton value="inputs" current={tab} count={counts.inputs} onSelect={setTab}>User inputs</TabButton>
-        <TabButton value="proposals" current={tab} count={counts.proposals} onSelect={setTab}>Proposals</TabButton>
+      <div className="approval-tabs" role="tablist" aria-label="审批中心视图">
+        <TabButton value="approvals" current={tab} count={counts.approvals} onSelect={setTab}>审批</TabButton>
+        <TabButton value="inputs" current={tab} count={counts.inputs} onSelect={setTab}>用户输入</TabButton>
+        <TabButton value="proposals" current={tab} count={counts.proposals} onSelect={setTab}>提案</TabButton>
       </div>
 
       {tab === 'approvals' && <section className="panel interaction-panel">
-        <SectionTitle title="Runtime approvals" meta={`${approvals.length} requests`} />
+        <SectionTitle title="运行时审批" meta={`${approvals.length} 项请求`} />
         <div className="approval-list">
           {approvals.map((approval) => <article key={approval.id}>
-            <div><strong>{approval.action}</strong><span className="mono">{approval.assist_turn_id ? `turn ${shortHash(approval.assist_turn_id)}` : `request ${shortHash(approval.id)}`}</span></div>
+            <div><strong>{commandLabel(approval.action)}</strong><span className="mono">{approval.assist_turn_id ? `轮次 ${shortHash(approval.assist_turn_id)}` : `请求 ${shortHash(approval.id)}`}</span></div>
             <Status value={approval.status} />
             <small>{formatTime(approval.created_at)}</small>
             <RequestSummary value={approval.request} />
             {approval.status === 'pending' && <div className="approval-actions">
-              <button className="button" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'rejected')}><CircleAlert size={15} />Reject</button>
-              <button className="button primary" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'approved')}>{busy === approval.id ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}Approve</button>
+              <button className="button" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'rejected')}><CircleAlert size={15} />拒绝</button>
+              <button className="button primary" disabled={busy === approval.id} onClick={() => void decideApproval(approval, 'approved')}>{busy === approval.id ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}批准</button>
             </div>}
           </article>)}
-          {!approvals.length && <div className="list-empty">No runtime approvals</div>}
+          {!approvals.length && <div className="list-empty">暂无运行时审批</div>}
         </div>
       </section>}
 
       {tab === 'inputs' && <section className="panel interaction-panel">
-        <SectionTitle title="User inputs" meta={`${inputs.length} requests`} />
+        <SectionTitle title="用户输入" meta={`${inputs.length} 项请求`} />
         <div className="approval-list input-request-list">
           {inputs.map((input) => <article key={input.id}>
-            <div><strong>{input.prompt_summary}</strong><span className="mono">{input.assist_turn_id ? `turn ${shortHash(input.assist_turn_id)}` : shortHash(input.id)}</span></div>
+            <div><strong>{input.prompt_summary}</strong><span className="mono">{input.assist_turn_id ? `轮次 ${shortHash(input.assist_turn_id)}` : shortHash(input.id)}</span></div>
             <Status value={input.status} />
             <small>{formatTime(input.created_at)}</small>
             {input.status === 'pending' && <div className="input-answer-row">
-              <textarea rows={3} value={answers[input.id] || ''} onChange={(event) => setAnswers((current) => ({ ...current, [input.id]: event.target.value }))} placeholder="Response or JSON object" aria-label={`Response for ${input.prompt_summary}`} />
+              <textarea rows={3} value={answers[input.id] || ''} onChange={(event) => setAnswers((current) => ({ ...current, [input.id]: event.target.value }))} placeholder="填写回答或 JSON 对象" aria-label={`回答：${input.prompt_summary}`} />
               <div>
-                <button className="icon-button" title="Cancel input" aria-label={`Cancel ${input.prompt_summary}`} disabled={busy === input.id} onClick={() => void cancelInput(input)}><X size={15} /></button>
-                <button className="button primary" disabled={busy === input.id || !(answers[input.id] || '').trim()} onClick={() => void answerInput(input)}>{busy === input.id ? <LoaderCircle className="spin" size={15} /> : <Send size={15} />}Answer</button>
+                <button className="icon-button" title="取消输入" aria-label={`取消：${input.prompt_summary}`} disabled={busy === input.id} onClick={() => void cancelInput(input)}><X size={15} /></button>
+                <button className="button primary" disabled={busy === input.id || !(answers[input.id] || '').trim()} onClick={() => void answerInput(input)}>{busy === input.id ? <LoaderCircle className="spin" size={15} /> : <Send size={15} />}回答</button>
               </div>
             </div>}
           </article>)}
-          {!inputs.length && <div className="list-empty">No user input requests</div>}
+          {!inputs.length && <div className="list-empty">暂无用户输入请求</div>}
         </div>
       </section>}
 
       {tab === 'proposals' && <section className="panel interaction-panel">
-        <SectionTitle title="Semantic proposals" meta={`${proposals.length} proposals`} />
+        <SectionTitle title="语义提案" meta={`${proposals.length} 项提案`} />
         <div className="approval-list proposal-list">
           {proposals.map((proposal) => <article key={proposal.id}>
-            <div><strong>{proposal.proposal_type}</strong><span className="mono">{proposal.target_type} {shortHash(proposal.target_id)} at r{proposal.target_revision}</span></div>
+            <div><strong>{proposal.proposal_type}</strong><span className="mono">{proposal.target_type} {shortHash(proposal.target_id)} 于 r{proposal.target_revision}</span></div>
             <Status value={proposal.status} />
             <small>{formatTime(proposal.created_at)}</small>
             <RequestSummary value={proposal.payload} />
             <div className="approval-actions">
               {proposal.status === 'pending' && <>
-                <button className="button" disabled={busy === proposal.id} onClick={() => void mutateProposal(proposal, 'reject')}><CircleAlert size={15} />Reject</button>
-                <button className="button primary" disabled={busy === proposal.id} onClick={() => void mutateProposal(proposal, 'apply')}><Check size={15} />Apply</button>
+                <button className="button" disabled={busy === proposal.id} onClick={() => void mutateProposal(proposal, 'reject')}><CircleAlert size={15} />拒绝</button>
+                <button className="button primary" disabled={busy === proposal.id} onClick={() => void mutateProposal(proposal, 'apply')}><Check size={15} />应用</button>
               </>}
-              {proposal.status === 'approved' && <button className="button" disabled={busy === proposal.id} onClick={() => void mutateProposal(proposal, 'undo')}><RotateCcw size={15} />Undo</button>}
+              {proposal.status === 'approved' && <button className="button" disabled={busy === proposal.id} onClick={() => void mutateProposal(proposal, 'undo')}><RotateCcw size={15} />撤销</button>}
             </div>
           </article>)}
-          {!proposals.length && <div className="list-empty">No semantic proposals</div>}
+          {!proposals.length && <div className="list-empty">暂无语义提案</div>}
         </div>
       </section>}
     </div>
@@ -232,12 +233,13 @@ function SectionTitle({ title, meta }: { title: string; meta: string }) {
 function RequestSummary({ value }: { value: Record<string, unknown> }) {
   const summary = Object.entries(value).slice(0, 6);
   if (!summary.length) return null;
-  return <dl className="interaction-summary">{summary.map(([key, item]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{displayValue(item)}</dd></div>)}</dl>;
+  return <dl className="interaction-summary">{summary.map(([key, item]) => <div key={key}><dt>{fieldLabel(key)}</dt><dd>{displayValue(item)}</dd></div>)}</dl>;
 }
 
 function displayValue(value: unknown) {
-  if (value == null) return 'none';
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value == null) return '无';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
   return JSON.stringify(value).slice(0, 180);
 }
 
@@ -254,5 +256,5 @@ function Status({ value }: { value: string }) {
   const tone = ['approved', 'answered', 'completed'].includes(value) ? 'positive'
     : value === 'pending' ? 'working'
       : ['rejected', 'expired', 'cancelled', 'failed'].includes(value) ? 'negative' : 'neutral';
-  return <span className={`status ${tone}`}><span />{value.replaceAll('_', ' ')}</span>;
+  return <span className={`status ${tone}`}><span />{statusLabel(value)}</span>;
 }

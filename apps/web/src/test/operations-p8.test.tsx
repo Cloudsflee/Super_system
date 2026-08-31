@@ -21,14 +21,14 @@ it('loads delivery, deployment, backup, import, lineage and GC states from API v
   const notify = vi.fn();
   render(<OperationsPage projectId="project_1" selectedProject={undefined} selectProject={vi.fn()} refreshProjects={vi.fn()} notify={notify} navigate={vi.fn()} setupReady refreshSetup={vi.fn()} />);
 
-  expect(await screen.findByText('External result unknown')).toBeVisible();
-  expect(screen.getByText('Candidates')).toBeVisible();
-  expect(screen.getByText('schema v8 · diagnostic')).toBeVisible();
-  expect(screen.getByText('reference_race')).toBeVisible();
-  expect(screen.getByText('blocked')).toBeVisible();
+  expect(await screen.findByText('外部结果未知')).toBeVisible();
+  expect(screen.getAllByText('候选').length).toBeGreaterThan(0);
+  expect(screen.getByText('schema v8 · 诊断')).toBeVisible();
+  expect(screen.getByText('引用发生并发变更')).toBeVisible();
+  expect(screen.getByText('已阻塞')).toBeVisible();
 
-  fireEvent.click(screen.getByRole('button', { name: 'Create GC plan' }));
-  expect(await screen.findByText('2 candidates')).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Reconcile delivery' }));
+  fireEvent.click(screen.getByRole('button', { name: '创建 GC 计划' }));
+  expect(await screen.findByText('2 个候选')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: '对账交付' }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v2/deliveries/delivery_1/reconcile', expect.objectContaining({ method: 'POST' })));
 });

@@ -78,16 +78,16 @@ afterEach(() => {
 describe('P5 Terminal workspace', () => {
   it('replays from the generic cursor, sends revisioned input and reconnects', async () => {
     render(<TerminalPage {...props} />);
-    expect(await screen.findByRole('log', { name: 'Terminal output' })).toHaveTextContent('ready');
-    await screen.findByText('connected');
+    expect(await screen.findByRole('log', { name: '终端输出' })).toHaveTextContent('ready');
+    await screen.findByText('已连接');
     expect(sockets[0]?.url).toContain(`/api/v2/terminals/${session.id}/ws?cursor=4`);
 
-    fireEvent.change(screen.getByPlaceholderText('Run a command'), { target: { value: 'echo fixture' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    fireEvent.change(screen.getByPlaceholderText('输入要运行的命令'), { target: { value: 'echo fixture' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
     await waitFor(() => expect(sentFrames[0]).toMatchObject({ type: 'input', data: 'echo fixture\r', revision: 2, client_sequence: 1 }));
-    expect(screen.getByRole('log', { name: 'Terminal output' })).toHaveTextContent('echo fixture');
+    expect(screen.getByRole('log', { name: '终端输出' })).toHaveTextContent('echo fixture');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reconnect Terminal' }));
+    fireEvent.click(screen.getByRole('button', { name: '重新连接终端' }));
     await waitFor(() => expect(sockets.length).toBe(2));
     expect(sockets[1]?.url).toContain('cursor=5');
   });

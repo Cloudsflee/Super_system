@@ -35,14 +35,14 @@ describe('P7 Evidence workspace', () => {
     render(<EvidencePage {...props} />);
     expect(await screen.findByText('result.json')).toBeVisible();
     expect(await screen.findByText('{"passed":true}')).toBeVisible();
-    expect(screen.getByText('derived_from')).toBeVisible();
+    expect(screen.getByText('派生自')).toBeVisible();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Attest current version' }));
+    fireEvent.click(screen.getByRole('button', { name: '证明当前版本' }));
     await waitFor(() => expect(calls.some((call) => call.url === `/api/v2/assets/${assetId}/attestations` && call.revision === '3' && call.body.version_id === versionId)).toBe(true));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Parse' }));
+    fireEvent.click(screen.getByRole('button', { name: '解析' }));
     await waitFor(() => expect(calls.some((call) => call.url.endsWith('/parse') && call.revision === '3' && call.body.format_key === 'json')).toBe(true));
-    expect(await screen.findByText('parsed')).toBeVisible();
+    expect(await screen.findByText('已解析')).toBeVisible();
     expect(screen.getByText('d'.repeat(10))).toBeVisible();
   });
 });

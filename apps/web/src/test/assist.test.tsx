@@ -63,20 +63,20 @@ describe('P5 Assist workspace', () => {
 
     render(<AssistPage {...props()} />);
     expect(await screen.findByRole('option', { name: pack.pack_hash.slice(0, 10) })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: /New session/ }));
+    fireEvent.click(screen.getByRole('button', { name: /新建会话/ }));
     await waitFor(() => expect(mutations[0]).toEqual({
       body: expect.objectContaining({ project_id: projectId, context_pack_id: pack.id, profile_id: profile.id, repository_workspace_id: workspace.id }),
       revision: '0'
     }));
     expect(await screen.findByText('Completed response')).toBeVisible();
-    expect(screen.getAllByText('completed').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('已完成').length).toBeGreaterThan(0);
   });
 
   it('shows the no-project state without issuing requests', () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     render(<AssistPage {...props({ projectId: '', selectedProject: undefined })} />);
-    expect(screen.getByRole('heading', { name: 'Select a project to open Assist' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: '请选择项目以打开 Assist' })).toBeVisible();
     expect(fetch).not.toHaveBeenCalled();
   });
 });

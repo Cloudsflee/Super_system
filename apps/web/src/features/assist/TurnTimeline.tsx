@@ -8,6 +8,6 @@ export function coalesceAssistEvents(events: Array<{ sequence?: number; type?: s
 
 export function TurnTimeline({ events = [] }: { events?: Array<{ sequence?: number; type?: string; method?: string; data?: unknown }> }) {
   const rows = useMemo(() => coalesceAssistEvents(events), [events]);
-  return <div className="assist-turn-timeline" role="log" aria-label="Assist timeline">{rows.map((event, index) => <TypedEvent key={`${event.sequence || index}-${index}`} event={event} />)}{!rows.length && <div className="list-empty">No events</div>}</div>;
+  return <div className="assist-turn-timeline" role="log" aria-label="Assist 时间线">{rows.map((event, index) => <TypedEvent key={`${event.sequence || index}-${index}`} event={event} />)}{!rows.length && <div className="list-empty">暂无事件</div>}</div>;
 }
 export default TurnTimeline;

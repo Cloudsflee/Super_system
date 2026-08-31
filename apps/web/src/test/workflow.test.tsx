@@ -40,10 +40,10 @@ describe('workflow inspector', () => {
   it('loads the Clean workflow surface and keeps its graph controls on v2', async () => {
     render(<App />);
     await screen.findByRole('heading', { name: 'Test project' });
-    expect(screen.getByText('Workflow draft')).toBeVisible();
-    const graph = screen.getByLabelText('Graph JSON');
+    expect(screen.getByText('工作流草稿')).toBeVisible();
+    const graph = screen.getByLabelText('图谱 JSON');
     fireEvent.change(graph, { target: { value: '{"nodes":[{"id":"inspect"}]}' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存草稿' }));
     await waitFor(() => expect(screen.getByDisplayValue('{"nodes":[{"id":"inspect"}]}')).toBeVisible());
   });
 });

@@ -81,7 +81,7 @@ function createReleaseBundle() {
     if (!fs.existsSync(path.join(dist, name))) throw new Error(`web_build_missing_${name}`);
   }
   const target = path.join(reportRoot, 'modified-release-bundle.tgz');
-  const archive = run('tar', ['-czf', target, '-C', dist, '.'], 120_000);
+  const archive = run(tarExecutable(), ['-czf', target, '-C', dist, '.'], 120_000);
   if (archive.status !== 0) throw new Error('release_bundle_archive_failed');
   const manifest = JSON.parse(fs.readFileSync(path.join(dist, '.vite', 'manifest.json'), 'utf8'));
   return {
@@ -185,12 +185,12 @@ async function verifyBrowser() {
   page.on('console', (message) => { if (message.type() === 'error') errors.push(`console:${message.text()}`); });
   page.on('response', (response) => { if (response.status() >= 400) httpErrors.push(`${response.status()}:${new URL(response.url()).pathname}`); });
   await page.goto(`${base}/#/setup`, { waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: '创建本地 Owner' }).waitFor();
+  await page.getByRole('heading', { name: '创建本地所有者' }).waitFor();
   await page.getByLabel('显示名称').fill('P10 release owner');
-  await page.getByLabel('Team 名称').fill('P10 release team');
+  await page.getByLabel('团队名称').fill('P10 release team');
   await page.getByRole('button', { name: '创建并继续' }).click();
   await page.getByRole('heading', { name: '连接 Codex' }).waitFor();
-  await page.getByLabel('Codex credential').fill('p10-release-codex-proof');
+  await page.getByLabel('Codex 凭据').fill('p10-release-codex-proof');
   await page.getByLabel('Codex Profile 名称').fill('P10 release Codex');
   await page.getByRole('button', { name: '验证并继续' }).click();
   await page.getByRole('heading', { name: '连接 GitHub App' }).waitFor();
@@ -216,7 +216,7 @@ async function verifyBrowser() {
   for (const [name, width, height] of [['desktop', 1440, 900], ['tablet', 1024, 768], ['mobile', 390, 844]]) {
     await page.setViewportSize({ width, height });
     await page.goto(`${base}/#/projects/${encodeURIComponent(projectId)}/governance`, { waitUntil: 'networkidle' });
-    await page.getByRole('heading', { name: 'Governance workspace' }).waitFor();
+    await page.getByRole('heading', { name: '项目控制' }).waitFor();
     await page.waitForTimeout(250);
     await page.keyboard.press('Tab');
     const focus = await page.evaluate(() => document.activeElement?.tagName || '');
@@ -229,7 +229,7 @@ async function verifyBrowser() {
   }
 
   await page.goto(`${base}/#/operations`, { waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: 'Operations' }).waitFor();
+  await page.getByRole('heading', { name: '运维' }).waitFor();
   const onlineErrors = [...errors];
   const onlineHttpErrors = [...httpErrors];
   await page.evaluate(async () => { await navigator.serviceWorker.ready; if (!navigator.serviceWorker.controller) location.reload(); });
@@ -238,7 +238,7 @@ async function verifyBrowser() {
   errors.length = 0;
   httpErrors.length = 0;
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByRole('status').filter({ hasText: 'Offline' }).first().waitFor({ timeout: 10_000 });
+  await page.getByRole('status').filter({ hasText: '离线' }).first().waitFor({ timeout: 10_000 });
   const offlineScreenshot = path.join(reportRoot, 'offline.png');
   await page.screenshot({ path: offlineScreenshot, fullPage: true });
   const cacheEntries = await page.evaluate(async () => {
@@ -446,6 +446,11 @@ function sha256(value) { return createHash('sha256').update(value).digest('hex')
 function sha256File(file) { return sha256(fs.readFileSync(file)); }
 function git(...args) { const result = run('git', args); if (result.status !== 0) throw new Error(`git_${args[0]}_failed`); return result.stdout.trim(); }
 function run(command, args, timeout = 30_000) { return spawnSync(command, args, { cwd: root, encoding: 'utf8', timeout, windowsHide: true, maxBuffer: 128 * 1024 * 1024 }); }
+
+function tarExecutable() {
+  const systemTar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+  return process.platform === 'win32' && fs.existsSync(systemTar) ? systemTar : 'tar';
+}
 
 async function freePort() {
   const server = net.createServer();

@@ -25,11 +25,11 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('P6 Runner Profiles connections tab', () => {
   it('shows fixed resource limits, probes by revision and creates a digest-pinned Docker profile', async () => {
-    render(<ConnectionsPage {...props} />); fireEvent.click(screen.getByRole('button', { name: 'Runner Profiles' }));
+    render(<ConnectionsPage {...props} />); fireEvent.click(screen.getByRole('button', { name: '执行器 Profile' }));
     expect(await screen.findByText('Profile aaaaaaaaaa')).toBeVisible(); expect(screen.getAllByText('1024.0 MB')).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: 'Probe Runner profile' })); await waitFor(() => expect(calls[0]).toMatchObject({ url: `/api/v2/runners/profiles/${profile.id}/probe`, revision: '3' }));
-    fireEvent.change(screen.getByLabelText('Runner type'), { target: { value: 'docker' } }); fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Pinned Docker' } });
-    const digest = `sha256:${'b'.repeat(64)}`; fireEvent.change(screen.getByLabelText('Image digest'), { target: { value: digest } }); fireEvent.click(screen.getByRole('button', { name: 'Add profile' }));
+    fireEvent.click(screen.getByRole('button', { name: '探测执行器 Profile' })); await waitFor(() => expect(calls[0]).toMatchObject({ url: `/api/v2/runners/profiles/${profile.id}/probe`, revision: '3' }));
+    fireEvent.change(screen.getByLabelText('执行器类型'), { target: { value: 'docker' } }); fireEvent.change(screen.getByLabelText('名称'), { target: { value: 'Pinned Docker' } });
+    const digest = `sha256:${'b'.repeat(64)}`; fireEvent.change(screen.getByLabelText('镜像摘要'), { target: { value: digest } }); fireEvent.click(screen.getByRole('button', { name: '添加 Profile' }));
     await waitFor(() => expect(calls[1]).toMatchObject({ url: '/api/v2/runners/profiles', method: 'POST', revision: '0', body: { label: 'Pinned Docker', runner_type: 'docker', image_digest: digest } }));
   });
 });

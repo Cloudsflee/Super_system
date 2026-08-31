@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CloudOff, ListRestart, RefreshCw, Trash2, X } from 'lucide-react';
 import { OfflineOutbox, type OfflineResponse } from './outbox';
 import type { OutboxRecord } from './db';
+import { commandLabel, statusLabel } from '../i18n';
 
 export function OutboxStatus({ actorId, teamId, projectId }: { actorId: string; teamId: string; projectId: string }) {
   const [rows, setRows] = useState<OutboxRecord[]>([]);
@@ -31,17 +32,17 @@ export function OutboxStatus({ actorId, teamId, projectId }: { actorId: string; 
 
   if (!projectId) return null;
   return <div className="outbox-control">
-    <button className={`topbar-outbox ${blocked ? 'blocked' : ''}`} aria-label={`Offline outbox, ${pending} pending, ${blocked} blocked`} title="Offline outbox" onClick={() => setOpen((value) => !value)}>
+    <button className={`topbar-outbox ${blocked ? 'blocked' : ''}`} aria-label={`离线队列：${pending} 项待发送，${blocked} 项已阻塞`} title="离线队列" onClick={() => setOpen((value) => !value)}>
       <CloudOff size={16} /><span>{pending + blocked}</span>
     </button>
-    {open && <div className="outbox-popover" role="dialog" aria-label="Offline outbox">
-      <div className="outbox-head"><strong>Outbox</strong><button className="icon-button" aria-label="Close outbox" title="Close" onClick={() => setOpen(false)}><X size={15} /></button></div>
+    {open && <div className="outbox-popover" role="dialog" aria-label="离线队列">
+      <div className="outbox-head"><strong>离线队列</strong><button className="icon-button" aria-label="关闭离线队列" title="关闭" onClick={() => setOpen(false)}><X size={15} /></button></div>
       <div className="outbox-list">{rows.filter((row) => !['succeeded', 'discarded', 'superseded'].includes(row.state)).map((row) => <div className="outbox-row" key={row.key}>
-        <span><strong>{row.command}</strong><small>{row.state}{row.state === 'blocked' ? ` · r${row.expected_revision ?? 0} -> r${row.server_revision ?? 0}` : ''}</small></span>
-        {row.state === 'blocked' && <button className="icon-button" aria-label={`Rebase ${row.command}`} title="Rebase" onClick={() => void rebase(row)}><ListRestart size={14} /></button>}
-        {['queued', 'blocked'].includes(row.state) && <button className="icon-button" aria-label={`Discard ${row.command}`} title="Discard" onClick={() => void discard(row)}><Trash2 size={14} /></button>}
-      </div>)}{!pending && !blocked && <div className="list-empty">Outbox clear</div>}</div>
-      <button className="button" disabled={sending || !pending || !navigator.onLine} onClick={() => void flush()}>{sending ? <RefreshCw className="spin" size={14} /> : <RefreshCw size={14} />}Send</button>
+        <span><strong>{commandLabel(row.command)}</strong><small>{statusLabel(row.state)}{row.state === 'blocked' ? ` · r${row.expected_revision ?? 0} -> r${row.server_revision ?? 0}` : ''}</small></span>
+        {row.state === 'blocked' && <button className="icon-button" aria-label={`变基 ${commandLabel(row.command)}`} title="变基" onClick={() => void rebase(row)}><ListRestart size={14} /></button>}
+        {['queued', 'blocked'].includes(row.state) && <button className="icon-button" aria-label={`丢弃 ${commandLabel(row.command)}`} title="丢弃" onClick={() => void discard(row)}><Trash2 size={14} /></button>}
+      </div>)}{!pending && !blocked && <div className="list-empty">队列为空</div>}</div>
+      <button className="button" disabled={sending || !pending || !navigator.onLine} onClick={() => void flush()}>{sending ? <RefreshCw className="spin" size={14} /> : <RefreshCw size={14} />}发送</button>
     </div>}
   </div>;
 }

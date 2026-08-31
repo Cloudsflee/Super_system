@@ -47,19 +47,19 @@ afterEach(() => {
 describe('P5 Approval Center', () => {
   it('decides approvals, answers inputs and applies proposals with expected revisions', async () => {
     render(<ApprovalPage {...props} />);
-    expect(await screen.findByText('command.execute')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(await screen.findByText('执行命令')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '批准' }));
     await waitFor(() => expect(calls[0]).toMatchObject({ url: `/api/v2/approvals/${approval.id}/decide`, body: { decision: 'approved' }, revision: '1' }));
 
-    fireEvent.click(screen.getByRole('tab', { name: /User inputs/ }));
-    const response = await screen.findByRole('textbox', { name: `Response for ${input.prompt_summary}` });
+    fireEvent.click(screen.getByRole('tab', { name: /用户输入/ }));
+    const response = await screen.findByRole('textbox', { name: `回答：${input.prompt_summary}` });
     fireEvent.change(response, { target: { value: '{"target":"workspace"}' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
+    fireEvent.click(screen.getByRole('button', { name: '回答' }));
     await waitFor(() => expect(calls[1]).toMatchObject({ url: `/api/v2/user-inputs/${input.id}/answer`, body: { response: { target: 'workspace' } }, revision: '1' }));
 
-    fireEvent.click(screen.getByRole('tab', { name: /Proposals/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /提案/ }));
     expect(await screen.findByText('file_change')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    fireEvent.click(screen.getByRole('button', { name: '应用' }));
     await waitFor(() => expect(calls[2]).toMatchObject({ url: `/api/v2/proposals/${proposal.id}/apply`, revision: '1' }));
   });
 });

@@ -63,15 +63,15 @@ async function pageApi(pathname, options = {}) {
 
 try {
   await page.goto(`${base}/#/setup`, { waitUntil: 'domcontentloaded' });
-  try { await page.getByRole('heading', { name: '创建本地 Owner', exact: true }).waitFor({ timeout: 8_000 }); }
+  try { await page.getByRole('heading', { name: '创建本地所有者', exact: true }).waitFor({ timeout: 8_000 }); }
   catch (error) { process.stderr.write(`Clean Web bootstrap body:\n${await page.locator('body').innerText()}\nURL=${page.url()}\nRequests=${JSON.stringify(requests)}\n`); throw error; }
   await captureOnboardingState(page, 'system-owner');
   await page.getByLabel('显示名称').fill('P10 E2E owner');
-  await page.getByLabel('Team 名称').fill('P10 E2E team');
+  await page.getByLabel('团队名称').fill('P10 E2E team');
   await page.getByRole('button', { name: '创建并继续', exact: true }).click();
   await page.getByRole('heading', { name: '连接 Codex', exact: true }).waitFor();
   await captureOnboardingState(page, 'system-codex');
-  await page.getByLabel('Codex credential').fill('p10-e2e-onboarding-codex-proof');
+  await page.getByLabel('Codex 凭据').fill('p10-e2e-onboarding-codex-proof');
   await page.getByLabel('Codex Profile 名称').fill('P10 E2E Reviewer');
   await page.getByRole('button', { name: '验证并继续', exact: true }).click();
   await page.getByRole('heading', { name: '连接 GitHub App', exact: true }).waitFor();
@@ -99,7 +99,7 @@ try {
   await page.getByRole('button', { name: '提交 Intake', exact: true }).click();
   await page.getByRole('heading', { name: '编辑完整 Brief', exact: true }).waitFor();
   await captureOnboardingState(page, 'project-brief');
-  await page.getByLabel('Brief template').selectOption(onboardingTemplate.body.data.template.id);
+  await page.getByLabel('Brief 模板').selectOption(onboardingTemplate.body.data.template.id);
   await page.getByRole('button', { name: '应用模板', exact: true }).click();
   await page.getByRole('button', { name: '保存 Brief', exact: true }).click();
   await page.getByRole('heading', { name: '审查 Brief 与初始 Workflow', exact: true }).waitFor();
@@ -114,7 +114,7 @@ try {
   try { await page.getByRole('button', { name: '确认 Brief 并激活', exact: true }).waitFor(); }
   catch (error) { process.stderr.write(`Project onboarding after Proposal apply:\n${await page.locator('body').innerText()}\nHTTP=${JSON.stringify(httpErrors.slice(-20))}\nRequests=${JSON.stringify(requests.slice(-30))}\n`); throw error; }
   await page.getByRole('button', { name: '确认 Brief 并激活', exact: true }).click();
-  await page.getByText('Workflow draft', { exact: true }).waitFor();
+  await page.getByText('工作流草稿', { exact: true }).waitFor();
 
   const setup = await pageApi('/api/v2/setup');
   assert(setup.status === 200 && setup.body.data?.needs_setup === false, 'setup cookie/session');
@@ -269,10 +269,10 @@ try {
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${base}/#/connections`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: 'Connections', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Runner Profiles', exact: true }).click();
+  await page.getByRole('heading', { name: '连接', exact: true }).waitFor();
+  await page.getByRole('button', { name: '执行器 Profile', exact: true }).click();
   await page.getByText('P7 E2E Host', { exact: true }).first().waitFor();
-  await page.getByRole('button', { name: 'Probe Runner profile', exact: true }).click();
+  await page.getByRole('button', { name: '探测执行器 Profile', exact: true }).click();
   const readyProfile = await waitForApi(pageApi, `/api/v2/runners/profiles/${profileId}`, (result) => result.body.data?.profile?.status === 'ready');
   assert(readyProfile.body.data.profile.identity_public_key, 'runner profile identity');
 
@@ -292,32 +292,32 @@ try {
   const executionId = execution.body.data.execution.id;
 
   await page.goto(`${base}/#/execution`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: 'Execution', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Start Execution', exact: true }).click();
+  await page.getByRole('heading', { name: '执行', exact: true }).waitFor();
+  await page.getByRole('button', { name: '开始执行', exact: true }).click();
   await waitForApi(pageApi, `/api/v2/executions/${executionId}`, (result) => result.body.data?.execution?.status === 'awaiting_approval', 20_000);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByText('awaiting approval', { exact: true }).first().waitFor();
-  await page.getByRole('button', { name: 'Approval', exact: true }).click();
-  await page.getByRole('heading', { name: 'Approval Center', exact: true }).waitFor();
-  const executionApproval = page.locator('article').filter({ hasText: 'execution.review' }).first();
-  await executionApproval.getByRole('button', { name: 'Approve', exact: true }).click();
-  await executionApproval.getByText('approved', { exact: true }).waitFor();
+  await page.getByText('等待审批', { exact: true }).first().waitFor();
+  await page.getByRole('button', { name: '审批', exact: true }).click();
+  await page.getByRole('heading', { name: '审批中心', exact: true }).waitFor();
+  const executionApproval = page.locator('article').filter({ hasText: /执行.*审阅/ }).first();
+  await executionApproval.getByRole('button', { name: '批准', exact: true }).click();
+  await executionApproval.getByText('已批准', { exact: true }).waitFor();
 
   await page.goto(`${base}/#/execution`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Resume Execution', exact: true }).click();
+  await page.getByRole('button', { name: '继续执行', exact: true }).click();
   await waitForApi(pageApi, `/api/v2/executions/${executionId}`, (result) => result.body.data?.execution?.status === 'completed', 20_000);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByText('completed', { exact: true }).first().waitFor();
+  await page.getByText('已完成', { exact: true }).first().waitFor();
   const replayResponsePromise = page.waitForResponse((response) => response.url().includes(`/api/v2/executions/${executionId}/stages/deliver/replay`));
-  await page.getByRole('button', { name: 'Replay deliver', exact: true }).click();
+  await page.getByRole('button', { name: '重放交付', exact: true }).click();
   const replayResponse = await replayResponsePromise;
   const replayPayload = await replayResponse.json().catch(() => ({}));
   assert(replayResponse.status() === 202, `execution-replay:${replayResponse.status()}:${JSON.stringify(replayPayload)}`);
   const replayedExecution = await waitForApi(pageApi, `/api/v2/executions/${executionId}`, (result) => result.body.data?.execution?.status === 'completed' && result.body.data.execution.generation === 2, 20_000);
   assert(replayedExecution.body.data.execution.handoff_manifest?.delivery_ready === true, 'execution delivery handoff');
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.getByText('generation 2', { exact: false }).first().waitFor();
-  for (const control of ['Start Execution', 'Pause Execution', 'Resume Execution', 'Cancel Execution', 'Replan Execution']) {
+  await page.getByText('第 2 代', { exact: false }).first().waitFor();
+  for (const control of ['开始执行', '暂停执行', '继续执行', '取消执行', '重新规划执行']) {
     assert(await page.getByRole('button', { name: control, exact: true }).count() === 1, `execution control:${control}`);
   }
 
@@ -333,18 +333,18 @@ try {
   const assetId = captured.body.data.asset.id;
 
   await page.goto(`${base}/#/evidence`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: 'Evidence', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '证据', exact: true }).waitFor();
   await page.getByText('p7-e2e-result.json', { exact: true }).first().waitFor();
-  await page.getByLabel('Parser format').selectOption('json');
+  await page.getByLabel('Parser 格式').selectOption('json');
   const parseResponsePromise = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().includes(`/api/v2/assets/${assetId}/versions/`) && response.url().endsWith('/parse'));
-  await page.getByRole('button', { name: 'Parse', exact: true }).click();
+  await page.getByRole('button', { name: '解析', exact: true }).click();
   const parseResponse = await parseResponsePromise;
   const parsePayload = await parseResponse.json();
   assert(parseResponse.status() === 202 && parsePayload.data?.operation_id, `parser-start:${parseResponse.status()}`);
   const parserOperation = await waitOperation(pageApi, parsePayload.data.operation_id, 20_000);
-  await page.getByText('parsed', { exact: true }).waitFor({ timeout: 20_000 });
-  await page.getByRole('button', { name: 'Attest current version', exact: true }).click();
-  await page.getByText('Asset attested', { exact: true }).waitFor();
+  await page.getByText('已解析', { exact: true }).waitFor({ timeout: 20_000 });
+  await page.getByRole('button', { name: '证明当前版本', exact: true }).click();
+  await page.getByText('资产证明已记录', { exact: true }).waitFor();
   const versions = await pageApi(`/api/v2/assets/${assetId}/versions`);
   assert(versions.status === 200 && versions.body.data?.versions?.length === 1, 'source asset version');
   const parserRun = await pageApi(`/api/v2/parser-runs/${parserOperation.resource_id}`);
@@ -353,74 +353,74 @@ try {
   assert(attestations.body.data?.attestations?.length === 1, 'asset attestation');
 
   await page.goto(`${base}/#/execution`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: 'Execution', exact: true }).waitFor();
-  await page.getByRole('tab', { name: 'Quality', exact: true }).click();
-  await page.getByRole('heading', { name: 'Quality reviews', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Start review', exact: true }).click();
-  await page.getByText('awaiting human', { exact: true }).waitFor({ timeout: 20_000 });
+  await page.getByRole('heading', { name: '执行', exact: true }).waitFor();
+  await page.getByRole('tab', { name: '质量', exact: true }).click();
+  await page.getByRole('heading', { name: '质量审阅', exact: true }).waitFor();
+  await page.getByRole('button', { name: '开始审阅', exact: true }).click();
+  await page.getByText('等待人工处理', { exact: true }).first().waitFor({ timeout: 20_000 });
   for (const [label, score, reasoning] of [
-    ['Coverage', '92', 'all acceptance assets are represented'],
-    ['Accuracy', '90', 'deterministic checks passed'],
-    ['Depth', '90', 'technical evidence is sufficient'],
-    ['Consistency', '90', 'CAS and lineage agree'],
-    ['Clarity', '90', 'the result is reviewable']
+    ['覆盖度', '92', 'all acceptance assets are represented'],
+    ['准确性', '90', 'deterministic checks passed'],
+    ['深度', '90', 'technical evidence is sufficient'],
+    ['一致性', '90', 'CAS and lineage agree'],
+    ['清晰度', '90', 'the result is reviewable']
   ]) {
-    await page.getByLabel(`${label} score`).fill(score);
-    await page.getByLabel(`${label} reasoning`).fill(reasoning);
+    await page.getByLabel(`${label}评分`).fill(score);
+    await page.getByLabel(`${label}说明`).fill(reasoning);
   }
-  await page.getByLabel('Decision reasoning').fill('reviewed against exact report and input hashes');
-  await page.getByRole('button', { name: 'Record decision', exact: true }).click();
-  await page.getByText('approved', { exact: true }).waitFor();
+  await page.getByLabel('决策说明').fill('reviewed against exact report and input hashes');
+  await page.getByRole('button', { name: '记录决策', exact: true }).click();
+  await page.getByText('已批准', { exact: true }).waitFor();
   const qualityList = await pageApi(`/api/v2/executions/${executionId}/quality-reviews`);
   const qualityReview = qualityList.body.data?.quality_reviews?.[0];
-  assert(qualityReview?.status === 'completed' && qualityReview?.human_review?.weighted_score === 90.4, 'quality human decision');
+  assert(qualityReview?.status === 'completed' && qualityReview?.human_review?.weighted_score === 90.4, `quality human decision:${JSON.stringify(qualityReview?.human_review || null)}`);
   assert(JSON.stringify(qualityReview.rubric.dimensions.map((item) => item.key)) === JSON.stringify(['coverage','accuracy','depth','consistency','clarity']), 'quality five-dimension policy');
 
   const evidenceRequirement = await createOutcomeRequirement(pageApi, project.id, 'p7-e2e-evidence', { evaluator: 'evidence_count', minimum: 1 }, 'p7-e2e-requirement-evidence');
   const missingRequirement = await createOutcomeRequirement(pageApi, project.id, 'p7-e2e-tests', { evaluator: 'test_pass', check_id: 'missing-e2e-check' }, 'p7-e2e-requirement-tests');
   assert(evidenceRequirement?.id && missingRequirement?.id, 'outcome requirements');
 
-  await page.getByRole('tab', { name: 'Outcome', exact: true }).click();
-  await page.getByRole('heading', { name: 'Outcome', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('tab', { name: '结果', exact: true }).click();
+  await page.getByRole('heading', { name: '结果', exact: true }).waitFor();
+  await page.getByRole('button', { name: '评估', exact: true }).click();
   const blockedOutcome = await waitForApi(pageApi, `/api/v2/executions/${executionId}/outcome`, (result) => result.body.data?.evaluation?.status === 'blocked', 20_000);
-  await page.getByText('blocked', { exact: true }).first().waitFor();
-  await page.getByLabel('Waiver requirement').selectOption(missingRequirement.id);
-  await page.getByLabel('Waiver reason').fill('accepted bounded browser gap');
-  await page.getByRole('button', { name: 'Waive', exact: true }).click();
+  await page.getByText('已阻塞', { exact: true }).first().waitFor();
+  await page.getByLabel('豁免要求').selectOption(missingRequirement.id);
+  await page.getByLabel('豁免原因').fill('accepted bounded browser gap');
+  await page.getByRole('button', { name: '授予豁免', exact: true }).click();
   const waivedOutcome = await waitForApi(pageApi, `/api/v2/executions/${executionId}/outcome`, (result) => result.body.data?.evaluation?.status === 'waived' && result.body.data.evaluation.generation > blockedOutcome.body.data.evaluation.generation, 20_000);
-  await page.getByText('waived', { exact: true }).first().waitFor();
-  await page.getByLabel('Waiver reason').fill('browser replay restores the requirement');
-  await page.getByRole('button', { name: /^Revoke waiver / }).click();
+  await page.getByText('已豁免', { exact: true }).first().waitFor();
+  await page.getByLabel('豁免原因').fill('browser replay restores the requirement');
+  await page.getByRole('button', { name: /^撤销豁免 / }).click();
   const revokedOutcome = await waitForApi(pageApi, `/api/v2/executions/${executionId}/outcome`, (result) => result.body.data?.evaluation?.status === 'blocked' && result.body.data.evaluation.generation > waivedOutcome.body.data.evaluation.generation, 20_000);
-  await page.getByText('revoked', { exact: false }).first().waitFor();
+  await page.getByText('已撤销', { exact: false }).first().waitFor();
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${base}/#/context`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('heading', { name: 'Context', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '上下文', exact: true }).waitFor();
   await page.getByText('P7 verification note', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Pin node' }).click();
-  await page.getByText('Context pin policy updated', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Rebuild', exact: true }).click();
-  await page.getByRole('button', { name: 'Cancel', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.getByRole('button', { name: 'Retry', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Retry', exact: true }).click();
-  await page.getByText('completed', { exact: true }).first().waitFor();
+  await page.getByRole('button', { name: '固定节点' }).click();
+  await page.getByText('上下文固定策略已更新', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '重建投影', exact: true }).click();
+  await page.getByRole('button', { name: '取消', exact: true }).waitFor();
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '重试', exact: true }).waitFor();
+  await page.getByRole('button', { name: '重试', exact: true }).click();
+  await page.getByText('已完成', { exact: true }).first().waitFor();
 
   await page.goto(`${base}/#/settings`, { waitUntil: 'domcontentloaded' });
   await page.getByRole('heading', { name: '设置', exact: true }).waitFor();
-  await page.getByRole('tab', { name: 'MCP / Exchange', exact: true }).click();
-  await page.getByRole('heading', { name: 'MCP & Exchange', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Create client', exact: true }).click();
-  await page.getByText('One-time token', { exact: true }).waitFor();
-  await page.getByLabel('Target project ID').fill(target.body.data.project.id);
-  await page.getByRole('button', { name: 'Request exchange', exact: true }).click();
-  await page.getByText('requested', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Source', exact: true }).click();
-  await page.getByText('partially_approved', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Target', exact: true }).click();
-  await page.getByText('active', { exact: true }).last().waitFor();
+  await page.getByRole('tab', { name: 'MCP / 交换', exact: true }).click();
+  await page.getByRole('heading', { name: 'MCP 与交换', exact: true }).waitFor();
+  await page.getByRole('button', { name: '创建客户端', exact: true }).click();
+  await page.getByText('一次性令牌', { exact: true }).waitFor();
+  await page.getByLabel('目标项目 ID').fill(target.body.data.project.id);
+  await page.getByRole('button', { name: '申请交换', exact: true }).click();
+  await page.getByText('已请求', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '来源审批', exact: true }).click();
+  await page.getByText('部分批准', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '目标审批', exact: true }).click();
+  await page.getByText('活跃', { exact: true }).last().waitFor();
 
   const latestTargets = await pageApi(`/api/v2/repository-connections/${connection.body.data.connection.id}/targets`);
   const deletionTarget = latestTargets.body.data.targets.find((item) => item.id === repositoryTarget.id);
@@ -454,7 +454,7 @@ try {
     for (const scenario of ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer']) {
       const route = scenario.startsWith('execution-') ? 'execution' : scenario;
       await page.goto(route === 'governance' ? `${base}/#/projects/${encodeURIComponent(project.id)}/governance` : `${base}/#/${route}`, { waitUntil: 'domcontentloaded' });
-      const heading = { governance: 'Governance workspace', context: 'Context', settings: '设置', execution: 'Execution', evidence: 'Evidence', connections: 'Connections', outcome: 'Outcome', delivery: 'Delivery', operations: 'Operations', identity: 'Identity and teams', exchange: 'MCP & Exchange', runner: 'Connections', parser: 'Evidence', deployment: 'Operations', backup: 'Operations', importer: 'Operations' }[route];
+      const heading = { governance: '项目控制', context: '上下文', settings: '设置', execution: '执行', evidence: '证据', connections: '连接', outcome: '结果', delivery: '交付', operations: '运维', identity: '身份与团队', exchange: 'MCP 与交换', runner: '连接', parser: '证据', deployment: '运维', backup: '运维', importer: '运维' }[route];
       await page.getByRole('heading', { name: heading, exact: true }).waitFor();
       if (route === 'governance') {
         await page.getByText('P10 E2E Reviewer', { exact: true }).first().waitFor();
@@ -463,6 +463,7 @@ try {
         const opener = page.getByRole('button', { name: '打开导航', exact: true });
         await opener.click();
         await drawer.waitFor({ state: 'visible' });
+        await page.waitForTimeout(250);
         const labels = await drawer.locator('nav .nav-item').allTextContents();
         assert(JSON.stringify(labels.map((item) => item.trim())) === JSON.stringify(['项目','工作区','资产','上下文','审计','设置']), `${name} drawer inventory`);
         await page.waitForFunction(() => document.activeElement === document.querySelector('#workspace-navigation nav .nav-item'));
@@ -477,13 +478,13 @@ try {
         accessibilityReceipts.push(await auditAccessibility(page, `${name}-shell`));
       }
       else if (route === 'context') await page.getByText('P7 verification note', { exact: true }).waitFor();
-      else if (route === 'settings') { await page.getByRole('tab', { name: 'MCP / Exchange', exact: true }).click(); await page.getByText('context_map', { exact: true }).waitFor(); }
-      else if (scenario === 'execution') await page.getByText('generation 2', { exact: false }).first().waitFor();
-      else if (scenario === 'execution-quality') { await page.getByRole('tab', { name: 'Quality', exact: true }).click(); await page.getByRole('heading', { name: 'Human decision', exact: true }).waitFor(); await page.getByText('Attempt 1', { exact: true }).waitFor(); const reviewCheck = await pageApi(`/api/v2/executions/${executionId}/quality-reviews`); assert(JSON.stringify(reviewCheck.body.data?.quality_reviews?.[0]?.rubric?.dimensions?.map((item) => item.key)) === JSON.stringify(['coverage','accuracy','depth','consistency','clarity']), 'quality route five dimensions'); }
-      else if (scenario === 'execution-outcome') { await page.getByRole('tab', { name: 'Outcome', exact: true }).click(); await page.getByRole('heading', { name: 'Requirements', exact: true }).waitFor(); }
+      else if (route === 'settings') { await page.getByRole('tab', { name: 'MCP / 交换', exact: true }).click(); await page.getByText('context_map', { exact: true }).waitFor(); }
+      else if (scenario === 'execution') await page.getByText('第 2 代', { exact: false }).first().waitFor();
+      else if (scenario === 'execution-quality') { await page.getByRole('tab', { name: '质量', exact: true }).click(); await page.getByRole('heading', { name: '人工决策', exact: true }).waitFor(); await page.getByText('第 1 次尝试', { exact: true }).waitFor(); const reviewCheck = await pageApi(`/api/v2/executions/${executionId}/quality-reviews`); assert(JSON.stringify(reviewCheck.body.data?.quality_reviews?.[0]?.rubric?.dimensions?.map((item) => item.key)) === JSON.stringify(['coverage','accuracy','depth','consistency','clarity']), 'quality route five dimensions'); }
+      else if (scenario === 'execution-outcome') { await page.getByRole('tab', { name: '结果', exact: true }).click(); await page.getByRole('heading', { name: '要求', exact: true }).waitFor(); }
       else if (route === 'evidence') await page.getByText('p7-e2e-result.json', { exact: true }).first().waitFor();
       else if (route === 'connections') {
-        await page.getByRole('button', { name: 'Runner Profiles', exact: true }).click();
+        await page.getByRole('button', { name: '执行器 Profile', exact: true }).click();
         await page.getByText('P7 E2E Host', { exact: true }).first().waitFor();
       }
       await page.screenshot({ path: path.join(reportDir, `${name}-${scenario}.png`), fullPage: true });

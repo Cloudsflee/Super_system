@@ -81,7 +81,7 @@ it('runs template Brief, generation, critic, apply, and final confirm in order',
   fireEvent.change(screen.getByLabelText('初始构想'), { target: { value: '从零构思' } });
   fireEvent.click(screen.getByRole('button', { name: '提交 Intake' }));
   await screen.findByRole('heading', { name: '编辑完整 Brief' });
-  fireEvent.change(screen.getByLabelText('Brief template'), { target: { value: 'template_1' } });
+  fireEvent.change(screen.getByLabelText('Brief 模板'), { target: { value: 'template_1' } });
   fireEvent.click(screen.getByRole('button', { name: '应用模板' }));
   expect(screen.getByLabelText('目标')).toHaveValue('模板目标');
   fireEvent.click(screen.getByRole('button', { name: '保存 Brief' }));
@@ -157,7 +157,7 @@ it('restores the critic step after refresh and retries source drift with Intake 
     return envelope({});
   }));
   render(<ProjectOnboardingPage {...props()} />);
-  await screen.findByText('source_drift');
+  await screen.findByText('源版本漂移');
   fireEvent.click(screen.getByRole('button', { name: '重试 Intake' }));
   await waitFor(() => expect(retryHeader).toBe('5'));
 });
