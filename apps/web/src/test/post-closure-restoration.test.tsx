@@ -20,7 +20,7 @@ describe('post-closure Web restoration', () => {
       ['#/projects/project-1/workstreams/stream-1', 'workflow'],
       ['#/projects/project-1/nodes/node-1', 'workflow'],
       ['#/projects/project-1/repository', 'repository'],
-      ['#/github/install/callback', 'connections']
+      ['#/github/install/callback', 'settings']
     ];
     for (const [path, expected] of cases) expect(routeFromPath(path.slice(1))).toBe(expected);
   });

@@ -36,6 +36,7 @@ import { P10_PARSER_IMAGE_DIGEST } from './migrations/009-final-business-parity-
 import { CleanP8Service } from './p8-service.mjs';
 import { CleanP10Service } from './p10-service.mjs';
 import { CleanLocalSetupService } from './local-setup-service.mjs';
+import { CleanGithubSetupService } from './github-setup-service.mjs';
 
 export function createCleanRuntime(options = {}) {
   const config = options.config || loadCleanConfig(options.env || process.env);
@@ -98,7 +99,8 @@ export function createCleanRuntime(options = {}) {
   const p8Service = targetVersion >= 8 ? new CleanP8Service({ db, cas, events, operations, authorization, vault, projectWorkflow, githubAdapter: options.githubAdapter, operationsAdapter: options.operationsAdapter, config, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const p10Service = targetVersion >= 9 ? new CleanP10Service({ db, cas, events, operations, authorization, vault, assist, githubAdapter: p8Service?.github || options.githubAdapter, repositoryDeletionAdapter: options.repositoryDeletionAdapter, clock: options.now || undefined }) : null;
   const localSetup = targetVersion >= 9 ? new CleanLocalSetupService({ config, db, identity, operations, clock: options.now || undefined, deviceLoginRunner: options.deviceLoginRunner, spawnImpl: options.deviceLoginSpawn }) : null;
-  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, identity, assist, files, terminal, bridge, runner, execution, evidence, parser, quality, outcomeEvaluation, p8Service, p10Service, localSetup }) : null;
+  const githubSetup = targetVersion >= 9 ? new CleanGithubSetupService({ config, identity, vault, p8Service, fetchImpl: options.githubSetupFetch || options.fetchImpl, clock: options.now || undefined }) : null;
+  const dispatcher = targetVersion >= 4 ? new CleanCommandDispatcher({ registry, context, mcp, gateway, projectWorkflow, operations, events, identity, assist, files, terminal, bridge, runner, execution, evidence, parser, quality, outcomeEvaluation, p8Service, p10Service, localSetup, githubSetup }) : null;
   if (mcp) mcp.dispatcher = dispatcher;
   const recovery = (async () => {
     const identityResult = await identity.recoverPending();
@@ -170,6 +172,7 @@ export function createCleanRuntime(options = {}) {
     p8Service,
     p10Service,
     localSetup,
+    githubSetup,
     dispatcher,
     project: projectWorkflow,
     repository: projectWorkflow,
@@ -280,6 +283,8 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     outcomeEvaluation: null,
     p8Service: null,
     p10Service: null,
+    localSetup: null,
+    githubSetup: null,
     dispatcher: null,
     project: null,
     repository: null,

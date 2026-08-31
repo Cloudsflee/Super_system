@@ -168,6 +168,7 @@
         "apps/web/src/test/operations-p8.test.tsx",
         "apps/web/src/features/p10/FinalBusinessParityPage.tsx",
         "apps/web/src/features/setup/SystemOnboarding.tsx",
+        "apps/web/src/features/setup/GithubSetup.tsx",
         "apps/web/src/features/settings/SettingsPage.tsx",
         "apps/web/src/features/project/ProjectOnboardingPage.tsx",
         "scripts/e2e.mjs",
@@ -221,7 +222,10 @@
         "/api/v2/cas/gc/plan",
         "/api/v2/setup/session",
         "/api/v2/provider-discovery/codex",
-        "/api/v2/provider-auth/codex/device-logins"
+        "/api/v2/provider-auth/codex/device-logins",
+        "/api/v2/provider-discovery/github",
+        "/api/v2/provider-auth/github/manifest",
+        "/api/v2/provider-auth/github/installations"
       ],
       "ui": [
         "Identity",
@@ -239,6 +243,7 @@
         "Deep-link shell",
         "Project Repository workspace",
         "Codex Device Login",
+        "Guided GitHub App installation",
         "Offline continuity"
       ],
       "events": [
@@ -516,9 +521,12 @@
         "apps/api/src/clean/p8/github-adapter.mjs",
         "apps/api/src/clean/p8/repository.mjs",
         "apps/web/src/features/setup/SystemOnboarding.tsx",
+        "apps/web/src/features/setup/GithubSetup.tsx",
         "apps/web/src/features/settings/SettingsPage.tsx",
         "apps/api/src/clean/local-setup-service.mjs",
+        "apps/api/src/clean/github-setup-service.mjs",
         "apps/api/src/clean/config.mjs",
+        "config/github-app.local.example.json",
         "apps/api/src/clean/app-server-adapter.mjs",
         "apps/web/src/features/setup/CodexDiscoveryPicker.tsx",
         "apps/web/src/features/setup/CodexSetup.tsx",
@@ -546,12 +554,16 @@
         "POST /api/v2/provider-discovery/codex/import",
         "POST /api/v2/provider-auth/codex/device-logins",
         "GET /api/v2/provider-auth/codex/device-logins/{id}",
-        "POST /api/v2/provider-auth/codex/device-logins/{id}/cancel"
+        "POST /api/v2/provider-auth/codex/device-logins/{id}/cancel",
+        "GET /api/v2/provider-discovery/github",
+        "POST /api/v2/provider-auth/github/manifest",
+        "POST /api/v2/provider-auth/github/installations"
       ],
       "ui": [
         "Setup",
         "Credentials",
-        "Profiles"
+        "Profiles",
+        "Guided GitHub App installation and callback"
       ],
       "events": [
         "setup.completed",

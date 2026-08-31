@@ -59,7 +59,36 @@ it('runs full-screen setup, enforces the Codex probe, supports GitHub skip, and 
   expect(calls.every((call) => !call.url.includes('/api/v1/'))).toBe(true);
 });
 
-it('configures GitHub and verifies repository discovery without persisting the private key', async () => {
+it('uses the known GitHub App and completes the installation callback without raw credential fields', async () => {
+  const snapshot: SystemOnboardingSnapshot = {
+    needsSetup: false,
+    account: { id: 'account_github', display_name: 'Owner', revision: 1 },
+    credentials: [{ id: 'credential_codex', provider: 'codex', status: 'active', revision: 3 }],
+    profiles: [{ id: 'profile_codex', provider: 'codex', label: 'Codex', status: 'available', revision: 3, credential_ref_id: 'credential_codex' }],
+    projectCount: 0
+  };
+  location.hash = '#/setup?installation_id=200&state=github-state-fixture-abcdefghijklmnopqrstuvwxyz';
+  const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  let connected = false;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+    const url = String(input); const body = options?.body ? JSON.parse(String(options.body)) : undefined; calls.push({ url, body });
+    if (url.endsWith('/provider-discovery/github')) return envelope({ provider: 'github', status: connected ? 'connected' : 'installation_required', app: { name: 'Supersystem-czl', app_id: '4255971', client_id: 'Iv23fixture', slug: 'supersystem-czl' }, server_managed: true, profile: connected ? { id: 'profile_github', label: 'Supersystem-czl', status: 'available', revision: 3 } : null, can_install: true, can_create_manifest: true, repositories_count: connected ? 1 : 0 });
+    if (url.endsWith('/provider-auth/github/installations')) {
+      connected = true;
+      return envelope({ action: 'complete', status: 'connected', app: { name: 'Supersystem-czl', app_id: '4255971', client_id: 'Iv23fixture', slug: 'supersystem-czl' }, profile: { id: 'profile_github', label: 'Supersystem-czl', status: 'available', revision: 3 }, probe: { status: 'succeeded' }, repositories: [{ id: 1, full_name: 'fixture/repository' }], next_cursor: null, state: null, manifest: null, manifest_url: null, installation_url: null });
+    }
+    return envelope({});
+  }));
+  const refresh = vi.fn(async () => {});
+  render(<SystemOnboarding snapshot={snapshot} refresh={refresh} onComplete={vi.fn(async () => {})} />);
+  await waitFor(() => expect(refresh).toHaveBeenCalled());
+  expect(screen.queryByLabelText('已有 GitHub App 私钥')).toBeNull();
+  expect(calls.find((call) => call.url.endsWith('/provider-auth/github/installations'))?.body).toMatchObject({ action: 'complete', installation_id: '200' });
+  expect(calls.some((call) => call.url.endsWith('/api/v2/credentials'))).toBe(false);
+  expect(location.hash).not.toContain('installation_id');
+});
+
+it('keeps the known App id out of the default form and clears an advanced BYO private key', async () => {
   const snapshot: SystemOnboardingSnapshot = {
     needsSetup: false,
     account: { id: 'account_github', display_name: 'Owner', revision: 1 },
@@ -70,25 +99,46 @@ it('configures GitHub and verifies repository discovery without persisting the p
   const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
     const url = String(input); const body = options?.body ? JSON.parse(String(options.body)) : undefined; calls.push({ url, body });
-    if (url.endsWith('/api/v2/credentials')) return envelope({ credential: { id: 'credential_github', provider: 'github', status: 'rebind_required', revision: 1 } }, 201);
-    if (url.endsWith('/credentials/credential_github/rebind')) return envelope({ operation_id: 'rebind_github', status: 'succeeded' }, 202);
-    if (url.endsWith('/api/v2/profiles')) return envelope({ profile: { id: 'profile_github', provider: 'github', label: 'GitHub App', status: 'unprobed', revision: 1, credential_ref_id: 'credential_github' } }, 201);
-    if (url.endsWith('/profiles/profile_github/probe')) return envelope({ operation_id: 'probe_github', status: 'succeeded' }, 202);
-    if (url.endsWith('/provider-profiles/profile_github/repositories')) return envelope({ repositories: [{ id: 1, full_name: 'fixture/repository' }] });
+    if (url.endsWith('/provider-discovery/github')) return envelope({ provider: 'github', status: 'manifest_required', app: { name: 'Supersystem-czl', app_id: '4255971', client_id: 'Iv23fixture', slug: 'supersystem-czl' }, server_managed: false, profile: null, can_install: false, can_create_manifest: true, repositories_count: 0 });
+    if (url.endsWith('/provider-auth/github/manifest')) return envelope({ action: 'installation', status: 'installation_required', app: { name: 'Supersystem-czl', app_id: '4255971', client_id: 'Iv23fixture', slug: 'supersystem-czl' }, profile: { id: 'profile_github', label: 'Supersystem-czl', status: 'unprobed', revision: 1 }, probe: null, repositories: [], next_cursor: null, state: 'state', manifest: null, manifest_url: null, installation_url: 'https://github.com/apps/supersystem-czl/installations/new' });
     return envelope({});
   }));
+  render(<SystemOnboarding snapshot={snapshot} refresh={vi.fn(async () => {})} onComplete={vi.fn(async () => {})} />);
+  expect(await screen.findByText('App ID 4255971')).toBeInTheDocument();
+  expect(screen.queryByLabelText('已有 GitHub App ID')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '已有其他 GitHub App' }));
+  const privateKey = 'private-key-regression-value';
+  fireEvent.change(screen.getByLabelText('已有 GitHub App 私钥'), { target: { value: privateKey } });
+  fireEvent.click(screen.getByRole('button', { name: '绑定到本地凭据库' }));
+  await waitFor(() => expect((screen.getByLabelText('已有 GitHub App 私钥') as HTMLTextAreaElement).value).toBe(''));
+  expect([...Object.values(localStorage), ...Object.values(sessionStorage)].join('|')).not.toContain(privateKey);
+  expect(calls.find((call) => call.url.endsWith('/provider-auth/github/manifest'))?.body).toMatchObject({ action: 'configure', app_id: '4255971', private_key: privateKey });
+});
+
+it('connects a server-managed GitHub App by discovering its existing installation', async () => {
+  const snapshot: SystemOnboardingSnapshot = {
+    needsSetup: false,
+    account: { id: 'account_github', display_name: 'Owner', revision: 1 },
+    credentials: [{ id: 'credential_codex', provider: 'codex', status: 'active', revision: 3 }],
+    profiles: [{ id: 'profile_codex', provider: 'codex', label: 'Codex', status: 'available', revision: 3, credential_ref_id: 'credential_codex' }],
+    projectCount: 0
+  };
+  const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+    const url = String(input); const body = options?.body ? JSON.parse(String(options.body)) : undefined; calls.push({ url, body });
+    if (url.endsWith('/provider-discovery/github')) return envelope({ provider: 'github', status: 'installation_required', app: { name: 'Supersystem-czl', app_id: '4255971', client_id: 'Iv23fixture', slug: 'supersystem-czl' }, server_managed: true, profile: null, can_install: true, can_create_manifest: true, repositories_count: 0 });
+    if (url.endsWith('/provider-auth/github/installations')) return envelope({ action: 'complete', status: 'connected', app: { name: 'Supersystem-czl', app_id: '4255971', client_id: 'Iv23fixture', slug: 'supersystem-czl' }, profile: { id: 'profile_github', label: 'Supersystem-czl', status: 'available', revision: 3 }, probe: { status: 'succeeded' }, repositories: Array.from({ length: 14 }, (_, id) => ({ id, full_name: `fixture/repository-${id}` })), next_cursor: null, state: null, manifest: null, manifest_url: null, installation_url: null });
+    return envelope({});
+  }));
+  const close = vi.fn();
+  const popup = { opener: null, close, location: { replace: vi.fn() } } as unknown as Window;
+  vi.spyOn(window, 'open').mockReturnValue(popup);
   const refresh = vi.fn(async () => {});
   render(<SystemOnboarding snapshot={snapshot} refresh={refresh} onComplete={vi.fn(async () => {})} />);
-  const privateKey = 'private-key-regression-value';
-  fireEvent.change(screen.getByLabelText('GitHub App ID'), { target: { value: '100' } });
-  fireEvent.change(screen.getByLabelText('GitHub 安装 ID'), { target: { value: '200' } });
-  fireEvent.change(screen.getByLabelText('GitHub 私钥'), { target: { value: privateKey } });
-  fireEvent.click(screen.getByRole('button', { name: '验证仓库访问' }));
+  fireEvent.click(await screen.findByRole('button', { name: '安装 GitHub App' }));
   await waitFor(() => expect(refresh).toHaveBeenCalled());
-  expect((screen.getByLabelText('GitHub 私钥') as HTMLTextAreaElement).value).toBe('');
-  expect([...Object.values(localStorage), ...Object.values(sessionStorage)].join('|')).not.toContain(privateKey);
-  expect(String(calls.find((call) => call.url.endsWith('/credentials/credential_github/rebind'))?.body?.proof)).toContain(privateKey);
-  expect(calls.some((call) => call.url.endsWith('/provider-profiles/profile_github/repositories'))).toBe(true);
+  expect(close).toHaveBeenCalled();
+  expect(calls.find((call) => call.url.endsWith('/provider-auth/github/installations'))?.body).toMatchObject({ action: 'start', return_path: 'setup' });
 });
 
 it('automatically bypasses system onboarding for an existing project', async () => {

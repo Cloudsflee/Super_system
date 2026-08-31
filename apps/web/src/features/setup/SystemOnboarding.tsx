@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Check, ChevronRight, ExternalLink, Github, KeyRound, Laptop, LoaderCircle, RefreshCw, Search, ShieldCheck, UserRound, X } from 'lucide-react';
 import { ApiError, apiV2, mutateV2 } from '../../api';
 import { authTypeLabel, statusLabel } from '../../i18n';
+import { GithubSetup } from './GithubSetup';
 
 export type OnboardingAccount = { id: string; display_name: string; revision: number };
 export type OnboardingCredential = { id: string; provider: string; status: string; revision: number };
@@ -72,10 +73,6 @@ export function SystemOnboarding({ snapshot, refresh, onComplete }: Props) {
   const [discoveryLoaded, setDiscoveryLoaded] = useState(false);
   const [deviceLogin, setDeviceLogin] = useState<DeviceLogin | null>(null);
   const [deviceOperation, setDeviceOperation] = useState<DeviceOperation | null>(null);
-  const [githubAppId, setGithubAppId] = useState('');
-  const [githubAppSlug, setGithubAppSlug] = useState('');
-  const [githubInstallationId, setGithubInstallationId] = useState('');
-  const [githubPrivateKey, setGithubPrivateKey] = useState('');
   const [githubRepositories, setGithubRepositories] = useState(0);
   const [markerRevision, setMarkerRevision] = useState(0);
   const [busy, setBusy] = useState('');
@@ -84,14 +81,6 @@ export function SystemOnboarding({ snapshot, refresh, onComplete }: Props) {
   const githubSkipped = Boolean(snapshot.account && localStorage.getItem(githubSkipKey(snapshot.account.id)) === SYSTEM_ONBOARDING_VERSION);
   const step = deriveSystemOnboardingStep(snapshot, githubSkipped || markerRevision > 0);
   const codexCredential = useMemo(() => snapshot.credentials.find((item) => item.provider === 'codex' && item.status === 'active') || snapshot.credentials.find((item) => item.provider === 'codex' && ['rebind_required', 'failed'].includes(item.status)), [snapshot.credentials]);
-  const githubCredential = useMemo(() => snapshot.credentials.find((item) => item.provider === 'github' && item.status === 'active') || snapshot.credentials.find((item) => item.provider === 'github' && ['rebind_required', 'failed'].includes(item.status)), [snapshot.credentials]);
-  const githubInstallUrl = /^[a-z0-9-]{1,100}$/i.test(githubAppSlug.trim()) ? `https://github.com/apps/${githubAppSlug.trim()}/installations/new` : '';
-
-  useEffect(() => {
-    const query = window.location.hash.includes('?') ? window.location.hash.slice(window.location.hash.indexOf('?') + 1) : '';
-    const installation = new URLSearchParams(query).get('installation_id');
-    if (installation && /^[1-9][0-9]{0,19}$/.test(installation)) setGithubInstallationId(installation);
-  }, []);
 
   const discoverCodex = async () => {
     setBusy('codex-discovery');
@@ -215,31 +204,6 @@ export function SystemOnboarding({ snapshot, refresh, onComplete }: Props) {
     });
   };
 
-  const configureGithub = (event: FormEvent) => {
-    event.preventDefault();
-    void run('github', async () => {
-      let credential = githubCredential;
-      if (!credential) {
-        const created = await mutateV2<{ credential: OnboardingCredential }>('/api/v2/credentials', { provider: 'github', external_ref: 'onboarding:github-app', scope: {} }, 'POST', 0);
-        credential = created.data.credential;
-      }
-      if (credential.status !== 'active') {
-         if (!githubAppId.trim() || !githubInstallationId.trim() || !githubPrivateKey) throw new Error('请填写 GitHub App、安装 ID 和私钥');
-        const proof = JSON.stringify({ app_id: githubAppId.trim(), installation_id: githubInstallationId.trim(), private_key: githubPrivateKey });
-        await mutateV2(`/api/v2/credentials/${encodeURIComponent(credential.id)}/rebind`, { proof }, 'POST', credential.revision);
-      }
-      let profile = snapshot.profiles.find((item) => item.provider === 'github' && item.credential_ref_id === credential?.id && ['unprobed', 'unavailable', 'available'].includes(item.status));
-      if (!profile) {
-        const created = await mutateV2<{ profile: OnboardingProfile }>('/api/v2/profiles', { provider: 'github', label: 'GitHub App', credential_ref_id: credential.id, config: { app_id: githubAppId.trim(), installation_id: githubInstallationId.trim() } }, 'POST', 0);
-        profile = created.data.profile;
-      }
-      if (profile.status !== 'available') await mutateV2(`/api/v2/profiles/${encodeURIComponent(profile.id)}/probe`, {}, 'POST', profile.revision);
-      const discovered = await apiV2<{ repositories: unknown[] }>(`/api/v2/provider-profiles/${encodeURIComponent(profile.id)}/repositories`);
-      setGithubRepositories(discovered.data.repositories?.length || 0);
-      await refresh();
-    }).finally(() => setGithubPrivateKey(''));
-  };
-
   const skipGithub = () => {
     if (!snapshot.account) return;
     localStorage.setItem(githubSkipKey(snapshot.account.id), SYSTEM_ONBOARDING_VERSION);
@@ -274,7 +238,7 @@ export function SystemOnboarding({ snapshot, refresh, onComplete }: Props) {
           {codexMode === 'api_key' && <>{codexCredential?.status === 'active' ? <div className="onboarding-resource"><Check size={16} /><span><strong>已绑定凭据</strong><small>{codexCredential.id}</small></span></div> : <label><span>Codex API 密钥</span><input aria-label="Codex 凭据" type="password" autoComplete="off" value={codexSecret} onChange={(event) => setCodexSecret(event.target.value)} required /></label>}<button className="button primary" disabled={busy === 'codex' || (!codexCredential?.status.includes('active') && !codexSecret)}>{busy === 'codex' ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />}验证并继续</button></>}
         </form>
       )}
-      {step === 3 && <form className="onboarding-form" onSubmit={configureGithub}><div className="onboarding-stage-title"><Github size={22} /><div><p>步骤 3 / 4 · 可稍后配置</p><h1>连接 GitHub App</h1></div></div><div className="github-install-guide"><Github size={18} /><span><strong>安装 GitHub App</strong><small>限定目标仓库并完成安装后，回到此页验证权限。</small></span>{githubInstallUrl ? <a className="button" href={githubInstallUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />打开安装页</a> : null}</div><div className="two-column"><label><span>App 标识</span><input aria-label="GitHub App 标识" value={githubAppSlug} onChange={(event) => setGithubAppSlug(event.target.value)} placeholder="my-workspace-app" /></label><label><span>App ID</span><input aria-label="GitHub App ID" value={githubAppId} onChange={(event) => setGithubAppId(event.target.value)} required={!githubCredential || githubCredential.status !== 'active'} /></label><label><span>安装 ID</span><input aria-label="GitHub 安装 ID" value={githubInstallationId} onChange={(event) => setGithubInstallationId(event.target.value)} required={!githubCredential || githubCredential.status !== 'active'} /></label></div>{githubCredential?.status !== 'active' && <label><span>私钥</span><textarea aria-label="GitHub 私钥" rows={5} autoComplete="off" value={githubPrivateKey} onChange={(event) => setGithubPrivateKey(event.target.value)} required /></label>}<div className="onboarding-actions"><button type="button" className="button" onClick={skipGithub}>稍后配置</button><button className="button primary" disabled={busy === 'github'}>{busy === 'github' ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />}验证仓库访问</button></div></form>}
+      {step === 3 && <div className="onboarding-form"><div className="onboarding-stage-title"><Github size={22} /><div><p>步骤 3 / 4 · 可稍后配置</p><h1>连接 GitHub App</h1></div></div><GithubSetup onSkip={skipGithub} onConnected={async (count) => { setGithubRepositories(count); await refresh(); }} /></div>}
       {step === 4 && <div className="onboarding-form onboarding-summary"><div className="onboarding-stage-title"><ShieldCheck size={22} /><div><p>步骤 4 / 4</p><h1>配置检查</h1></div></div><dl><div><dt>所有者</dt><dd>{snapshot.account?.display_name || '已创建'}</dd></div><div><dt>Codex</dt><dd><Check size={14} />已验证</dd></div><div><dt>GitHub</dt><dd>{githubSkipped ? '稍后配置' : <><Check size={14} />已验证{githubRepositories ? ` · ${githubRepositories} 个仓库` : ''}</>}</dd></div></dl><button className="button primary" disabled={busy === 'finish'} onClick={finish}>{busy === 'finish' ? <LoaderCircle className="spin" size={16} /> : <ChevronRight size={16} />}进入项目创建</button></div>}
       {failure && <div className="state-banner error onboarding-failure" role="alert">{failure}</div>}
     </section>

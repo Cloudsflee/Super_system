@@ -772,7 +772,14 @@ persistent `HttpOnly; SameSite=Strict` cookie; the Web client retries a stale
 session once and reloads the real account scope. Provider setup covers ordered
 Codex host discovery (`AIWS_HOST_CODEX_HOME`, `CODEX_HOME`, `~/.codex`), bounded
 TOML/JSON parsing, symlink/race checks, Vault import, ChatGPT Device Login,
-and cleanup of isolated homes without returning secrets or host paths.
+and cleanup of isolated homes without returning secrets or host paths. GitHub
+setup restores the bundled public App identity, Hosted server configuration,
+GitHub App Manifest creation, signed installation callbacks, Vault binding,
+Profile Probe, and repository discovery through
+`GET /api/v2/provider-discovery/github`,
+`POST /api/v2/provider-auth/github/manifest`, and
+`POST /api/v2/provider-auth/github/installations`. App and Installation ids are
+not default user inputs; BYO key entry remains an explicit advanced fallback.
 
 The shell restores parameterized asset/audit/workstream/node/repository and
 GitHub-install deep links, a six-entry hidden navigation drawer, focus trapping
@@ -781,8 +788,10 @@ loaded page and permitted Outbox work available. Project/Identity/Assist,
 Workflow, Quality, Outcome, Delivery, and Operations surfaces reuse the existing
 Clean owners and generic ledger. `tests/p10/post-closure-restoration.test.mjs`
 is the API/security regression for session, discovery, Device Login, redaction,
-and restart cleanup; `apps/web/src/test/post-closure-restoration.test.tsx` adds
-the Web route/recovery and sanitization checks alongside the existing suite.
+restart cleanup, and Hosted/Manifest GitHub state, replay, Probe, Vault, and
+callback contracts; `apps/web/src/test/setup-flow.test.tsx` and
+`apps/web/src/test/post-closure-restoration.test.tsx` add the guided GitHub Web
+journey, route/recovery, and sanitization checks alongside the existing suite.
 New implementation and test paths are registered in both layered
 Catalogs without changing any status or P10 Evidence byte.
 

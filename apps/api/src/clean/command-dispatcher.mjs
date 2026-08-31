@@ -3,7 +3,7 @@ import { PlatformError } from './platform-error.mjs';
 
 /** Shared P4 command boundary used by REST, MCP HTTP, stdio and Gateway. */
 export class CleanCommandDispatcher {
-  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, identity = null, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null, p8Service = null, p10Service = null, localSetup = null } = {}) {
+  constructor({ registry, context, mcp, gateway, projectWorkflow, operations, events, identity = null, assist = null, files = null, terminal = null, bridge = null, runner = null, execution = null, evidence = null, parser = null, quality = null, outcomeEvaluation = null, p8Service = null, p10Service = null, localSetup = null, githubSetup = null } = {}) {
     if (!registry || !context || !mcp || !operations || !events) throw new TypeError('clean_dispatcher_dependencies_required');
     this.registry = registry;
     this.context = context;
@@ -26,6 +26,7 @@ export class CleanCommandDispatcher {
     this.p8Service = p8Service;
     this.p10Service = p10Service;
     this.localSetup = localSetup;
+    this.githubSetup = githubSetup;
     this.handlers = new Map();
     this.exposed = new Set();
     this.#registerHandlers();
@@ -149,6 +150,11 @@ export class CleanCommandDispatcher {
       bind('provider.codex.device_login.start', (args, principal) => this.localSetup.startDeviceLogin(args, principal));
       bind('provider.codex.device_login.get', (args, principal) => this.localSetup.deviceLogin(args.id, principal));
       bind('provider.codex.device_login.cancel', (args, principal) => this.localSetup.cancelDeviceLogin(args.id, args, principal));
+    }
+    if (this.githubSetup) {
+      bind('provider.github.discovery', (args, principal) => this.githubSetup.discover(args, principal));
+      bind('provider.github.manifest', (args, principal) => this.githubSetup.manifest(args, principal));
+      bind('provider.github.installation', (args, principal) => this.githubSetup.installation(args, principal));
     }
     bind('brief.template.list', (args, principal) => this.p10Service.listBriefTemplates(args, principal));
     bind('brief.template.create', (args, principal) => this.p10Service.createBriefTemplate(args, principal));

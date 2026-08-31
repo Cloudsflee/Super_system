@@ -24,6 +24,15 @@ export class GitHubAppAdapter {
     });
   }
 
+  async listInstallations(auth, { cursor = null, limit = 50 } = {}) {
+    const page = cursor == null ? 1 : Number(cursor);
+    if (!Number.isInteger(page) || page < 1) throw new PlatformError('schema_invalid', 'GitHub installation cursor is invalid', {}, 422);
+    const count = Math.min(100, Math.max(1, Number(limit || 50)));
+    const response = await this.#request(`/app/installations?per_page=${count}&page=${page}`, { jwt: appJwt(auth, this.clock) });
+    const installations = Array.isArray(response) ? response.map(installationView) : [];
+    return { installations, next_cursor: installations.length === count ? String(page + 1) : null };
+  }
+
   async createDraft(auth, input) {
     return this.#withInstallationToken(auth, async (token) => {
       const result = await this.#request(`/repos/${repoPath(input.repository)}/pulls`, {
@@ -225,14 +234,16 @@ export class GitHubAppAdapter {
 }
 
 export class DeterministicGitHubAdapter {
-  constructor({ repositories = [{ id: 1, full_name: 'fixture/delivery-target', owner: 'fixture', name: 'delivery-target', default_branch: 'main', private: true, archived: false, permissions: { push: true } }], clock = () => new Date().toISOString() } = {}) {
+  constructor({ repositories = [{ id: 1, full_name: 'fixture/delivery-target', owner: 'fixture', name: 'delivery-target', default_branch: 'main', private: true, archived: false, permissions: { push: true } }], installations = [], clock = () => new Date().toISOString() } = {}) {
     this.repositories = repositories;
+    this.installations = installations;
     this.clock = clock;
     this.calls = [];
     this.pullRequests = new Map();
   }
 
   async listRepositories(_auth, input = {}) { this.calls.push({ action: 'list', input }); return { repositories: this.repositories.map((item) => ({ ...item })), next_cursor: null }; }
+  async listInstallations(_auth, input = {}) { this.calls.push({ action: 'list_installations', input }); return { installations: this.installations.map((item) => ({ ...item })), next_cursor: null }; }
   async createBranch(_auth, input) { this.calls.push({ action: 'create_branch', input: publicInput(input) }); return { ref: `refs/heads/${input.branch}`, sha: input.headSha, created: true }; }
   async createDraft(_auth, input) { const number = this.pullRequests.size + 1; const value = { number, state: 'open', draft: true, merged: false, base_sha: input.baseSha || input.base, head_sha: input.headSha || input.head, updated_at: this.clock() }; this.pullRequests.set(number, value); this.calls.push({ action: 'create_draft', input: publicInput(input) }); return { ...value }; }
   async markReady(_auth, input) { const value = requiredPull(this.pullRequests, input.pullNumber); value.draft = false; value.updated_at = this.clock(); this.calls.push({ action: 'mark_ready', input: publicInput(input) }); return { ...value }; }
@@ -287,6 +298,19 @@ function appJwt(auth, clock) {
 
 function repositoryView(value = {}) {
   return { id: Number(value.id || 0), full_name: bounded(value.full_name || '', 256), owner: bounded(value.owner?.login || '', 160), name: bounded(value.name || '', 160), default_branch: bounded(value.default_branch || '', 160), private: value.private === true, archived: value.archived === true, permissions: { push: value.permissions?.push === true, maintain: value.permissions?.maintain === true, admin: value.permissions?.admin === true } };
+}
+function installationView(value = {}) {
+  return {
+    id: String(value.id || ''),
+    account: {
+      id: String(value.account?.id || ''),
+      login: bounded(value.account?.login || '', 160),
+      type: bounded(value.account?.type || '', 40)
+    },
+    target_type: bounded(value.target_type || '', 40),
+    repository_selection: bounded(value.repository_selection || '', 40),
+    suspended_at: value.suspended_at || null
+  };
 }
 function pullRequestReceipt(value = {}) { return { number: Number(value.number || 0), state: bounded(value.state || '', 40), draft: value.draft === true, merged: value.merged === true, base_sha: bounded(value.base?.sha || value.base_sha || '', 128), head_sha: bounded(value.head?.sha || value.head_sha || '', 128), merge_sha: value.merge_commit_sha || value.merge_sha || null, updated_at: value.updated_at || null }; }
 function repoPath(value) { const result = bounded(value, 256); if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(result)) throw new PlatformError('github_repository_invalid', 'GitHub repository is invalid', {}, 422); return result.split('/').map(encodeURIComponent).join('/'); }

@@ -93,7 +93,7 @@ export function routeFromPath(pathname: string): WorkspaceRoute {
   const aliases: Record<string, WorkspaceRoute> = {
     assets: 'evidence', asset: 'evidence', audit: 'operations', workstream: 'workflow', workstreams: 'workflow',
     node: 'workflow', nodes: 'workflow', repository: 'repository', terminal: 'terminals', approval: 'approvals',
-    github: 'connections', 'github/install': 'connections', 'github/callback': 'connections', 'integrations/github/install/setup': 'connections', 'integrations/github/install/callback': 'connections'
+    github: 'settings', 'github/install': 'settings', 'github/callback': 'settings', 'integrations/github/install/setup': 'settings', 'integrations/github/install/callback': 'settings'
   };
   const route = (aliases[projectView] || aliases[clean] || aliases[clean.split('/', 1)[0]] || projectView || clean) as WorkspaceRoute;
   return ROUTES.has(route) ? route : 'projects';

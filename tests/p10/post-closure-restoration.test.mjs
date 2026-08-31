@@ -3,7 +3,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { generateKeyPairSync } from 'node:crypto';
 import { PlatformError } from '../../apps/api/src/clean/platform-error.mjs';
+import { loadCleanConfig } from '../../apps/api/src/clean/config.mjs';
+import { DeterministicGitHubAdapter } from '../../apps/api/src/clean/p8/github-adapter.mjs';
 import { close, closeServer, listen, open, waitOperation } from './helpers.mjs';
 
 test('loopback same-origin session recovery returns a persistent strict cookie and audits the real owner', async () => {
@@ -261,3 +264,196 @@ test('Device Login cancellation and restart recovery terminate through the share
     await close(state);
   }
 });
+
+test('GitHub setup restores the bundled V2.3 public App identity and completes hosted installation through Vault, Probe, and repository discovery', async () => {
+  const loaded = loadCleanConfig({ AIWS_CLEAN_HOME: path.join(os.tmpdir(), 'aiws-github-public-config') });
+  assert.equal(loaded.githubApp.appId, '4255971');
+  assert.equal(loaded.githubApp.clientId, 'Iv23linPGJnCQqsUeYk4');
+  assert.equal(loaded.githubApp.slug, 'supersystem-czl');
+
+  const privateKey = githubPrivateKey();
+  const state = await open({ config: { githubApp: githubFixtureConfig({ privateKey }) } });
+  try {
+    const discovered = state.runtime.githubSetup.discover({}, state.principal);
+    assert.deepEqual(discovered.app, {
+      name: 'Supersystem-czl', app_id: '4255971', client_id: 'Iv23linPGJnCQqsUeYk4', slug: 'supersystem-czl'
+    });
+    assert.equal(discovered.server_managed, true);
+    assert.equal(discovered.status, 'installation_required');
+    const started = await state.runtime.githubSetup.installation({
+      action: 'start', callback_origin: 'http://127.0.0.1:5175', return_path: 'setup',
+      idempotency_key: 'post-close-github-hosted-start', expected_revision: 0
+    }, state.principal);
+    assert.equal(started.status, 'installation_required');
+    assert.match(started.installation_url, /^https:\/\/github\.com\/apps\/supersystem-czl\/installations\/new\?state=/);
+    assert.equal(JSON.stringify(started).includes('PRIVATE KEY'), false);
+
+    const completed = await state.runtime.githubSetup.installation({
+      action: 'complete', installation_id: '9001', state: started.state,
+      idempotency_key: 'post-close-github-hosted-complete', expected_revision: 0
+    }, state.principal);
+    assert.equal(completed.status, 'connected');
+    assert.equal(completed.profile.status, 'available');
+    assert.equal(completed.repositories.length, 1);
+    assert.equal(JSON.stringify(completed).includes('PRIVATE KEY'), false);
+    const credential = state.runtime.identity.credentials(state.principal).find((item) => item.provider === 'github');
+    const bundle = JSON.parse(state.runtime.vault.read(credential.external_ref).toString('utf8'));
+    assert.equal(bundle.app_id, '4255971');
+    assert.equal(bundle.installation_id, '9001');
+    assert.equal(bundle.private_key, privateKey.trim());
+  } finally {
+    await close(state);
+  }
+});
+
+test('GitHub Manifest callback binds returned secrets server-side, is replayable without a second conversion, and leaks no credential material', async () => {
+  const privateKey = githubPrivateKey();
+  const secrets = {
+    client: 'github-client-secret-regression-value',
+    webhook: 'github-webhook-secret-regression-value'
+  };
+  let conversions = 0;
+  const state = await open({
+    config: { githubApp: githubFixtureConfig() },
+    runtime: {
+      githubSetupFetch: async (url, options) => {
+        conversions += 1;
+        assert.match(String(url), /\/app-manifests\/manifest-code-fixture\/conversions$/);
+        assert.equal(options.method, 'POST');
+        return new Response(JSON.stringify({
+          id: 4255971,
+          name: 'Supersystem-czl',
+          slug: 'supersystem-czl',
+          client_id: 'Iv23linPGJnCQqsUeYk4',
+          client_secret: secrets.client,
+          webhook_secret: secrets.webhook,
+          pem: privateKey
+        }), { status: 201, headers: { 'content-type': 'application/json' } });
+      }
+    }
+  });
+  try {
+    const started = await state.runtime.githubSetup.manifest({
+      action: 'start', callback_origin: 'http://127.0.0.1:5175', return_path: 'setup',
+      idempotency_key: 'post-close-github-manifest-start', expected_revision: 0
+    }, state.principal);
+    assert.equal(started.status, 'authorization_required');
+    assert.equal(started.manifest.redirect_url, 'http://127.0.0.1:5175/?github_callback=manifest#/setup');
+    const converted = await state.runtime.githubSetup.manifest({
+      action: 'callback', code: 'manifest-code-fixture', state: started.state,
+      idempotency_key: 'post-close-github-manifest-callback', expected_revision: 0
+    }, state.principal);
+    assert.equal(converted.status, 'installation_required');
+    const serialized = JSON.stringify(converted);
+    for (const secret of [privateKey, secrets.client, secrets.webhook]) assert.equal(serialized.includes(secret), false);
+    const replayed = await state.runtime.githubSetup.manifest({
+      action: 'callback', code: 'manifest-code-fixture', state: started.state,
+      idempotency_key: 'post-close-github-manifest-replay', expected_revision: 0
+    }, state.principal);
+    assert.equal(replayed.profile.id, converted.profile.id);
+    assert.equal(conversions, 1);
+    const credential = state.runtime.identity.credentials(state.principal).find((item) => item.provider === 'github');
+    const stored = JSON.parse(state.runtime.vault.read(credential.external_ref).toString('utf8'));
+    assert.equal(stored.client_secret, secrets.client);
+    assert.equal(stored.webhook_secret, secrets.webhook);
+    assert.equal(stored.private_key, privateKey.trim());
+
+    const [payload, signature] = started.state.split('.');
+    const tampered = `${payload}.${signature.startsWith('A') ? 'B' : 'A'}${signature.slice(1)}`;
+    await assert.rejects(() => state.runtime.githubSetup.manifest({
+      action: 'callback', code: 'manifest-code-fixture', state: tampered,
+      idempotency_key: 'post-close-github-manifest-tamper', expected_revision: 0
+    }, state.principal), (error) => error.code === 'github_state_invalid');
+  } finally {
+    await close(state);
+  }
+});
+
+test('GitHub setup automatically binds a unique existing App installation before opening GitHub', async () => {
+  const privateKey = githubPrivateKey();
+  const github = new DeterministicGitHubAdapter({
+    installations: [{ id: '9001', account: { id: '1', login: 'fixture-owner', type: 'User' }, suspended_at: null }]
+  });
+  const state = await open({ config: { githubApp: githubFixtureConfig({ privateKey }) }, githubAdapter: github });
+  try {
+    const started = await state.runtime.githubSetup.installation({
+      action: 'start', callback_origin: 'http://127.0.0.1:5175', return_path: 'setup',
+      idempotency_key: 'post-close-github-existing-installation', expected_revision: 0
+    }, state.principal);
+    assert.equal(started.status, 'connected');
+    assert.equal(started.installation_url, null);
+    assert.equal(started.profile.status, 'available');
+    assert.equal(started.repositories.length, 1);
+    assert.deepEqual(github.calls.map((item) => item.action), ['list_installations', 'list']);
+  } finally {
+    await close(state);
+  }
+});
+
+test('GitHub setup HTTP contracts expose public metadata and callback receipts without secrets or host paths', async () => {
+  const privateKey = githubPrivateKey();
+  const state = await open({ config: { githubApp: githubFixtureConfig({ privateKey }) } });
+  const serverState = await listen(state.runtime);
+  try {
+    const headers = { origin: serverState.base, cookie: `aiws_session=${state.proof}` };
+    let response = await fetch(`${serverState.base}/api/v2/provider-discovery/github`, { headers });
+    assert.equal(response.status, 200);
+    let body = await response.json();
+    assert.equal(body.data.app.app_id, '4255971');
+    assert.equal(body.data.server_managed, true);
+    assert.deepEqual(body.meta.redactions, []);
+
+    response = await fetch(`${serverState.base}/api/v2/provider-auth/github/installations`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json', 'idempotency-key': 'post-close-github-http-start' },
+      body: JSON.stringify({ action: 'start', callback_origin: serverState.base, return_path: 'settings' })
+    });
+    assert.equal(response.status, 200);
+    body = await response.json();
+    assert.equal(body.data.status, 'installation_required');
+    assert.equal(body.data.profile.status, 'unprobed');
+    const text = JSON.stringify(body);
+    assert.equal(text.includes(privateKey), false);
+    assert.equal(text.includes(state.root), false);
+  } finally {
+    await closeServer(serverState.server);
+    await close(state);
+  }
+});
+
+test('GitHub hosted private-key discovery rejects symlinks without exposing the configured path', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-github-key-path-'));
+  const source = path.join(root, 'source.pem');
+  const linked = path.join(root, 'linked.pem');
+  fs.writeFileSync(source, githubPrivateKey(), { encoding: 'utf8', mode: 0o600 });
+  try { fs.symlinkSync(source, linked, 'file'); }
+  catch (error) {
+    fs.rmSync(root, { recursive: true, force: true });
+    t.skip(`symlink fixture unavailable: ${error.code}`);
+    return;
+  }
+  const state = await open({ config: { githubApp: githubFixtureConfig({ privateKeyPath: linked }) } });
+  try {
+    const discovered = state.runtime.githubSetup.discover({}, state.principal);
+    assert.equal(JSON.stringify(discovered).includes(root), false);
+    await assert.rejects(() => state.runtime.githubSetup.installation({
+      action: 'start', callback_origin: 'http://127.0.0.1:5175', return_path: 'setup',
+      idempotency_key: 'post-close-github-symlink-start', expected_revision: 0
+    }, state.principal), (error) => error.code === 'github_private_key_invalid');
+  } finally {
+    await close(state);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function githubPrivateKey() {
+  return generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+}
+
+function githubFixtureConfig(overrides = {}) {
+  return {
+    appId: '4255971', clientId: 'Iv23linPGJnCQqsUeYk4', slug: 'supersystem-czl', name: 'Supersystem-czl',
+    privateKey: '', privateKeyPath: null, clientSecret: '', webhookSecret: '', apiBaseUrl: 'https://api.github.com', webOrigin: null,
+    ...overrides
+  };
+}

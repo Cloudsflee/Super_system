@@ -17,10 +17,16 @@ test('fixed V2.3 inventories map bidirectionally to 19 business groups with zero
 test('P10 registry is API v2-only and preserves synchronized transport contracts', () => {
   const registry = createCleanCommandRegistry({ targetVersion: 9, runtimePhase: 10 });
   const entries = registry.entries.filter((entry) => entry.phase === 'p10');
-  assert.equal(entries.length, 39);
+  assert.equal(entries.length, 42);
   assert.ok(entries.every((entry) => entry.path.startsWith('/api/v2/')));
   assert.ok(entries.filter((entry) => entry.command_id.includes('deletion')).every((entry) => !entry.transport_allowlist.includes('mcp')));
   assert.ok(entries.filter((entry) => entry.command_id.startsWith('provider.codex.')).every((entry) => !entry.transport_allowlist.includes('mcp')));
+  assert.deepEqual(entries.filter((entry) => entry.command_id.startsWith('provider.github.')).map((entry) => entry.path), [
+    '/api/v2/provider-discovery/github',
+    '/api/v2/provider-auth/github/manifest',
+    '/api/v2/provider-auth/github/installations'
+  ]);
+  assert.ok(entries.filter((entry) => entry.command_id.startsWith('provider.github.')).every((entry) => !entry.transport_allowlist.includes('mcp')));
   assert.deepEqual(registryParity(registry), { valid: true, mismatches: [], rest_count: registry.entries.length, mcp_count: registry.entries.length, web_count: registry.entries.length });
 });
 
