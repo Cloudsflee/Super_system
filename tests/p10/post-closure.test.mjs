@@ -43,6 +43,13 @@ test('P10 post-closure verification accepts pushed product descendants and freez
     const verification = { implementation_commit: closure, runtime_tree: runtimeTree };
     assert.deepEqual(postClosureFailures({ root, verification, expectedTagCommit: closure }), []);
 
+    fs.appendFileSync(path.join(root, 'docs', 'architecture', 'decision-log.md'), '\n## D-040 - Post-P10 development reliability and dual-channel verification\nappend-only maintenance\n');
+    write(root, 'docs/evidence/post-p10-development-reliability-20260905/README.md', 'independent maintenance evidence\n');
+    git(root, 'add', '.');
+    git(root, 'commit', '-m', 'allowed D-040 maintenance append');
+    git(root, 'push');
+    assert.deepEqual(postClosureFailures({ root, verification, expectedTagCommit: closure }), []);
+
     write(root, 'feature-catalog.json', `${JSON.stringify({ features: [{ id: 'REC-001', status: 'verified', target_modules: ['apps/web/src/product.ts'] }] })}\n`);
     git(root, 'add', '.');
     git(root, 'commit', '-m', 'invalid Catalog promotion');

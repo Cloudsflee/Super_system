@@ -16,6 +16,7 @@ import {
   loadCatalogIndex, loadCatalogLayers, resolveCatalogEvidenceReference, validateCatalogLayers
 } from '../../scripts/catalog-loader.mjs';
 import { P1_PACKAGE_SCRIPT_DEFINITIONS, classifyWorkspacePath } from '../../scripts/lib/v3-clean-p1-scope.mjs';
+import { createFormalVerificationPlan } from '../../scripts/verify.mjs';
 
 const root = process.cwd();
 const evidenceReference = 'docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json';
@@ -60,13 +61,14 @@ test('P7 migration, ownership, registry, package gates and paths are synchronize
   }
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assert.equal(Object.keys(packageJson.scripts).length, 56);
+  assert.equal(Object.keys(packageJson.scripts).length, 58);
   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
   assert.equal(packageJson.scripts['test:p7'], 'node --test tests/p7/*.test.mjs');
   assert.equal(packageJson.scripts['evidence:p7'], 'node scripts/v3-clean-p7-evidence.mjs');
-  const verifySource = fs.readFileSync(path.join(root, 'scripts', 'verify.mjs'), 'utf8');
-  assert.ok(verifySource.indexOf("['test:p7']") > verifySource.indexOf("['test:p6']"));
-  assert.ok(verifySource.indexOf("['evidence:p7', '--', '--verify']") > verifySource.indexOf("['test:e2e']"));
+  const verificationIds = createFormalVerificationPlan().map((entry) => entry.id);
+  assert.ok(verificationIds.indexOf('test-p7') > verificationIds.indexOf('test-p6'));
+  assert.ok(verificationIds.indexOf('evidence-p7') > verificationIds.indexOf('test-p7'));
+  assert.ok(verificationIds.indexOf('evidence-p7') < verificationIds.indexOf('e2e'));
 
   for (const file of [
     'apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs',

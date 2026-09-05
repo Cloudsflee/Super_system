@@ -95,7 +95,7 @@ test('failure receipts append without overwriting and retain complete redacted o
     for (const file of files) {
       const receipt = JSON.parse(fs.readFileSync(path.join(root, '.ai-workspace', 'gate-receipts', file), 'utf8'));
       assert.equal(receipt.historical.output.stdout.includes('Bearer <TOKEN>'), true);
-      assert.equal(receipt.historical.output.stdout.includes('<PATH>'), true);
+      assert.match(receipt.historical.output.stdout, /<(?:PATH|WORKSPACE)>/);
       assert.equal(receipt.historical.redaction.passed, true);
       assert.equal(receipt.historical.output.stdout.includes('p31-fixture-token'), false);
     }
@@ -126,12 +126,15 @@ function parseResult(run) {
 
 function createWorkspace({ cleanFailure = false, historicalFailure = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-layered-gate-'));
-  fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'scripts', 'lib'), { recursive: true });
   fs.mkdirSync(path.join(root, 'tests', 'security'), { recursive: true });
   fs.copyFileSync(path.join(repositoryRoot, 'scripts', 'layered-gate.mjs'), path.join(root, 'scripts', 'layered-gate.mjs'));
+  fs.copyFileSync(path.join(repositoryRoot, 'scripts', 'lib', 'gate-process.mjs'), path.join(root, 'scripts', 'lib', 'gate-process.mjs'));
   writeTest(path.join(root, 'tests', 'security', 'v3-clean-p1.test.mjs'), cleanFailure ? failureSource('clean') : passSource('clean'));
   writeTest(path.join(root, 'tests', 'security', 'boundary.test.mjs'), passSource('boundary'));
-  writeTest(path.join(root, 'tests', 'security', 'historical-fixture.test.mjs'), historicalFailure ? failureSource('historical') : passSource('historical'));
+  for (const [index, file] of ['broker-http.test.mjs', 'context-mcp-r5.test.mjs', 'credentials.test.mjs', 'project-repository.test.mjs', 'workflow-r4.test.mjs'].entries()) {
+    writeTest(path.join(root, 'tests', 'security', file), historicalFailure && index === 0 ? failureSource('historical') : passSource(`historical-${index}`));
+  }
   return root;
 }
 

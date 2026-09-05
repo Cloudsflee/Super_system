@@ -1,13 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pnpmInvocation, runGateCommand } from './lib/gate-process.mjs';
 
 const root = process.cwd();
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const failures = [];
 
 if (manifest.version !== '3.0.0') failures.push('root package version must be 3.0.0');
-if (Object.keys(manifest.scripts || {}).length > 56) failures.push('package scripts exceed 56');
+if (Object.keys(manifest.scripts || {}).length > 58) failures.push('package scripts exceed 58');
 for (const legacy of ['apps/worker', 'apps/mcp-gateway', 'bridge', 'prisma']) {
   if (fs.existsSync(path.join(root, legacy))) failures.push(`legacy runtime directory exists: ${legacy}`);
 }
@@ -23,7 +24,16 @@ const files = sourceRoots
   .flatMap((directory) => walk(path.join(root, directory)))
   .concat(path.join(root, 'eslint.config.mjs'))
   .filter((file) => /\.(?:mjs|js|ts|tsx)$/.test(file));
-for (const file of files.filter((item) => item.endsWith('.mjs'))) {
+let changedSyntaxFiles = null;
+if (process.env.AIWS_CHECK_CHANGED_PATHS) {
+  try {
+    const values = JSON.parse(process.env.AIWS_CHECK_CHANGED_PATHS);
+    if (!Array.isArray(values) || values.some((value) => typeof value !== 'string')) throw new Error('shape');
+    changedSyntaxFiles = new Set(values.map((value) => value.replaceAll('\\', '/').replace(/^\.\//, '')));
+  } catch { failures.push('AIWS_CHECK_CHANGED_PATHS must be a JSON string array'); }
+}
+const syntaxFiles = files.filter((item) => item.endsWith('.mjs') && (!changedSyntaxFiles || changedSyntaxFiles.has(path.relative(root, item).replaceAll('\\', '/'))));
+for (const file of syntaxFiles) {
   const result = spawnSync(process.execPath, ['--check', file], { cwd: root, encoding: 'utf8' });
   if (result.status !== 0) failures.push(`${path.relative(root, file)}: ${result.stderr.trim()}`);
 }
@@ -65,13 +75,22 @@ for (const file of testFiles) {
   }
 }
 
-const typecheck = spawnSync('corepack', ['pnpm', '--filter', '@aiws/web', 'typecheck'], { cwd: root, encoding: 'utf8', shell: process.platform === 'win32' });
-if (typecheck.status !== 0) failures.push(typecheck.stdout + typecheck.stderr);
+if (process.env.AIWS_CHECK_SKIP_WEB_TYPECHECK !== '1') {
+  const typecheck = await runGateCommand(pnpmInvocation(['--filter', '@aiws/web', 'typecheck']), {
+    cwd: root,
+    workspaceRoot: root,
+    cwdRole: 'repository-root',
+    stdout: false,
+    stderr: false,
+    timeoutMs: 180_000
+  });
+  if (!typecheck.ok) failures.push(typecheck.output.stdout + typecheck.output.stderr);
+}
 if (failures.length) {
   process.stderr.write(`${failures.join('\n')}\n`);
   process.exit(1);
 }
-process.stdout.write(`check passed: ${files.length} source files, ${Object.keys(manifest.scripts).length} scripts\n`);
+process.stdout.write(`check passed: ${files.length} source files, ${syntaxFiles.length} syntax files, ${Object.keys(manifest.scripts).length} scripts\n`);
 
 function walk(directory) {
   const output = [];

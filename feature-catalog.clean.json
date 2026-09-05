@@ -52,6 +52,8 @@
         "scripts/lib/immutable-evidence-writer.mjs",
         "scripts/v3-clean-p31-evidence.mjs",
         "scripts/v3-clean-p4-evidence.mjs",
+        "scripts/lib/gate-process.mjs",
+        "scripts/lib/git-blob.mjs",
         "docs/architecture/decision-log.md"
       ],
       "target_modules": [
@@ -63,6 +65,9 @@
         "scripts/recovery-evidence.mjs",
         "scripts/check.mjs",
         "scripts/verify.mjs",
+        "scripts/verify-dev.mjs",
+        "scripts/test.mjs",
+        "scripts/recovery-golden.mjs",
         "scripts/v3-clean-p1-global-sync-evidence.mjs",
         "scripts/v3-clean-p3-evidence.mjs",
         "feature-catalog.index.json",
@@ -86,9 +91,15 @@
         "tests/p31/layered-gates.test.mjs",
         "tests/p31/evidence-immutability.test.mjs",
         "tests/p4/governance-sync.test.mjs",
+        "tests/p6/governance-sync.test.mjs",
+        "tests/p7/governance-sync.test.mjs",
+        "tests/p8/governance.test.mjs",
         "tests/p10/parity-governance.test.mjs",
         "tests/p10/migration.test.mjs",
-        "tests/p10/post-closure.test.mjs"
+        "tests/p10/post-closure.test.mjs",
+        "tests/p10/development-reliability.test.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/integration/mcp-stdio-r5.test.mjs"
       ],
       "ui_tests": [],
       "evidence": [
@@ -106,14 +117,28 @@
         "scripts/v3-clean-p9-release-probe.mjs",
         "tests/p10/parity-governance.test.mjs",
         "tests/p10/migration.test.mjs",
-        "scripts/v3-clean-p10-release-probe.mjs"
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/development-reliability.test.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/integration/mcp-stdio-r5.test.mjs",
+        "tests/p6/governance-sync.test.mjs",
+        "tests/p7/governance-sync.test.mjs",
+        "tests/p8/governance.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
         "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
       ],
       "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
-      "parity_phase": "P10"
+      "parity_phase": "P10",
+      "maintenance_evidence": [
+        "docs/evidence/post-p10-development-reliability-20260905/verification.json",
+        "docs/evidence/post-p10-development-reliability-20260905/README.md",
+        "docs/evidence/post-p10-development-reliability-20260905/preflight.txt",
+        "docs/evidence/post-p10-development-reliability-20260905/modified-artifact.tgz",
+        "docs/evidence/post-p10-development-reliability-20260905/change.patch",
+        "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1"
+      ]
     },
     {
       "id": "REC-D10-FRONTEND-024",
@@ -601,7 +626,9 @@
         "apps/api/src/clean/registry.mjs",
         "apps/api/src/clean/http.mjs",
         "scripts/mcp-stdio.mjs",
-        "apps/gateway/server.mjs"
+        "apps/gateway/server.mjs",
+        "scripts/recovery-golden.mjs",
+        "scripts/lib/git-blob.mjs"
       ],
       "tables": [
         "mcp_clients",
@@ -628,7 +655,9 @@
         "tests/p4/mcp-exchange-gateway.test.mjs",
         "tests/p4/transport-parity.test.mjs",
         "tests/p4/active-entrypoint.test.mjs",
-        "tests/p4/governance-sync.test.mjs"
+        "tests/p4/governance-sync.test.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/integration/mcp-stdio-r5.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/context.test.tsx",
@@ -649,14 +678,19 @@
         "apps/web/src/test/context.test.tsx",
         "scripts/e2e.mjs",
         "tests/p9/web-governance.test.mjs",
-        "scripts/v3-clean-p9-release-probe.mjs"
+        "scripts/v3-clean-p9-release-probe.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/integration/mcp-stdio-r5.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
         "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
       ],
       "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
-      "parity_phase": "P10"
+      "parity_phase": "P10",
+      "maintenance_evidence": [
+        "docs/evidence/post-p10-development-reliability-20260905/verification.json"
+      ]
     },
     {
       "id": "REC-D4-SCOPE-016",
@@ -2096,7 +2130,8 @@
         "apps/web/src/features/operations/OperationsPage.tsx",
         "Dockerfile",
         ".dockerignore",
-        "apps/web/src/features/audit/AuditPage.tsx"
+        "apps/web/src/features/audit/AuditPage.tsx",
+        "scripts/development-receipt.mjs"
       ],
       "tables": [
         "operations",
@@ -2141,7 +2176,8 @@
         "tests/p8/deployment-backup.test.mjs",
         "tests/p8/delivery-operations.test.mjs",
         "tests/p8/http-contract.test.mjs",
-        "tests/p10/post-closure-restoration.test.mjs"
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/development-reliability.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/operations-p8.test.tsx"
@@ -2165,14 +2201,24 @@
         "scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
         "tests/p9/web-governance.test.mjs",
         "scripts/v3-clean-p9-release-probe.mjs",
-        "tests/p10/post-closure-restoration.test.mjs"
+        "tests/p10/post-closure-restoration.test.mjs",
+        "scripts/development-receipt.mjs",
+        "tests/p10/development-reliability.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
         "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
       ],
       "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
-      "parity_phase": "P10"
+      "parity_phase": "P10",
+      "maintenance_evidence": [
+        "docs/evidence/post-p10-development-reliability-20260905/verification.json",
+        "docs/evidence/post-p10-development-reliability-20260905/README.md",
+        "docs/evidence/post-p10-development-reliability-20260905/preflight.txt",
+        "docs/evidence/post-p10-development-reliability-20260905/modified-artifact.tgz",
+        "docs/evidence/post-p10-development-reliability-20260905/change.patch",
+        "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1"
+      ]
     },
     {
       "id": "REC-D7-DELIVERY-015",

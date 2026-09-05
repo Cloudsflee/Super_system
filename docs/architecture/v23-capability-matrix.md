@@ -540,3 +540,18 @@ P10 implementation rows are validated by `pnpm audit:parity` and
 `pnpm test:p10`; final status is bound only to
 `docs/evidence/v3-clean-p10-final-governance-20260829/verification.json`.
 Production cutover is explicitly non-business parity and remains excluded.
+
+## Post-P10 development reliability synchronization
+
+Decision D-040 is a maintenance decision, not P11. It keeps all 27 capability
+rows released and does not change the fixed V2.3 parity input. Governance adds
+the Catalog-driven development planner, no-Shell process executor, formal Gate
+v3 receipt, and R5 immutable blob proof. Operations adds only the read-only
+`aiws.development-receipt.v1` projection over existing v9 records.
+
+| Maintenance surface | Owner | Contract and behavior | Test and Evidence | Status effect |
+| --- | --- | --- | --- | --- |
+| development and formal Gates | Platform/Governance | `verify:dev` changed-path union and classification; formal P5-P9 immutable Evidence validation; bounded local-validation wave; one production-image boundary check in the current P10 release probe; D-032 failure/advisory receipts | `tests/p10/development-reliability.test.mjs`, `tests/p31/layered-gates.test.mjs`; `docs/evidence/post-p10-development-reliability-20260905/verification.json` | preserves `REC-D0-GOVERNANCE-000=released` |
+| R5 Historical replay | MCP/Platform | extraction-base identity, fixed descendant raw blob proof, current `source_drift`, unchanged fixture/checksum/privacy/six behavior contracts | `tests/unit/recovery-golden.test.mjs`, `tests/integration/mcp-stdio-r5.test.mjs` | Historical pass/advisory does not promote or demote Clean |
+| development receipt | Operations | read-only snapshot, schema v9 and ledger `[1..9]`, single command owner, persisted execution/retry/replay/context/human/failure/duration metrics, canonical SHA and state byte identity | `scripts/development-receipt.mjs`, `tests/p10/development-reliability.test.mjs`; maintenance verification | preserves `REC-D11-OPS-022=released` |
+| maintenance rollback | Platform/Operations | four artifact roles, dry-run, isolated actual code/state restore, P10 Evidence and Catalog byte comparison | maintenance `rollback.ps1` and `verification.json` | no P10 Evidence mutation and no release claim |

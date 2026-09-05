@@ -51,6 +51,8 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'scripts/lib/immutable-evidence-writer.mjs',
     'scripts/v3-clean-p31-evidence.mjs',
     'scripts/v3-clean-p4-evidence.mjs',
+    'scripts/lib/gate-process.mjs',
+    'scripts/lib/git-blob.mjs',
     'docs/architecture/decision-log.md'
   ]),
   target_modules: Object.freeze([
@@ -62,6 +64,9 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'scripts/recovery-evidence.mjs',
     'scripts/check.mjs',
     'scripts/verify.mjs',
+    'scripts/verify-dev.mjs',
+    'scripts/test.mjs',
+    'scripts/recovery-golden.mjs',
     'scripts/v3-clean-p1-global-sync-evidence.mjs',
     'scripts/v3-clean-p3-evidence.mjs',
     'feature-catalog.index.json',
@@ -79,9 +84,15 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'tests/p31/layered-gates.test.mjs',
     'tests/p31/evidence-immutability.test.mjs',
     'tests/p4/governance-sync.test.mjs',
+    'tests/p6/governance-sync.test.mjs',
+    'tests/p7/governance-sync.test.mjs',
+    'tests/p8/governance.test.mjs',
     'tests/p10/parity-governance.test.mjs',
     'tests/p10/migration.test.mjs',
-    'tests/p10/post-closure.test.mjs'
+    'tests/p10/post-closure.test.mjs',
+    'tests/p10/development-reliability.test.mjs',
+    'tests/unit/recovery-golden.test.mjs',
+    'tests/integration/mcp-stdio-r5.test.mjs'
   ]),
   ui_tests: Object.freeze([])
 });
@@ -129,7 +140,7 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'scan:clean': { command: 'node scripts/v3-clean-architecture-scan.mjs', role: 'p1_gate', phase: 'P1' },
   'audit:p1': { command: 'node scripts/v3-clean-workspace-audit.mjs', role: 'p1_gate', phase: 'P1' },
   typecheck: { command: 'corepack pnpm --filter @aiws/web typecheck', role: 'characterization_gate', phase: 'P9' },
-  test: { command: 'node --test --test-skip-pattern="committed sanitized V2.3 golden" tests/unit/*.test.mjs && corepack pnpm --filter @aiws/web test', role: 'characterization_gate', phase: 'P2-P9' },
+  test: { command: 'node scripts/test.mjs', role: 'characterization_gate', phase: 'P2-P10' },
   'test:p1': { command: 'node --test tests/p1/*.test.mjs tests/integration/v3-clean-p1.test.mjs tests/security/v3-clean-p1.test.mjs', role: 'p1_gate', phase: 'P1' },
   'test:p2': { command: 'node --test tests/p2/*.test.mjs', role: 'characterization_gate', phase: 'P2' },
   'test:p3': { command: 'node --test tests/p3/http-contract.test.mjs tests/p3/migration.test.mjs tests/p3/project-workflow.test.mjs', role: 'p3_gate', phase: 'P3' },
@@ -161,7 +172,9 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'test:release': { command: 'node --test tests/release/*.test.mjs', role: 'characterization_gate', phase: 'P8-P9' },
   'test:runner-real': { command: 'node scripts/runner-real-smoke.mjs', role: 'characterization_gate', phase: 'P6' },
   'github:seed-fixture': { command: 'node scripts/github-seed-fixture.mjs', role: 'deferred_fixture', phase: 'P7' },
+  'verify:dev': { command: 'node scripts/verify-dev.mjs', role: 'development_gate', phase: 'P10+' },
   verify: { command: 'node scripts/verify.mjs', role: 'p1_gate', phase: 'P1' },
+  'development:receipt': { command: 'node scripts/development-receipt.mjs', role: 'operations_receipt', phase: 'P10+' },
   'fixture:seed-demo': { command: 'node scripts/seed-demo.mjs', role: 'deferred_fixture', phase: 'P3' },
   'archive:v23': { command: 'node scripts/archive-v23.mjs', role: 'historical_maintenance', phase: 'historical' },
   'fixture:legacy:acceptance': { command: 'node scripts/acceptance.mjs', role: 'deferred_fixture', phase: 'P2-P9' },
@@ -235,6 +248,9 @@ const P1_PLATFORM_FILES = new Set([
 const P1_GOVERNANCE_FILES = new Set([
   'scripts/check.mjs',
   'scripts/verify.mjs',
+  'scripts/verify-dev.mjs',
+  'scripts/test.mjs',
+  'scripts/lib/gate-process.mjs',
   'scripts/recovery-governance.mjs',
   'scripts/v3-clean-architecture-scan.mjs',
   'scripts/v3-clean-workspace-audit.mjs',
@@ -411,6 +427,7 @@ const P9_FILES = new Set([
 const P9_PREFIXES = Object.freeze(['tests/p9/', 'apps/web/src/offline/', 'apps/web/src/features/outcome/', 'apps/web/src/features/delivery/']);
 
 const P10_FILES = new Set([
+  'scripts/development-receipt.mjs',
   'apps/api/src/clean/migrations/009-final-business-parity-governance.mjs',
   'apps/api/src/clean/p10-service.mjs',
   'apps/api/src/clean/local-setup-service.mjs',

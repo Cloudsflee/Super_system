@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
-import { spawn } from 'node:child_process';
 import { chromium } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { executableInvocation, spawnGateProcess, terminateProcessTree } from './lib/gate-process.mjs';
 
 const root = process.cwd();
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-e2e-'));
@@ -530,20 +530,18 @@ try {
 }
 
 function start(command, args, env = {}, cwd = root) {
-  const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: process.platform === 'win32' && command !== process.execPath });
-  child.stdout.on('data', (chunk) => process.stdout.write(`[${path.basename(command)}] ${chunk}`));
-  child.stderr.on('data', (chunk) => process.stderr.write(`[${path.basename(command)}] ${chunk}`));
-  return child;
+  return spawnGateProcess(executableInvocation(command, args, command === process.execPath ? 'node' : 'executable'), {
+    cwd,
+    workspaceRoot: root,
+    env,
+    stdoutPrefix: `[${path.basename(command)}] `,
+    stderrPrefix: `[${path.basename(command)}] `
+  });
 }
 
 async function stop(child) {
   if (!child || child.exitCode != null) return;
-  child.kill();
-  await new Promise((resolve) => { const timer = setTimeout(resolve, 1500); child.once('exit', () => { clearTimeout(timer); resolve(); }); });
-  if (child.exitCode == null && process.platform === 'win32') {
-    const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-    await new Promise((resolve) => killer.once('exit', resolve));
-  }
+  await terminateProcessTree(child);
 }
 
 async function waitFor(url, timeout = 30_000) {

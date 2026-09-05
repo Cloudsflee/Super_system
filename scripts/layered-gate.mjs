@@ -1,7 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import {
+  containsSensitiveGateText,
+  nodeInvocation,
+  redactGateText,
+  runGateCommand
+} from './lib/gate-process.mjs';
 
 export const RESULT_SCHEMA = 'aiws.v3-clean.layered-gate-result.v2';
 export const RECEIPT_SCHEMA = 'aiws.v3-clean.layered-gate-receipt.v2';
@@ -9,7 +14,7 @@ export const LOCAL_RECEIPT_DIRECTORY = '.ai-workspace/gate-receipts';
 
 const suite = String(process.argv[2] || '');
 
-export function main(argv = process.argv.slice(2), workspaceRoot = process.cwd()) {
+export async function main(argv = process.argv.slice(2), workspaceRoot = process.cwd()) {
   const root = path.resolve(workspaceRoot);
   const parsed = parseArguments(argv);
   if (!parsed.ok) {
@@ -18,8 +23,8 @@ export function main(argv = process.argv.slice(2), workspaceRoot = process.cwd()
   }
 
   const records = [];
-  if (!parsed.historicalOnly) records.push(runLayer('clean', parsed.suite, root));
-  if (!parsed.cleanOnly) records.push(runLayer('historical', parsed.suite, root));
+  if (!parsed.historicalOnly) records.push(await runLayer('clean', parsed.suite, root));
+  if (!parsed.cleanOnly) records.push(await runLayer('historical', parsed.suite, root));
 
   const cleanRecord = records.find((record) => record.layer === 'clean') || null;
   const historicalRecord = records.find((record) => record.layer === 'historical') || null;
@@ -77,37 +82,39 @@ export function commandFor(layer, selectedSuite) {
   if (selectedSuite === 'integration') {
     return ['node', ['--experimental-test-coverage', '--test-coverage-lines=85', '--test-coverage-branches=70', '--test-coverage-functions=75', '--test-coverage-exclude=apps/api/src/clean/**', '--test', 'tests/integration/*.test.mjs', 'tests/unit/recovery-golden.test.mjs']];
   }
-  return ['node', ['--test', '--test-concurrency=1', 'tests/security/*.test.mjs']];
+  return ['node', ['--test', '--test-concurrency=1',
+    'tests/security/broker-http.test.mjs', 'tests/security/context-mcp-r5.test.mjs',
+    'tests/security/credentials.test.mjs', 'tests/security/project-repository.test.mjs',
+    'tests/security/workflow-r4.test.mjs'
+  ]];
 }
 
-export function runLayer(layer, selectedSuite, root = process.cwd()) {
+export async function runLayer(layer, selectedSuite, root = process.cwd()) {
   const [command, args] = commandFor(layer, selectedSuite);
-  const result = spawnSync(command, args, {
+  const invocation = command === 'node' ? nodeInvocation(args[0], args.slice(1)) : { command, args };
+  const result = await runGateCommand(invocation, {
     cwd: root,
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-    windowsHide: true,
-    timeout: 900_000,
-    maxBuffer: 16 * 1024 * 1024
+    workspaceRoot: root,
+    cwdRole: 'repository-root',
+    stdout: false,
+    stderr: false,
+    timeoutMs: 900_000,
+    maxCaptureBytes: 16 * 1024 * 1024
   });
-  const rawStdout = result.stdout || '';
-  const rawStderr = [result.stderr || '', result.error?.message || ''].filter(Boolean).join('\n');
-  const stdout = redact(rawStdout, root);
-  const stderr = redact(rawStderr, root);
-  const commandText = redact([command, ...args].join(' '), root);
-  const exitStatus = result.status == null ? 1 : result.status;
+  const stdout = result.output.stdout;
+  const stderr = result.output.stderr;
+  const commandText = [result.command, ...result.args].join(' ');
   return {
     layer,
-    command: commandText.value,
-    exit_status: exitStatus,
-    signal: result.signal || null,
-    ok: result.status === 0,
-    summary: summarize(stdout.value, stderr.value),
-    output: { stdout: stdout.value, stderr: stderr.value },
-    redaction: {
-      passed: !containsSecretShape(commandText.value) && !containsSecretShape(stdout.value) && !containsSecretShape(stderr.value),
-      removed: commandText.removed + stdout.removed + stderr.removed
-    }
+    command: commandText,
+    exit_status: result.exit_status,
+    signal: result.signal,
+    duration_ms: result.duration_ms,
+    error_code: result.error_code,
+    ok: result.ok,
+    summary: summarize(stdout, stderr),
+    output: { stdout, stderr },
+    redaction: result.redaction
   };
 }
 
@@ -176,60 +183,16 @@ export function writeFailureReceipt(root, receipt) {
   throw new Error('layered_gate_receipt_name_exhausted');
 }
 
-export function redact(value, workspaceRoot = process.cwd()) {
-  let text = String(value ?? '');
-  let removed = 0;
-  const replace = (pattern, replacement) => {
-    text = text.replace(pattern, (...args) => {
-      removed += 1;
-      return typeof replacement === 'function' ? replacement(...args) : replacement;
-    });
-  };
-
-  const root = path.resolve(workspaceRoot);
-  const slashRoot = root.replaceAll('\\', '/');
-  const rootVariants = [...new Set([
-    root,
-    slashRoot,
-    root.replaceAll('/', '\\'),
-    encodeURI(slashRoot),
-    encodeURIComponent(slashRoot)
-  ])]
-    .filter(Boolean)
-    .sort((left, right) => right.length - left.length);
-  for (const variant of rootVariants) {
-    const escaped = escapeRegExp(variant);
-    replace(new RegExp(`${escaped}[\\\\/]`, 'gi'), '');
-    replace(new RegExp(escaped, 'gi'), '<WORKSPACE>');
-  }
-
-  replace(/Bearer\s+[^\s"'`]+/gi, 'Bearer <TOKEN>');
-  replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?proof|cookie|secret|password)\s*[:=]\s*)[^,\s"'`]+/gi, '$1<TOKEN>');
-  replace(/file:\/\/\/[A-Za-z]:[^\r\n"'`)]+/gi, '<PATH>');
-  replace(/(?:^|[\s("'=])((?:[A-Za-z]:[\\/]|\\\\)[^\r\n"'`<>)]*)/g, (match, candidate) => `${match.slice(0, match.indexOf(candidate))}<PATH>`);
-  replace(/(?:^|[\s("'=])((?:\/(?:Users|home|tmp|private|var|workspace|mnt)\/)[^\r\n"'`<>\s)]*)/g, (match, candidate) => `${match.slice(0, match.indexOf(candidate))}<PATH>`);
-  replace(/\b[A-Za-z0-9_-]{32,}\b/g, '<TOKEN>');
-  return { value: text, removed };
-}
-
-export function containsSecretShape(value) {
-  const text = String(value ?? '');
-  return /Bearer\s+[^<\s]+/i.test(text)
-    || /(?:api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?proof|cookie|secret|password)\s*[:=]\s*(?!<TOKEN>)[A-Za-z0-9+/._-]{8,}/i.test(text)
-    || /file:\/\/\/[A-Za-z]:[\\/]/i.test(text)
-    || /(?:^|[\s("'=])[A-Za-z]:[\\/][^\r\n\s"']+/.test(text)
-    || /(?:^|\s)\/(?:Users|home|tmp|private|var|workspace|mnt)\//.test(text);
-}
+export const redact = redactGateText;
+export const containsSecretShape = containsSensitiveGateText;
 
 export function summarize(stdout, stderr) {
   const lines = `${stdout}\n${stderr}`.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   return lines.slice(-8).join('\n').slice(0, 2000);
 }
 
-function escapeRegExp(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-
 const invoked = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
 if (invoked && invoked === import.meta.url) {
-  const exitCode = main(process.argv.slice(2), process.cwd());
+  const exitCode = await main(process.argv.slice(2), process.cwd());
   if (exitCode) process.exitCode = exitCode;
 }

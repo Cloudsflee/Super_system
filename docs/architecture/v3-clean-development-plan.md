@@ -1111,3 +1111,48 @@ probe records, three viewport receipts, all four workspace artifact roles, and
 a runnable dry-run plus isolated actual rollback. Rollback restores P9 schema
 v8, ledger `[1..8]`, all component snapshots, and
 `byte_exact_mismatches=[]`; the Catalog remains `27/0/27`.
+
+## 21. Post-P10 development reliability maintenance
+
+Decision D-040 governs ordinary maintenance after final P10 closure. The fixed
+baseline for this work is `5f2be38845d36236637c7f22a1b4df5611a6175b` on
+`fix/aiws-post-p10-development-reliability`. Runtime phase 10, schema v9,
+ledger `[1..9]`, `/api/v2`, and the `27 released / 0 historical` Catalog remain
+fixed. DesignSignal product commit
+`9f1ea086d5ab101fb453701df4199d6a2ca9f793` and Draft PR #2 are read-only while
+the platform work is in progress.
+
+The maintenance packages are:
+
+1. prove every R5 fixture source from immutable raw Git blobs, report current
+   drift without weakening checksum/privacy/six-contract behavior replay, and
+   retain the existing fixture bytes;
+2. replace Windows `shell:true` Gate scheduling with one process executor that
+   owns Corepack/Pnpm resolution, argument arrays, redacted bounded capture,
+   timing, stable errors, and process-tree timeout cleanup;
+3. add Catalog-driven `verify:dev` and optimize formal `verify` by removing
+   prior-phase live probes/fallbacks, duplicate Web/layered work, and duplicate
+   Docker boundary builds; independent local validation commands run as one
+   bounded parallel wave while the current P10 release probe retains the real
+   production-image boundary check;
+4. add the read-only `development:receipt` projection over existing v9 tables,
+   with no runtime write, schema, route, or UI surface;
+5. synchronize D-040, testing policy, package commands, Catalog/matrix rows,
+   tests, and independent maintenance Evidence;
+6. after platform acceptance, run a new isolated DesignSignal Round 2 project
+   with its own SQLite, CAS, Vault, workspace, Broker, and Docker volume, using
+   stage replay rather than a replacement full execution for stage failures.
+
+The development Gate target is `<=120000 ms`; the formal Gate target is
+`<=360000 ms` on the workstation that recorded `549714 ms`. A missing external
+credential may keep the DesignSignal Live layer provisional, but platform
+acceptance is determined by the Workflow/Execution/Checkpoint/Evidence/Outcome/
+Draft-Delivery chain, R5 result, Shell diagnostics, and development receipt.
+
+The maintenance delivery is append-only under
+`docs/evidence/post-p10-development-reliability-20260905/` and contains
+`modified-artifact.tgz`, `change.patch`, `verification.json`, and
+`rollback.ps1`. Rollback must first dry-run and then apply in an isolated clone
+and state copy, restore code to `5f2be38845d36236637c7f22a1b4df5611a6175b`,
+retain schema v9/ledger `[1..9]`, and report `byte_exact_mismatches=[]` for
+SQLite, CAS, Vault, workspace, Catalog, and P10 Evidence.

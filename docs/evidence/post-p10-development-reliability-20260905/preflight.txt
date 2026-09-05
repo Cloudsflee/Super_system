@@ -1,0 +1,14 @@
+Target: Post-P10 development reliability, R5 proof, no-Shell Gates, dual-channel verification, read-only development receipt, and isolated replay/rollback evidence.
+目标: Implement on fix/aiws-post-p10-development-reliability from 5f2be38845d36236637c7f22a1b4df5611a6175b and verify without changing P10 release state.
+Non-target: DesignSignal product code, Draft PR #2, production pointers/volumes, P1-P10 Evidence, migrations, tables, and /api/v2 routes.
+非目标: Keep runtime phase 10, user_version=9, ledger [1..9], and Catalog 27/0/27.
+Forbidden: Historical runtime restoration, fixture SHA refresh, shell:true Gate scheduling, external side effects in verify:dev, secret/prompt/path disclosure, and unverified release claims.
+禁止项: Do not rewrite prior Evidence or substitute prior receipts for a failing current P10 probe.
+Reuse: D-032 receipt policy, layered Catalogs, Clean command registry, generic operations/events/CAS/heads, P10 immutable Evidence, and existing deterministic fixtures.
+复用项: Reuse current worktree patterns, read-only SQLite, canonical hashing, redaction, and isolated rollback conventions.
+Delete/retire: P5-P9 live probes and fallback from formal verify, duplicate Web/layered runs, p9_readyz_invalid noise, and shell:true in active Gate/E2E paths.
+删除/退役: Retire repeated Historical advisory creation caused only by current R5 source drift.
+Acceptance commands: D-040 command inventory in AGENTS.md plus targeted reliability, R5, Gate, receipt, Web, E2E, release, formal verify, diff, and status checks.
+验收命令: Record every literal command, output, duration, and exit status in verification.json.
+Rollback artifact: rollback.ps1 with dry-run and isolated actual apply, restoring code baseline and byte-exact v9 state/Catalog/P10 Evidence checks.
+回滚工件: modified-artifact.tgz, change.patch, verification.json, and rollback.ps1 must all reopen and execute successfully.

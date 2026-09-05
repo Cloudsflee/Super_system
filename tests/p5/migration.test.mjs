@@ -6,6 +6,7 @@ import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { CLEAN_P5_MIGRATION_REGISTRY } from '../../apps/api/src/clean/migration-service.mjs';
 import { openCleanDatabase, schemaSnapshotHash } from '../../apps/api/src/clean/database.mjs';
+import { createFormalVerificationPlan } from '../../scripts/verify.mjs';
 
 export const P5_TABLES = [
   'assist_sessions', 'assist_turns', 'assist_messages', 'assist_goals', 'assist_configurations',
@@ -85,9 +86,11 @@ test('005 checksum and live schema snapshot drift stop startup', () => {
 });
 
 test('verification gate checks immutable P5 Evidence without publishing a rerun', () => {
-  const verifySource = fs.readFileSync(path.join(process.cwd(), 'scripts', 'verify.mjs'), 'utf8');
   const evidenceSource = fs.readFileSync(path.join(process.cwd(), 'scripts', 'v3-clean-p5-evidence.mjs'), 'utf8');
-  assert.match(verifySource, /\['evidence:p5', '--', '--verify'\]/);
+  const plan = createFormalVerificationPlan();
+  const evidence = plan.find((entry) => entry.id === 'evidence-p5');
+  assert.deepEqual(evidence.invocation.args.slice(-3), ['evidence:p5', '--', '--verify']);
+  assert.equal(plan.some((entry) => /v3-clean-p5-(?:assist|bridge)-probe\.mjs/.test(entry.invocation.args.join(' '))), false);
   assert.match(evidenceSource, /const verifyOnly = process\.argv\.includes\('--verify'\)/);
   assert.match(evidenceSource, /aiws\.v3-clean\.p5-evidence-verify\.v1/);
   assert.ok(evidenceSource.indexOf("write('verification.json', verification)") < evidenceSource.indexOf("write('artifact-reopen.json', artifactReopen)"));

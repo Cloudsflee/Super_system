@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { readGitBlob, sha256Bytes, verifyPinnedSourceFiles } from '../../scripts/lib/git-blob.mjs';
+import { verifyR5 } from '../../scripts/recovery-golden.mjs';
 
 const root = process.cwd();
 
@@ -110,4 +114,57 @@ test('V3 replays the committed sanitized V2.3 golden without loading historical 
   assert.equal(result.batches[4].fixture_sha256, r5Fixture.fixture_sha256);
   assert.equal(result.batches[4].contracts, 6);
   assert.equal(result.batches[4].cases, 6);
+  assert.equal(result.batches[4].source_commit, r5Fixture.source_commit);
+  assert.equal(result.batches[4].source_proof_commit, '250bb44f5264fd7f262d2c8e6f5a174b3f58f266');
+  assert.deepEqual(result.batches[4].source_drift, ['scripts/mcp-stdio.mjs']);
+});
+
+test('R5 source proof reads immutable binary Git blobs and reports current drift without failing', () => {
+  const fixture = JSON.parse(fs.readFileSync(path.join(root, 'tests', 'golden', 'r5', 'context-projection-mcp.json'), 'utf8'));
+  const proofCommit = '250bb44f5264fd7f262d2c8e6f5a174b3f58f266';
+  const proof = verifyPinnedSourceFiles({
+    root,
+    sourceCommit: proofCommit,
+    sourceFiles: fixture.source_files,
+    errorPrefix: 'r5_golden_source_unverifiable'
+  });
+  assert.equal(proof.source_commit, proofCommit);
+  assert.deepEqual(proof.source_drift, ['scripts/mcp-stdio.mjs']);
+  assert.equal(proof.source_proofs.length, fixture.source_files.length);
+  const stdio = proof.source_proofs.find((item) => item.path === 'scripts/mcp-stdio.mjs');
+  assert.equal(stdio.sha256, fixture.source_files.find((item) => item.path === stdio.path).sha256);
+  assert.equal(sha256Bytes(readGitBlob(root, proofCommit, stdio.path).bytes), stdio.sha256);
+});
+
+test('R5 source proof rejects a missing commit and a mismatched pinned blob SHA', () => {
+  const source = { path: 'scripts/mcp-stdio.mjs', sha256: '0'.repeat(64) };
+  assert.throws(() => verifyPinnedSourceFiles({
+    root,
+    sourceCommit: '1'.repeat(40),
+    sourceFiles: [source],
+    errorPrefix: 'r5_golden_source_unverifiable'
+  }), /r5_golden_source_unverifiable:scripts\/mcp-stdio\.mjs/);
+  assert.throws(() => verifyPinnedSourceFiles({
+    root,
+    sourceCommit: '250bb44f5264fd7f262d2c8e6f5a174b3f58f266',
+    sourceFiles: [source],
+    errorPrefix: 'r5_golden_source_unverifiable'
+  }), /r5_golden_source_unverifiable:scripts\/mcp-stdio\.mjs/);
+});
+
+test('R5 rejects fixture checksum and behavior replay changes', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r5-negative-'));
+  const target = path.join(directory, 'r5.json');
+  try {
+    const fixture = JSON.parse(fs.readFileSync(path.join(root, 'tests', 'golden', 'r5', 'context-projection-mcp.json'), 'utf8'));
+    const changed = structuredClone(fixture);
+    changed.contracts[0].cases[0].output.ordered = false;
+    fs.writeFileSync(target, `${JSON.stringify(changed, null, 2)}\n`);
+    await assert.rejects(() => verifyR5(target), /r5_golden_checksum_invalid/);
+
+    const { fixture_sha256: ignored, ...payload } = changed;
+    changed.fixture_sha256 = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+    fs.writeFileSync(target, `${JSON.stringify(changed, null, 2)}\n`);
+    await assert.rejects(() => verifyR5(target), /r5_golden_behavior_mismatch/);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });

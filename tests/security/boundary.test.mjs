@@ -36,6 +36,11 @@ test('resolved compose keeps Docker control plane and socket on the broker only'
 });
 
 test('production App image has no Docker CLI or host socket', () => {
+  if (process.env.AIWS_SECURITY_DEFER_DOCKER === '1') {
+    const releaseProbe = fs.readFileSync(path.join(root, 'scripts', 'v3-clean-p10-release-probe.mjs'), 'utf8');
+    for (const marker of ['production_image_boundary', 'command -v docker', '/var/run/docker.sock', "import('node-pty')", 'aiws.component']) assert.ok(releaseProbe.includes(marker), marker);
+    return;
+  }
   const tag = `aiws-security-app:${process.pid}-${Date.now()}`;
   const build = spawnSync('docker', ['build', '--quiet', '--target', 'production', '--tag', tag, root], {
     cwd: root,

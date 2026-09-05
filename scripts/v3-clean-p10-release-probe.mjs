@@ -290,6 +290,19 @@ async function dockerRelease() {
     }
     const ids = tags.map((tag) => run('docker', ['image', 'inspect', '--format', '{{.Id}}', tag]).stdout.trim());
     if (!ids[0] || ids[0] !== ids[1] || !/^sha256:[a-f0-9]{64}$/.test(ids[0])) return { status: 'failed', provisional: true, reason: 'image_digest_not_fixed', image_ids: ids };
+    const productionBoundary = run('docker', [
+      'run', '--rm', '--entrypoint', 'sh', tags[0], '-c',
+      'if command -v docker >/dev/null 2>&1; then exit 42; fi; if [ -e /var/run/docker.sock ]; then exit 43; fi'
+    ], 30_000);
+    if (productionBoundary.status !== 0) return { status: 'failed', provisional: true, reason: 'production_image_boundary', exit_status: productionBoundary.status };
+    const productionRuntime = run('docker', [
+      'run', '--rm', '--entrypoint', 'node', tags[0], '-e',
+      "Promise.all([import('node-pty'), import('ws')]).then(() => process.exit(0)).catch(() => process.exit(44))"
+    ], 30_000);
+    if (productionRuntime.status !== 0) return { status: 'failed', provisional: true, reason: 'production_image_runtime', exit_status: productionRuntime.status };
+    const productionConfig = run('docker', ['image', 'inspect', tags[0], '--format', '{{json .Config}}']);
+    const parsedConfig = productionConfig.status === 0 ? JSON.parse(productionConfig.stdout) : null;
+    if (parsedConfig?.User !== '10001:10001' || parsedConfig?.Labels?.['aiws.component'] !== 'app') return { status: 'failed', provisional: true, reason: 'production_image_identity' };
     const sbom = run('docker', ['sbom', '--format', 'spdx-json', tags[0]], 180_000);
     if (sbom.status !== 0) return { status: 'failed', provisional: true, reason: 'sbom_export', exit_status: sbom.status };
     const sbomFile = path.join(reportRoot, 'image.spdx.json');
@@ -329,6 +342,7 @@ async function dockerRelease() {
       sbom: { path: 'image.spdx.json', sha256: sha256File(sbomFile), byte_length: fs.statSync(sbomFile).size },
       base_image: nodeImage,
       base_image_digest: baseImageDigest,
+      security: { status: 'passed', production_image_boundary: true, runtime_dependencies: ['node-pty', 'ws'], user: parsedConfig.User, component: parsedConfig.Labels['aiws.component'] },
       publish: { dynamic_loopback_port: port, fresh_volume: volume, readyz: ready.data, web_shell: true, exact_cors_origin: dynamicOrigin }
     };
   } finally {

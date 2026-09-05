@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { classifyWorkspacePath } from '../../scripts/lib/v3-clean-p1-scope.mjs';
 import { FROZEN_SURFACES } from '../../apps/api/src/modules/registry.mjs';
+import { createFormalVerificationPlan } from '../../scripts/verify.mjs';
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -61,10 +62,10 @@ test('P9 governance files declare Clean phase ownership', () => {
   ]) assert.deepEqual(classifyWorkspacePath(file), { kind: 'clean', phase: 'P9', rows: [] }, file);
 });
 
-test('P9 verify orders real GitHub and release probes before final Evidence verification', () => {
-  const source = read('scripts/verify.mjs');
-  const github = source.indexOf('v3-clean-p9-github-delivery-probe.mjs');
-  const release = source.indexOf('v3-clean-p9-release-probe.mjs');
-  const evidence = source.indexOf("['evidence:p9', '--', '--verify']");
-  assert.ok(github > 0 && release > github && evidence > release);
+test('post-P10 verify validates immutable P9 Evidence without replaying retired P9 probes', () => {
+  const plan = createFormalVerificationPlan();
+  const p9Evidence = plan.findIndex((entry) => entry.id === 'evidence-p9');
+  const p10Probe = plan.findIndex((entry) => entry.id === 'p10-parser-probe');
+  assert.ok(p9Evidence > 0 && p10Probe > p9Evidence);
+  assert.equal(plan.some((entry) => /v3-clean-p9-(?:github-delivery|release)-probe\.mjs/.test(entry.invocation.args.join(' '))), false);
 });

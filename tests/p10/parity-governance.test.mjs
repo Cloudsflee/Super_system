@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { CLEAN_COMMAND_REGISTRY, createCleanCommandRegistry, registryParity } from '../../apps/api/src/clean/registry.mjs';
 import { auditParity } from '../../scripts/lib/v3-clean-p10-parity.mjs';
+import { createFormalVerificationPlan } from '../../scripts/verify.mjs';
 
 test('fixed V2.3 inventories map bidirectionally to 19 business groups with zero gaps', async () => {
   const result = await auditParity({ root: path.resolve('.'), registry: CLEAN_COMMAND_REGISTRY });
@@ -31,20 +32,13 @@ test('P10 registry is API v2-only and preserves synchronized transport contracts
 });
 
 test('P10 verify orders parity, external adapters, Web, build, E2E, release, and Evidence', () => {
-  const source = fs.readFileSync('scripts/verify.mjs', 'utf8');
+  const ids = createFormalVerificationPlan().map((entry) => entry.id);
   const positions = [
-    "['test:p10']",
-    "['audit:parity']",
-    'v3-clean-p10-github-deletion-probe.mjs',
-    "['--filter', '@aiws/web', 'test']",
-    "['test:integration']",
-    "['build']",
-    "['test:e2e']",
-    'v3-clean-p10-release-probe.mjs',
-    "['test:release']",
-    "['evidence:p10', '--', '--verify']"
-  ].map((marker) => source.indexOf(marker));
-  assert.ok(positions.every((position) => position > 0));
+    'audit-parity', 'test-p10', 'evidence-p9', 'p10-parser-probe',
+    'p10-github-deletion-probe', 'web-test', 'integration', 'build', 'e2e',
+    'p10-release-probe', 'release-test', 'evidence-p10'
+  ].map((id) => ids.indexOf(id));
+  assert.ok(positions.every((position) => position >= 0));
   assert.deepEqual([...positions].sort((left, right) => left - right), positions);
 });
 

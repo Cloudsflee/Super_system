@@ -27,9 +27,10 @@ test('P4 migration, ownership, registry and package gate inventories are synchro
   assert.deepEqual(CLEAN_P5_MIGRATION_REGISTRY.map((migration) => migration.id).slice(-1), ['005-assist-files-terminal-bridge']);
   for (const table of ['assist_sessions', 'assist_turns', 'assist_messages', 'assist_goals', 'assist_configurations', 'assist_references', 'attachments', 'file_refs', 'file_change_batches', 'file_change_items', 'runtime_approvals', 'runtime_user_inputs', 'semantic_proposals', 'terminal_sessions', 'terminal_events', 'bridge_devices', 'bridge_transfers']) assert.equal(typeof CLEAN_P5_TABLE_OWNERS[table], 'string', table);
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assert.equal(Object.keys(packageJson.scripts).length, 56);
+  assert.equal(Object.keys(packageJson.scripts).length, 58);
   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
-  assert.match(packageJson.scripts.test, /--test-skip-pattern="committed sanitized V2\.3 golden"/);
+  assert.equal(packageJson.scripts.test, 'node scripts/test.mjs');
+  assert.match(fs.readFileSync(path.join(root, 'scripts', 'test.mjs'), 'utf8'), /--test-skip-pattern=committed sanitized V2\.3 golden/);
   const [, cleanIntegrationArgs] = commandFor('clean', 'integration');
   const [, historicalIntegrationArgs] = commandFor('historical', 'integration');
   assert.equal(cleanIntegrationArgs.includes('tests/unit/recovery-golden.test.mjs'), false);

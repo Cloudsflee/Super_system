@@ -13,16 +13,16 @@ import { qualityReviewMediaKind as v3QualityReviewMediaKind } from '../apps/api/
 import { assertIntakeSourceStable } from '../apps/api/src/modules/project/service.mjs';
 import { manifestDirectory, probeRepositorySource } from '../apps/api/src/modules/repository/adapter.mjs';
 import { eventually, fixture, mutate, onboardProject, request } from '../tests/integration/helpers.mjs';
+import { resolveGitCommit, verifyPinnedSourceFiles } from './lib/git-blob.mjs';
 
 const root = process.cwd();
-const mode = process.argv[2] || 'verify';
-const requestedBatch = process.argv[3] || null;
 const V23_SOURCE_COMMIT = 'e18dc0b';
 const V23_FIXTURE = path.join(root, 'tests', 'golden', 'v23', 'r0-r1.json');
 const R2_FIXTURE = path.join(root, 'tests', 'golden', 'r2', 'identity-setup.json');
 const R3_FIXTURE = path.join(root, 'tests', 'golden', 'r3', 'project-repository.json');
 const R4_FIXTURE = path.join(root, 'tests', 'golden', 'r4', 'workflow-generation-critic.json');
 const R5_FIXTURE = path.join(root, 'tests', 'golden', 'r5', 'context-projection-mcp.json');
+const R5_SOURCE_PROOF_COMMIT = '250bb44f5264fd7f262d2c8e6f5a174b3f58f266';
 const R2_SOURCE_FILES = Object.freeze([
   'packages/contracts/src/codex-device-auth.mjs',
   'apps/api/src/modules/setup/codex-discovery.mjs',
@@ -93,9 +93,13 @@ const batches = Object.freeze({
   'r5-context-projection-mcp': { fixture: R5_FIXTURE, kind: 'r5' }
 });
 
-if (mode === 'extract') await extract(requestedBatch);
-else if (mode === 'verify') await verify(requestedBatch);
-else throw new Error(`unknown_golden_mode:${mode}`);
+export async function main(argv = process.argv.slice(2)) {
+  const mode = argv[0] || 'verify';
+  const requestedBatch = argv[1] || null;
+  if (mode === 'extract') await extract(requestedBatch);
+  else if (mode === 'verify') await verify(requestedBatch);
+  else throw new Error(`unknown_golden_mode:${mode}`);
+}
 
 async function extract(batchName = null) {
   const names = selectBatches(batchName);
@@ -346,17 +350,29 @@ async function verifyR4(fixturePath) {
   return { batch: 'r4-workflow-generation-critic', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts), source_drift: sourceDrift };
 }
 
-async function verifyR5(fixturePath) {
+export async function verifyR5(fixturePath) {
   const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
   const { fixture_sha256: recorded, ...payload } = fixture;
   if (fixture.schema_version !== 'aiws.v3.r5_golden.v1' || fixture.extraction?.mode !== 'ephemeral_deterministic_fixture' || fixture.extraction?.executed_runtime !== true || fixture.extraction?.network !== 'loopback_only') throw new Error('r5_golden_identity_invalid');
   if (sha256(JSON.stringify(payload)) !== recorded) throw new Error('r5_golden_checksum_invalid');
-  for (const source of fixture.source_files || []) if (sha256(fs.readFileSync(path.join(root, source.path))) !== source.sha256) throw new Error(`r5_golden_source_changed:${source.path}`);
+  const extractionBase = resolveGitCommit(root, fixture.source_commit);
+  const proofCommit = resolveGitCommit(root, R5_SOURCE_PROOF_COMMIT);
+  if (runGit(['merge-base', '--is-ancestor', extractionBase, proofCommit]).status !== 0) throw new Error('r5_golden_source_proof_lineage_invalid');
+  const sourceProof = verifyPinnedSourceFiles({
+    root,
+    sourceCommit: proofCommit,
+    sourceFiles: fixture.source_files,
+    errorPrefix: 'r5_golden_source_unverifiable'
+  });
   const serialized = JSON.stringify(fixture);
   if (/(?:local_path|remote_url|cas_path|index_path|authorization|private_body|document_text)/i.test(serialized)) throw new Error('r5_golden_private_input_exposed');
   const actual = await replayR5Contracts();
   if (JSON.stringify(actual) !== JSON.stringify(fixture.contracts)) throw new Error('r5_golden_behavior_mismatch');
-  return { batch: 'r5-context-projection-mcp', fixture: relative(fixturePath), fixture_sha256: recorded, contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts) };
+  return {
+    batch: 'r5-context-projection-mcp', fixture: relative(fixturePath), fixture_sha256: recorded,
+    source_commit: extractionBase, source_proof_commit: proofCommit, source_drift: sourceProof.source_drift,
+    contracts: fixture.contracts.length, cases: contractCaseCount(fixture.contracts)
+  };
 }
 
 async function replayR3Contracts() {
@@ -887,7 +903,7 @@ async function replayR5Contracts() {
     const httpList = await request(env.base, '/api/v1/mcp', { method: 'POST', key: 'r5-golden-http-list', headers: { 'x-aiws-mcp-token': client.json.token }, body: { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} } });
     const httpRead = await request(env.base, '/api/v1/mcp', { method: 'POST', key: 'r5-golden-http-read', headers: { 'x-aiws-mcp-token': client.json.token }, body: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: created.json.id } } } });
     const bridge = await r5GoldenBridge(env.base, client.json.token, [
-      { jsonrpc: '2.0', id: 11, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+      { jsonrpc: '2.0', id: 11, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'r5-golden', version: '1' } } },
       { jsonrpc: '2.0', id: 12, method: 'tools/list', params: {} },
       { jsonrpc: '2.0', id: 13, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: created.json.id } } }
     ]);
@@ -974,8 +990,8 @@ async function goldenWaitOperation(base, operationId) {
 /**
  * Exercise the real stdio bridge while keeping the Golden fixture free of
  * transport credentials and machine-specific details. Responses are matched
- * by arrival order because requests are written serially and the bridge
- * forwards one request at a time.
+ * by request id. The MCP SDK may emit protocol notifications alongside
+ * responses, so arrival order is not a stable response index.
  */
 async function r5GoldenBridge(base, token, messages) {
   const child = spawn(process.execPath, [path.join(root, 'scripts', 'mcp-stdio.mjs')], {
@@ -988,7 +1004,8 @@ async function r5GoldenBridge(base, token, messages) {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true
   });
-  const responses = [];
+  const requestedIds = messages.map((message) => message.id);
+  const responses = new Map();
   let stdoutBuffer = '';
   let stderr = '';
   let settled = false;
@@ -1011,16 +1028,28 @@ async function r5GoldenBridge(base, token, messages) {
     stdoutBuffer = lines.pop() || '';
     for (const line of lines) {
       if (!line.trim()) continue;
-      try { responses.push(JSON.parse(line)); }
+      try {
+        const response = JSON.parse(line);
+        if (requestedIds.includes(response?.id)) responses.set(response.id, response);
+      }
       catch { finish(new Error('mcp_stdio_invalid_json')); return; }
     }
-    if (responses.length >= messages.length) finish(null, responses.slice(0, messages.length));
+    if (responses.size >= messages.length) {
+      const ordered = requestedIds.map((id) => responses.get(id));
+      const failed = ordered.find((response) => response?.error);
+      if (failed) {
+        const detail = [failed.id, failed.error?.code, failed.error?.data?.code, failed.error?.message]
+          .filter((value) => value != null && value !== '').map((value) => String(value).replace(/[\r\n:]+/g, '_')).join(':');
+        finish(new Error(`mcp_stdio_rpc_error:${detail || 'unknown'}`));
+      }
+      else finish(null, ordered);
+    }
   };
   child.stdout.on('data', (chunk) => { stdoutBuffer += String(chunk); parseOutput(); });
   child.stderr.on('data', (chunk) => { stderr += String(chunk); });
   child.on('error', (error) => finish(error));
   child.on('close', (code) => {
-    if (!settled && responses.length < messages.length) finish(new Error(`mcp_stdio_exit_${code ?? 'unknown'}`));
+    if (!settled && responses.size < messages.length) finish(new Error(`mcp_stdio_exit_${code ?? 'unknown'}:${responses.size}/${messages.length}`));
   });
   timer = setTimeout(() => finish(new Error('mcp_stdio_timeout')), 10_000);
   try {
@@ -1088,3 +1117,6 @@ function runGit(args) {
 
 function relative(file) { return path.relative(root, file).replaceAll('\\', '/'); }
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
+
+const invoked = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
+if (invoked && invoked === import.meta.url) await main();

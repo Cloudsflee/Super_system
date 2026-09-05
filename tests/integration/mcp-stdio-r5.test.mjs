@@ -41,13 +41,14 @@ test('R5 MCP Streamable HTTP and stdio bridge return equivalent tool schemas and
     assert.equal(call.response.status, 200);
 
     const lines = [
-      { jsonrpc: '2.0', id: 11, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+      { jsonrpc: '2.0', id: 11, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'r5-integration', version: '1' } } },
       { jsonrpc: '2.0', id: 12, method: 'tools/list', params: {} },
       { jsonrpc: '2.0', id: 13, method: 'tools/call', params: { name: 'project.get', arguments: { project_id: project.json.id } } }
     ];
     const bridgeOutput = await runBridge(env.base, token, lines);
     const responses = bridgeOutput.trim().split(/\r?\n/).map((line) => JSON.parse(line));
     assert.equal(responses.length, 3);
+    assert.equal(responses[0].result.protocolVersion, '2025-06-18');
     assert.deepEqual(responses[1].result.tools.map((tool) => tool.name), listed.json.result.tools.map((tool) => tool.name));
     assert.deepEqual(responses[2].result.structuredContent, call.json.result.structuredContent);
     const clientRows = await request(env.base, '/api/v1/mcp/clients');

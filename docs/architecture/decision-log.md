@@ -183,3 +183,73 @@ migrations, and Evidence for P0-P10 are frozen. Subsequent product work may add
 features and optimize performance, but it continues the parity audit and full
 verification gates without opening a new governance phase or reinterpreting
 the fixed V2.3 input.
+
+## D-040 - Post-P10 development reliability and dual-channel verification (2026-09-05)
+
+Post-P10 maintenance keeps runtime phase 10, `PRAGMA user_version = 9`, ledger
+`[1..9]`, `/api/v2`, and the released `27/0/27` Catalog unchanged. It adds no
+governance phase, migration, route, table, production pointer, or production
+volume. The P1-P10 Evidence trees remain immutable; maintenance evidence is
+independent at
+`docs/evidence/post-p10-development-reliability-20260905/` and has no status
+promotion authority.
+
+Historical R5 verification now separates source proof from current behavior.
+The retained fixture field `source_commit=f26c6950a0bf266b0114f99fc9dc683430da21a3`
+is the extraction-base identity. Eleven R5 files did not yet exist at that
+commit, so the byte-complete source proof is the immutable descendant
+`250bb44f5264fd7f262d2c8e6f5a174b3f58f266`, whose raw Git blobs exactly match
+every recorded fixture SHA without rewriting the fixture or its checksum. The
+proof uses `git rev-parse` and `git cat-file blob`; an unavailable or mismatched
+blob fails as `r5_golden_source_unverifiable:<path>`. A current-tree mismatch is
+reported only in `source_drift`, while checksum, privacy, and all six behavior
+contracts remain blocking.
+
+All active Gate orchestration uses the shared no-Shell process executor. Node
+scripts run through `process.execPath`; Pnpm runs through the Corepack
+JavaScript entry under the active Node installation, with a direct `corepack`
+fallback. Git and other executables receive argument arrays. The executor owns
+bounded capture, live redacted forwarding, workspace/secret redaction,
+timestamps, duration, exit status, signal, timeout tree termination, and the
+stable errors `gate_command_not_found`, `gate_command_timeout`, and
+`gate_command_failed`.
+
+`pnpm verify:dev` is the side-effect-free development channel. It unions
+`base...HEAD`, staged, unstaged, and untracked paths; maps them backward through
+the layered Catalog; always runs `check`, `scan:clean`, and `git diff --check`;
+deduplicates selected commands; and blocks an unclassified path. It never
+selects real GitHub, Provider, deletion, Docker publication, or release probes.
+Clean failures exit 1. A Historical-only failure exits 0 with top-level
+`status=advisory`, preserving D-032.
+
+`pnpm verify` remains the pre-push formal Gate and emits
+`aiws.v3-clean.verify-result.v3`. It restores all four recovery governance
+commands, validates P5-P9 through their immutable Evidence instead of rerunning
+retired probes, and runs only the current P10 Parser, GitHub deletion, and
+release probes. A current P10 probe failure is blocking and has no prior-phase
+fallback. Web tests run once; the nested `pnpm test` invocation receives the
+controlled Unit-only marker, while standalone `pnpm test` still runs Unit plus
+Web. Successful Gates are stdout-only; failure or advisory receipts append
+under `.ai-workspace/gate-receipts/`.
+
+The formal Gate runs Web tests, Unit tests, layered integration, layered
+security, and Web build as one isolated local-validation wave. Historical
+security excludes the Clean boundary files. During the formal Gate only, the
+expensive production-image boundary test is delegated to the mandatory P10
+release probe, which performs the same Docker CLI/socket, runtime dependency,
+non-root user, and component-label checks on the twice-built image. Standalone
+`test:security:clean` continues to execute its own image build.
+
+`pnpm development:receipt -- --project-id <id>` is a read-only operations
+report over a copied read-only snapshot of `<AIWS_CLEAN_HOME>/data/state.sqlite`.
+It validates schema v9, ledger `[1..9]`, project existence, and single command
+ownership; reports persisted execution, retry, replay, workflow, context,
+human-intervention, failure, and measurable duration data; emits explicit
+`null/not_persisted` values instead of estimates; excludes prompts, responses,
+secrets, CAS content, and absolute paths; self-hashes canonically; and proves
+SQLite, CAS, and Vault byte identity before and after generation.
+
+The measured objectives for this maintenance branch are at most `120000 ms`
+for its incremental Gate and at most `360000 ms` for the formal Gate on the
+same workstation, compared with the recorded `549714 ms` baseline. Timing is a
+maintenance acceptance threshold, not a Catalog status transition.

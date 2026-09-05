@@ -681,3 +681,77 @@ rollback may close the phase. Rollback restores schema v8, ledger `[1..8]`,
 SQLite, CAS, Vault, workspace, Broker, Bridge, Parser, Web, and governance
 Catalog snapshots with `byte_exact_mismatches=[]`. Production pointers and
 production volumes remain outside P10.
+
+## Post-P10 development reliability maintenance
+
+Decision `D-040` governs maintenance over baseline
+`5f2be38845d36236637c7f22a1b4df5611a6175b`. This is not a new governance
+phase. Runtime phase 10, `user_version=9`, ledger `[1..9]`, `/api/v2`, and the
+released Catalog `27/0/27` remain fixed. All P1-P10 Evidence remains read-only;
+maintenance receipts live independently at
+`docs/evidence/post-p10-development-reliability-20260905/`.
+
+The active development loop is `pnpm verify:dev`; `pnpm verify` remains the
+pre-push formal Gate. Both use `scripts/lib/gate-process.mjs` and must keep
+Node/Corepack/Pnpm/Git arguments out of `shell:true`. Development verification
+must reject unclassified paths, deduplicate commands, preserve Clean blocking
+and Historical advisory semantics, and never select live Provider, GitHub,
+deletion, publication, or release probes. Formal verification validates P5-P9
+through immutable Evidence and runs only current P10 Parser, GitHub deletion,
+and release probes, with no fallback.
+
+Formal Web, Unit, integration, security, and build commands may run as one
+bounded parallel wave because they use isolated state. Historical security must
+not repeat Clean boundary files. With `AIWS_SECURITY_DEFER_DOCKER=1`, only the
+formal Gate delegates the production-image subtest to the mandatory P10 release
+probe; standalone Clean security still builds and inspects the image directly.
+
+Historical R5 uses immutable raw blob proof and current behavior replay. The
+fixture and its checksum are never refreshed for current drift. An unavailable
+or mismatched proof fails as `r5_golden_source_unverifiable:<path>`; current
+source differences are reported as `source_drift` and do not bypass checksum,
+privacy, or behavior checks.
+
+`pnpm development:receipt -- --project-id <id>` reads a copied snapshot of the
+v9 SQLite database in read-only mode. It must prove all operation commands have
+one Clean owner, return only persisted metrics, use `null/not_persisted` rather
+than estimates, redact prompts/responses/secrets/CAS content/absolute paths,
+self-hash canonically, and compare SQLite/CAS/Vault bytes before and after.
+
+The maintenance acceptance inventory is:
+
+~~~text
+pnpm check
+pnpm audit:p1
+pnpm scan:clean
+pnpm audit:parity
+pnpm recovery:plan
+pnpm recovery:catalog
+pnpm recovery:coverage
+pnpm recovery:impact -- --audit
+pnpm test:p1
+pnpm test:p31
+pnpm test:p4
+pnpm test:p6
+pnpm test:p8
+pnpm test:p10
+pnpm fixture:legacy:integration
+pnpm fixture:legacy:security
+pnpm test:integration:clean
+pnpm test:security:clean
+pnpm verify:dev -- --base 5f2be38845d36236637c7f22a1b4df5611a6175b
+pnpm development:receipt -- --project-id <ROUND2_PROJECT_ID> --home <ROUND2_HOME>
+pnpm --filter @aiws/web test
+pnpm test
+pnpm build
+pnpm test:e2e
+pnpm test:release
+pnpm verify
+git diff --check
+git status --short --branch
+~~~
+
+The branch performance thresholds are `verify:dev <= 120000 ms` and formal
+`verify <= 360000 ms` on the workstation whose recorded baseline is
+`549714 ms`. A failure freezes status and is recorded literally; it is never
+converted into a release claim.

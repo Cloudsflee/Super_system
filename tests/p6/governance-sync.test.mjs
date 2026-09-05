@@ -12,6 +12,7 @@ import {
   resolveCatalogEvidenceReference, validateCatalogLayers, validateP6EvidenceManifest
 } from '../../scripts/catalog-loader.mjs';
 import { P1_PACKAGE_SCRIPT_DEFINITIONS, classifyWorkspacePath } from '../../scripts/lib/v3-clean-p1-scope.mjs';
+import { createFormalVerificationPlan } from '../../scripts/verify.mjs';
 
 const root = process.cwd();
 const evidenceReference = 'docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json';
@@ -44,14 +45,14 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
   assert.deepEqual(registry.entries.filter((entry) => entry.phase === 'p6').map((entry) => entry.command_id), p6Commands);
 
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assert.equal(Object.keys(packageJson.scripts).length, 56);
+  assert.equal(Object.keys(packageJson.scripts).length, 58);
   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
   assert.equal(packageJson.scripts['dev:broker'], 'node apps/runner-broker/clean-server.mjs');
   assert.equal(packageJson.scripts['test:p6'], 'node --test tests/p6/*.test.mjs');
   assert.equal(packageJson.scripts['evidence:p6'], 'node scripts/v3-clean-p6-evidence.mjs');
-  const verifySource = fs.readFileSync(path.join(root, 'scripts', 'verify.mjs'), 'utf8');
-  const p5EvidenceCheck = verifySource.indexOf("['evidence:p5', '--', '--verify']");
-  const p6EvidenceCheck = verifySource.indexOf("['evidence:p6', '--', '--verify']");
+  const verificationIds = createFormalVerificationPlan().map((entry) => entry.id);
+  const p5EvidenceCheck = verificationIds.indexOf('evidence-p5');
+  const p6EvidenceCheck = verificationIds.indexOf('evidence-p6');
   assert.ok(p5EvidenceCheck >= 0);
   assert.ok(p6EvidenceCheck > p5EvidenceCheck);
 
