@@ -182,4 +182,11 @@ function treeHash(directory) {
 }
 function write(name, value) { fs.writeFileSync(child(evidence, name), Buffer.isBuffer(value) ? value : `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx', mode: 0o600 }); }
 function readCapturedCommands() { const dir = path.join(local, 'commands'); return fs.readdirSync(dir).filter((name) => name.endsWith('.json')).sort().map((name) => JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'))); }
-function latestRound() { const names = fs.readdirSync(local).filter((name) => name.startsWith('round2-') && fs.existsSync(path.join(local, name, 'round2.json'))).sort(); if (!names.length) throw new Error('round2_receipt_required'); return path.join(local, names.at(-1), 'round2.json'); }
+function latestRound() {
+  const names = fs.readdirSync(local).filter((name) => name.startsWith('round2-') && fs.existsSync(path.join(local, name, 'round2.json'))).sort();
+  if (!names.length) throw new Error('round2_receipt_required');
+  const directory = path.join(local, names.at(-1));
+  const receipts = fs.readdirSync(directory).filter((name) => /^round2(?:-\d+)?\.json$/.test(name))
+    .sort((a, b) => fs.statSync(path.join(directory, a)).mtimeMs - fs.statSync(path.join(directory, b)).mtimeMs);
+  return path.join(directory, receipts.at(-1));
+}

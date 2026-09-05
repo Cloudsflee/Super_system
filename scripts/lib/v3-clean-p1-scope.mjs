@@ -95,7 +95,8 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'tests/p10/post-closure.test.mjs',
     'tests/p10/development-reliability.test.mjs',
     'tests/unit/recovery-golden.test.mjs',
-    'tests/integration/mcp-stdio-r5.test.mjs'
+    'tests/integration/mcp-stdio-r5.test.mjs',
+    'tests/integration/codex-provider-flow.test.mjs'
   ]),
   ui_tests: Object.freeze([])
 });

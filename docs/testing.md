@@ -219,6 +219,9 @@ status observed at the read-only snapshot. Missing timings remain null.
 Generation attempts count immutable rows once, rather than summing ordinal
 attempt numbers. Full reruns require multiple started root executions with the
 same pinned-input fingerprint; unused draft executions do not count as reruns.
+Historical Device Auth cancellation is exercised while the mock waits for user
+authorization and waits for asynchronous revocation, independent of CPU load.
+The neighboring completed-login test retains the real mock claim path.
 
 Maintenance verification and four-role rollback artifacts are recorded at
 `docs/evidence/post-p10-development-reliability-20260905/`. They do not mutate

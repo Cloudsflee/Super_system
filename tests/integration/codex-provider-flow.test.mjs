@@ -29,14 +29,22 @@ test('Codex Device Auth returns a durable operation and claims an encrypted OAut
 
 test('Codex Device Auth cancellation leaves no active credential', async () => {
   const env = await fixture();
+  const brokerClient = env.app.domain.codexService.broker;
+  const originalStatus = brokerClient.codexDeviceAuthStatus.bind(brokerClient);
+  // Keep this cancellation case at the user-input boundary instead of racing
+  // the mock's automatic 25ms completion; the preceding case covers claiming.
+  brokerClient.codexDeviceAuthStatus = async (id) => {
+    const status = await originalStatus(id);
+    return { ...status, status: ['completed', 'claimed'].includes(status.status) ? 'waiting_for_user' : status.status };
+  };
   try {
     const started = await mutate(env.base, '/api/v1/integrations/codex/device-auth', { label: 'Cancel device', timeout_ms: 60000 }, 'device-cancel-start');
     const current = await request(env.base, `/api/v1/operations/${started.json.operation_id}`);
     const cancelled = await mutate(env.base, `/api/v1/operations/${started.json.operation_id}/cancel`, { expected_revision: current.json.revision }, 'device-cancel');
     assert.equal(cancelled.response.status, 200);
     assert.equal(cancelled.json.status, 'cancelled');
-    const credentials = await request(env.base, '/api/v1/credentials');
-    assert.equal(credentials.json.find((item) => item.id === started.json.resource_id)?.status, 'revoked');
+    const credential = await eventually(async () => (await request(env.base, '/api/v1/credentials')).json.find((item) => item.id === started.json.resource_id), (value) => value?.status === 'revoked', 4000);
+    assert.equal(credential?.status, 'revoked');
   } finally { await env.close(); }
 });
 
