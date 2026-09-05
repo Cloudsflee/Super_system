@@ -1,0 +1,67 @@
+{
+  "schema_version": "aiws.maintenance-artifact-manifest.v1",
+  "owner": "Platform Governance",
+  "phase": "post-P10",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "f007469b483392b943ea1b901356ab75c7f4d69f58865817ce9b1cc7bbf382aa",
+      "byte_length": 1972
+    },
+    {
+      "path": "capture.mjs",
+      "sha256": "20bffe5162c35c26e1ed3ea8a7ddd2225c69a84f496e79f144f1133f5d2f6520",
+      "byte_length": 2061
+    },
+    {
+      "path": "change.patch",
+      "sha256": "773e40911a94ea6e03bfaa1009f4db09a34d291411328b83033b16b760e71d3c",
+      "byte_length": 205570
+    },
+    {
+      "path": "development-receipt.json",
+      "sha256": "3cad2c11e13fc413f92871f610155a224ce4bc3e32308450676833cd9df613c8",
+      "byte_length": 12007
+    },
+    {
+      "path": "modified-artifact.tgz",
+      "sha256": "0845c6ccfc5924f982a0aea34f0c68aabeef0036639a285c0e544a52ac0f1790",
+      "byte_length": 184006
+    },
+    {
+      "path": "original-hashes.json",
+      "sha256": "6ca50806e01692cfdd9f62d54e323354b9489d3877346293365c12b728a801c7",
+      "byte_length": 8937
+    },
+    {
+      "path": "package.mjs",
+      "sha256": "d9c37b6c4928a3867531149682fbf1732e8b81cc9b985adb2d592b4b44c0dcf7",
+      "byte_length": 17097
+    },
+    {
+      "path": "preflight.txt",
+      "sha256": "2f7b2140871d284701e7fdf8196f11f1a07591545ce3ef373a16034bf348eb3a",
+      "byte_length": 1936
+    },
+    {
+      "path": "rollback.ps1",
+      "sha256": "bfd747b925c79d982d025b5cd5cbe182447c9565e7cb32c1da2bf305d50bfc43",
+      "byte_length": 622
+    },
+    {
+      "path": "round2-probe.mjs",
+      "sha256": "5693e4771b5d34a633257637d76baee709227fe7777b92865bb74d91ee3b41d9",
+      "byte_length": 11608
+    },
+    {
+      "path": "round2.json",
+      "sha256": "aa575e3c8e1b673d8e27a870b2b6ccafb0aee2f304dff464eac02dd3096dc869",
+      "byte_length": 17211
+    },
+    {
+      "path": "verification.json",
+      "sha256": "febfddbe3312bbcef46ab117ee474bf5b859ac252cdfdd2a2f87ba7d1fcdc3ae",
+      "byte_length": 553002
+    }
+  ]
+}

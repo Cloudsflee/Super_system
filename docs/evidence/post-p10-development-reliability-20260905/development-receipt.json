@@ -1,0 +1,481 @@
+{
+  "schema_version": "aiws.development-receipt.v1",
+  "generated_at": "2026-09-05T18:08:39.138Z",
+  "snapshot_time_basis": "latest-persisted-project-record",
+  "project": {
+    "id": "project_36070b4510cb4ea7bdf5389639f6ce8a",
+    "window": {
+      "from": "2026-09-05T18:05:56.140Z",
+      "to": "2026-09-05T18:08:39.138Z",
+      "wall_clock_ms": 162998
+    }
+  },
+  "schema": {
+    "user_version": 9,
+    "migration_ledger": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ]
+  },
+  "operations": {
+    "total": 22,
+    "statuses": [
+      {
+        "status": "succeeded",
+        "count": 22
+      }
+    ],
+    "commands": [
+      {
+        "command": "brief.create",
+        "owner": "Project",
+        "count": 1
+      },
+      {
+        "command": "context.pack.create",
+        "owner": "Context",
+        "count": 1
+      },
+      {
+        "command": "context.projection.rebuild",
+        "owner": "Projection",
+        "count": 1
+      },
+      {
+        "command": "context.selection.create",
+        "owner": "Context",
+        "count": 1
+      },
+      {
+        "command": "context.source.create",
+        "owner": "Context",
+        "count": 13
+      },
+      {
+        "command": "generation.start",
+        "owner": "Workflow",
+        "count": 1
+      },
+      {
+        "command": "intake.submit",
+        "owner": "Project",
+        "count": 1
+      },
+      {
+        "command": "project.create",
+        "owner": "Project",
+        "count": 1
+      },
+      {
+        "command": "repository.connection.create",
+        "owner": "Repository",
+        "count": 1
+      },
+      {
+        "command": "workflow.revise",
+        "owner": "Workflow",
+        "count": 1
+      }
+    ],
+    "owners": [
+      {
+        "owner": "Context",
+        "count": 15
+      },
+      {
+        "owner": "Project",
+        "count": 3
+      },
+      {
+        "owner": "Projection",
+        "count": 1
+      },
+      {
+        "owner": "Repository",
+        "count": 1
+      },
+      {
+        "owner": "Workflow",
+        "count": 2
+      }
+    ],
+    "records": [
+      {
+        "operation_id": "op_4c4df7bb453a430bbe56f08e7fa799e9",
+        "command": "project.create",
+        "owner": "Project",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_5e4d9417fc694d0eb28b7bc112a51133",
+        "command": "repository.connection.create",
+        "owner": "Repository",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_42d0193e4d5f4a659809e57b13b439b2",
+        "command": "intake.submit",
+        "owner": "Project",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 8
+      },
+      {
+        "operation_id": "op_8f00a5b49ae94af09a2e17eae07457d0",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_7abc698a8f6e4fcba6e1c4a33bd3ef5b",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_8276bca4bc8f4185b5e22c136d22bd62",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_d91de314ac0b4ed1bfe87031d4e7f657",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_64289772efa04c4bb73a4811884649da",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_6fc80e55c3a4496ead26278ab0f1b372",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_2b1c319a7af5485484c2e140be96f994",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_6755e4bb36ea47569c969cc482927efb",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_094b57f989cf40b3b6bcf69a1d0cc99d",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_bbd92e73f77f49b3bf577f545a115642",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_0bed79597945402ebc5397d74dc72226",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_92f579cdcfb248eebd2b5232f25754df",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_f5b3e2c596ed4db385dff26546dd23ed",
+        "command": "context.source.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_38bf077f0a6540838a93533bc7a81f4d",
+        "command": "brief.create",
+        "owner": "Project",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_de206c8e56804834b44562bad01603f2",
+        "command": "context.projection.rebuild",
+        "owner": "Projection",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_0534140a29bc49eb9d41c400c03937dc",
+        "command": "context.selection.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_9dfd0ef4bf04481bab8580e95024ca6a",
+        "command": "context.pack.create",
+        "owner": "Context",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_3bcbf513b328453e97c279d48b59633d",
+        "command": "workflow.revise",
+        "owner": "Workflow",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 0
+      },
+      {
+        "operation_id": "op_f1263748e42e4f589ee683a5d5686a12",
+        "command": "generation.start",
+        "owner": "Workflow",
+        "status": "succeeded",
+        "error_code": null,
+        "failure_class": null,
+        "duration_ms": 12
+      }
+    ]
+  },
+  "executions": {
+    "total": 0,
+    "root_runs": 0,
+    "full_reruns": 0,
+    "replans": 0,
+    "statuses": [],
+    "input_fingerprints": [],
+    "records": []
+  },
+  "task_attempts": {
+    "total": 0,
+    "retries": 0,
+    "statuses": []
+  },
+  "stage_checkpoints": {
+    "total": 0,
+    "replays": 0,
+    "stages": [
+      {
+        "stage": "prepare",
+        "checkpoints": 0,
+        "measured": 0,
+        "duration_ms": null,
+        "reason": "not_persisted_for_window"
+      },
+      {
+        "stage": "context",
+        "checkpoints": 0,
+        "measured": 0,
+        "duration_ms": null,
+        "reason": "not_persisted_for_window"
+      },
+      {
+        "stage": "run",
+        "checkpoints": 0,
+        "measured": 0,
+        "duration_ms": null,
+        "reason": "not_persisted_for_window"
+      },
+      {
+        "stage": "check",
+        "checkpoints": 0,
+        "measured": 0,
+        "duration_ms": null,
+        "reason": "not_persisted_for_window"
+      },
+      {
+        "stage": "review",
+        "checkpoints": 0,
+        "measured": 0,
+        "duration_ms": null,
+        "reason": "not_persisted_for_window"
+      },
+      {
+        "stage": "finalize",
+        "checkpoints": 0,
+        "measured": 0,
+        "duration_ms": null,
+        "reason": "not_persisted_for_window"
+      },
+      {
+        "stage": "deliver",
+        "checkpoints": 0,
+        "measured": 0,
+        "duration_ms": null,
+        "reason": "not_persisted_for_window"
+      }
+    ]
+  },
+  "workflow": {
+    "generations": {
+      "total": 1,
+      "retries": 0,
+      "attempts": 1,
+      "phases": [
+        {
+          "phase": "critic_pending",
+          "count": 1
+        }
+      ]
+    },
+    "critics": {
+      "total": 0,
+      "statuses": []
+    },
+    "proposals": {
+      "workflow_total": 0,
+      "workflow_statuses": [],
+      "semantic_total": 0,
+      "semantic_statuses": []
+    }
+  },
+  "context": {
+    "selections": 1,
+    "packs": 1,
+    "token_budget": 32000,
+    "token_used": 6781,
+    "pack_convergence_rate": 1,
+    "pack_convergence_reason": null
+  },
+  "human_intervention": {
+    "approvals": {
+      "total": 0,
+      "decisions": 0,
+      "statuses": []
+    },
+    "user_inputs": {
+      "total": 0,
+      "answered": 0,
+      "statuses": []
+    },
+    "human_reviews": {
+      "total": 0,
+      "decisions": []
+    },
+    "total_decisions": 0
+  },
+  "measurable_durations": {
+    "delivery": {
+      "duration_ms": null,
+      "sample_count": 0,
+      "reason": "not_persisted_for_window"
+    },
+    "gate": {
+      "duration_ms": null,
+      "sample_count": 0,
+      "reason": "not_persisted_for_window"
+    },
+    "runner": {
+      "duration_ms": null,
+      "sample_count": 0,
+      "reason": "not_persisted_for_window"
+    }
+  },
+  "deliveries": {
+    "total": 0,
+    "statuses": []
+  },
+  "failures_by_owner": [],
+  "failures_by_error_code": [],
+  "failures_by_class": [],
+  "failure_records": [],
+  "failure_counting_basis": "one-record-per-terminal-failed-generic-operation",
+  "manual_workarounds": {
+    "value": null,
+    "reason": "not_persisted"
+  },
+  "model_tokens": {
+    "value": null,
+    "reason": "not_persisted"
+  },
+  "state_integrity": {
+    "sqlite": {
+      "before_sha256": "a72800ebff3715626c17f7a8e3eb205d0e4e033cb4690996fd95c63847b4eb49",
+      "after_sha256": "a72800ebff3715626c17f7a8e3eb205d0e4e033cb4690996fd95c63847b4eb49",
+      "file_count": 1
+    },
+    "cas": {
+      "before_sha256": "7141c3a15ce604605f4241898ab82e185600653862c81ebba1d6debd2d5fe08a",
+      "after_sha256": "7141c3a15ce604605f4241898ab82e185600653862c81ebba1d6debd2d5fe08a",
+      "file_count": 19
+    },
+    "vault": {
+      "before_sha256": "7f7c6c00856162b2be36ddf7b370affd7e40b8c24d29013f78fb8827413ab4e1",
+      "after_sha256": "7f7c6c00856162b2be36ddf7b370affd7e40b8c24d29013f78fb8827413ab4e1",
+      "file_count": 1
+    },
+    "byte_exact": true,
+    "byte_exact_mismatches": []
+  },
+  "receipt_sha256": "1a3f2d31a99175484ec6125d6fd7f704df7998f3e0651bb1a73f90d06ff51857"
+}

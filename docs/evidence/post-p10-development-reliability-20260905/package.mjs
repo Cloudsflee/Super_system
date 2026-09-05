@@ -29,6 +29,9 @@ async function buildPackage() {
   const stage = path.join(attempt, 'modified');
   const isolated = path.join(attempt, 'isolated-clone');
   fs.mkdirSync(stage, { recursive: true });
+  for (const name of ['original-hashes.json', 'change.patch', 'modified-artifact.tgz']) {
+    if (fs.existsSync(path.join(evidence, name))) fs.copyFileSync(path.join(evidence, name), path.join(attempt, `prior-${name}`));
+  }
   const names = git(root, ['diff', '-z', '--name-only', '--no-renames', baseline, '--', '.', `:(exclude)${relativeEvidence}/**`]).toString('utf8').split('\0').filter(Boolean).sort();
   const originals = [];
   for (const name of names) {
@@ -61,7 +64,7 @@ async function buildPackage() {
   await run('git', ['-C', isolated, 'apply', '--check', path.join(evidence, 'change.patch')]);
   await run('git', ['-C', isolated, 'apply', path.join(evidence, 'change.patch')]);
   // Restore exact packaged worktree bytes after Git's platform EOL handling.
-  fs.cpSync(unpacked, isolated, { recursive: true });
+  for (const item of originals.filter((item) => item.modified_sha256)) fs.copyFileSync(child(unpacked, item.path), child(isolated, item.path));
   const modifiedRun = await run('node', ['scripts/recovery-golden.mjs', 'verify', 'r5-context-projection-mcp'], { cwd: isolated });
   const result = JSON.parse(modifiedRun.output.stdout);
   if (result.status !== 'passed' || JSON.stringify(result.batches[0].source_drift) !== '["scripts/mcp-stdio.mjs"]') throw new Error('modified_golden_behavior_invalid');
@@ -69,8 +72,8 @@ async function buildPackage() {
   const round = JSON.parse(fs.readFileSync(roundFile, 'utf8'));
   const stateSource = child(root, round.runtime_home);
   const snapshot = path.join(attempt, 'state-snapshot');
-  fs.cpSync(stateSource, snapshot, { recursive: true });
-  fs.cpSync(snapshot, path.join(isolated, 'state'), { recursive: true });
+  copyTree(stateSource, snapshot);
+  copyTree(snapshot, path.join(isolated, 'state'));
   const frozenBefore = treeHash(path.join(isolated, 'docs', 'evidence'));
   const marker = { baseline_commit: baseline, state_snapshot: snapshot, state_sha256: treeHash(snapshot), evidence_sha256: frozenBefore, patch_sha256: hash(patch) };
   fs.writeFileSync(path.join(isolated, '.post-p10-rollback-sandbox'), JSON.stringify(marker));
@@ -82,6 +85,8 @@ async function buildPackage() {
   const rollbackResult = JSON.parse(apply.output.stdout.trim());
   if (rollbackResult.status !== 'passed' || rollbackResult.byte_exact_mismatches.length) throw new Error('maintenance_rollback_failed');
   const saved = readCapturedCommands();
+  const formal = lastResult(saved, 'aiws.v3-clean.verify-result.v3');
+  const development = lastResult(saved, 'aiws.v3-clean.dev-verification.v1');
   const verification = {
     schema_version: 'aiws.post-p10-maintenance-verification.v1', owner: 'Platform Governance and Operations', phase: 'post-P10',
     status: round.status === 'passed' ? 'verified' : 'partial', provisional: round.status !== 'passed',
@@ -89,6 +94,11 @@ async function buildPackage() {
     generated_at: new Date().toISOString(), preflight: fs.readFileSync(path.join(evidence, 'preflight.txt'), 'utf8'),
     catalog_status: '27/0/27', catalog_promotion: false, production_mutation: false,
     commands: [...saved, ...commands],
+    performance: {
+      baseline_ms: 549714, baseline_source: 'user-provided-measurement',
+      formal: { status: formal.status, duration_ms: formal.duration_ms, target_ms: 360000, passed: formal.status === 'passed' && formal.duration_ms <= 360000, reduction_percent: Math.round((1 - formal.duration_ms / 549714) * 10000) / 100 },
+      development: { status: development.status, duration_ms: development.duration_ms, target_ms: 120000, passed: development.status === 'passed' && development.duration_ms <= 120000 }
+    },
     baseline_behavior: { command: baselineRun.command, args: baselineRun.args, exit_status: baselineRun.exit_status, error_code: 'r5_golden_source_changed:scripts/mcp-stdio.mjs' },
     modified_behavior: { status: result.status, source_drift: result.batches[0].source_drift, exit_status: modifiedRun.exit_status },
     artifact_reopen: { status: 'passed', files_checked: originals.filter((item) => item.modified_sha256).length },
@@ -123,7 +133,7 @@ async function rollback(isolatedRoot, apply) {
   const state = child(target, 'state');
   if (fs.lstatSync(state).isSymbolicLink()) throw new Error('rollback_state_symlink');
   fs.rmSync(state, { recursive: true, force: true });
-  fs.cpSync(snapshot, state, { recursive: true });
+  copyTree(snapshot, state);
   const mismatches = inventory.files.filter((item) => item.original_sha256 ? hashFile(child(target, item.path)) !== item.original_sha256 : fs.existsSync(child(target, item.path))).map((item) => item.path);
   if (treeHash(state) !== marker.state_sha256) mismatches.push('state');
   if (treeHash(path.join(target, 'docs', 'evidence')) !== marker.evidence_sha256) mismatches.push('published-evidence');
@@ -150,8 +160,12 @@ function verifyPackage() {
 }
 
 async function run(command, args, options = {}) {
+  process.stderr.write(`maintenance_command:${command}:${args[0]}\n`);
   const result = await runGateCommand(executableInvocation(command === 'node' ? process.execPath : command, args), { cwd: options.cwd || root, workspaceRoot: root, cwdRole: options.cwd ? 'isolated-clone' : 'repository-root', stdout: false, stderr: false, timeoutMs: 600_000, maxCaptureBytes: 32 * 1024 * 1024 });
   commands.push(result);
+  const debug = path.join(local, 'packaging-debug');
+  fs.mkdirSync(debug, { recursive: true });
+  fs.writeFileSync(path.join(debug, `${Date.now()}-${process.pid}-${commands.length}.json`), JSON.stringify(result, null, 2), { flag: 'wx' });
   if (!(options.expected || [0]).includes(result.exit_status)) throw new Error(`maintenance_command_failed:${command}:${result.error_code}`);
   return result;
 }
@@ -180,7 +194,20 @@ function treeHash(directory) {
   walk(directory);
   return hash(JSON.stringify(rows));
 }
-function write(name, value) { fs.writeFileSync(child(evidence, name), Buffer.isBuffer(value) ? value : `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx', mode: 0o600 }); }
+function write(name, value) {
+  const target = child(evidence, name);
+  const bytes = Buffer.isBuffer(value) ? value : Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
+  if (fs.existsSync(target) && fs.readFileSync(target).equals(bytes)) return;
+  fs.writeFileSync(target, bytes, { flag: 'wx', mode: 0o600 });
+}
+function copyTree(source, target) {
+  fs.mkdirSync(target, { recursive: true });
+  for (const item of fs.readdirSync(source, { withFileTypes: true })) {
+    if (item.isSymbolicLink()) throw new Error('maintenance_copy_symlink');
+    if (item.isDirectory()) copyTree(path.join(source, item.name), path.join(target, item.name));
+    else fs.copyFileSync(path.join(source, item.name), path.join(target, item.name));
+  }
+}
 function readCapturedCommands() { const dir = path.join(local, 'commands'); return fs.readdirSync(dir).filter((name) => name.endsWith('.json')).sort().map((name) => JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'))); }
 function latestRound() {
   const names = fs.readdirSync(local).filter((name) => name.startsWith('round2-') && fs.existsSync(path.join(local, name, 'round2.json'))).sort();
@@ -189,4 +216,18 @@ function latestRound() {
   const receipts = fs.readdirSync(directory).filter((name) => /^round2(?:-\d+)?\.json$/.test(name))
     .sort((a, b) => fs.statSync(path.join(directory, a)).mtimeMs - fs.statSync(path.join(directory, b)).mtimeMs);
   return path.join(directory, receipts.at(-1));
+}
+function lastResult(records, schema) {
+  const matches = [];
+  for (const record of records) {
+    const output = String(record.output?.stdout || '');
+    for (let index = output.indexOf('{'); index >= 0; index = output.indexOf('{', index + 1)) {
+      try {
+        const value = JSON.parse(output.slice(index, output.lastIndexOf('}') + 1));
+        if (value.schema_version === schema) matches.push({ time: record.started_at, value });
+      } catch { /* command prelude or nested JSON */ }
+    }
+  }
+  if (!matches.length) throw new Error(`maintenance_command_result_missing:${schema}`);
+  return matches.sort((a, b) => String(a.time).localeCompare(String(b.time))).at(-1).value;
 }
