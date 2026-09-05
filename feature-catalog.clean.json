@@ -91,9 +91,12 @@
         "tests/p31/layered-gates.test.mjs",
         "tests/p31/evidence-immutability.test.mjs",
         "tests/p4/governance-sync.test.mjs",
+        "tests/p5/migration.test.mjs",
         "tests/p6/governance-sync.test.mjs",
         "tests/p7/governance-sync.test.mjs",
         "tests/p8/governance.test.mjs",
+        "tests/release/p10-final-gate.test.mjs",
+        "tests/security/boundary.test.mjs",
         "tests/p10/parity-governance.test.mjs",
         "tests/p10/migration.test.mjs",
         "tests/p10/post-closure.test.mjs",
@@ -137,7 +140,8 @@
         "docs/evidence/post-p10-development-reliability-20260905/preflight.txt",
         "docs/evidence/post-p10-development-reliability-20260905/modified-artifact.tgz",
         "docs/evidence/post-p10-development-reliability-20260905/change.patch",
-        "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1"
+        "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1",
+        "docs/evidence/post-p10-development-reliability-20260905"
       ]
     },
     {
@@ -2217,7 +2221,8 @@
         "docs/evidence/post-p10-development-reliability-20260905/preflight.txt",
         "docs/evidence/post-p10-development-reliability-20260905/modified-artifact.tgz",
         "docs/evidence/post-p10-development-reliability-20260905/change.patch",
-        "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1"
+        "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1",
+        "docs/evidence/post-p10-development-reliability-20260905"
       ]
     },
     {

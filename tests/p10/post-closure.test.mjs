@@ -39,6 +39,9 @@ test('P10 post-closure verification accepts pushed product descendants and freez
     write(root, 'feature-catalog.clean.json', `${JSON.stringify({ features: [{ id: 'REC-001', status: 'released', target_modules: ['apps/web/src/product.ts'] }] })}\n`);
     git(root, 'add', '.');
     git(root, 'commit', '-m', 'ordinary product work');
+    const localHead = git(root, 'rev-parse', 'HEAD');
+    assert.ok(postClosureFailures({ root, verification: { implementation_commit: closure, runtime_tree: runtimeTree }, expectedTagCommit: closure, prePushHead: null }).includes('upstream_head'));
+    assert.deepEqual(postClosureFailures({ root, verification: { implementation_commit: closure, runtime_tree: runtimeTree }, expectedTagCommit: closure, prePushHead: localHead }), []);
     git(root, 'push');
     const verification = { implementation_commit: closure, runtime_tree: runtimeTree };
     assert.deepEqual(postClosureFailures({ root, verification, expectedTagCommit: closure }), []);

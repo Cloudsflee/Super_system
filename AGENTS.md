@@ -700,6 +700,11 @@ deletion, publication, or release probes. Formal verification validates P5-P9
 through immutable Evidence and runs only current P10 Parser, GitHub deletion,
 and release probes, with no fallback.
 
+The hook invokes `pnpm verify -- --pre-push` to validate the exact pending HEAD
+before Git uploads it. Standalone final verification still requires
+`upstream=HEAD`. Pre-push mode runs the complete Gate; it only moves the remote
+publication equality check to after the push, not the behavior or freeze checks.
+
 Formal Web, Unit, integration, security, and build commands may run as one
 bounded parallel wave because they use isolated state. Historical security must
 not repeat Clean boundary files. With `AIWS_SECURITY_DEFER_DOCKER=1`, only the

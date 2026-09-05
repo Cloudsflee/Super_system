@@ -3,4 +3,4 @@ if [ "${AIWS_VERIFY_RUNNING:-}" = "1" ]; then
   exit 0
 fi
 export AIWS_VERIFY_RUNNING=1
-exec corepack pnpm verify
+exec corepack pnpm verify -- --pre-push

@@ -13,10 +13,10 @@ export const STAGES = Object.freeze(['prepare', 'context', 'run', 'check', 'revi
 
 const EXTERNAL_FAILURE = /provider|github|docker|network|credential|external(?:_|-)?result|remote|upstream|rate_limit|timeout_external/i;
 const PLATFORM_FAILURE = /registry|cas|vault|broker|bridge|parser|permission|forbidden|unauthorized|revision|conflict|integrity|migration|database|sqlite|cursor|redaction|checkpoint|not_ready|tamper/i;
-const INTERNAL_OWNER_ALIASES = Object.freeze({
-  generation: 'Workflow',
-  operation: 'Operations'
-});
+const INTERNAL_COMMAND_PARENTS = Object.freeze(Object.fromEntries([
+  ...STAGES.map((stage) => [`execution.stage.${stage}`, 'execution.start']),
+  ['execution.task.run', 'execution.start']
+]));
 
 export async function main(argv = process.argv.slice(2), cwd = process.cwd(), env = process.env) {
   try {
@@ -57,6 +57,8 @@ export function parseArguments(argv, cwd = process.cwd(), env = process.env) {
 }
 
 export function generateDevelopmentReceipt({ home, databaseFile = path.join(home, 'data', 'state.sqlite'), projectId, from = null, to = null }) {
+  from = from == null ? null : iso(from, 'from');
+  to = to == null ? null : iso(to, 'to');
   const root = path.resolve(home);
   const file = path.resolve(databaseFile);
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw receiptError('development_receipt_database_missing');
@@ -67,16 +69,17 @@ export function generateDevelopmentReceipt({ home, databaseFile = path.join(home
     const source = `${file}${suffix}`;
     if (fs.existsSync(source)) fs.copyFileSync(source, `${snapshotFile}${suffix}`);
   }
-  const db = new DatabaseSync(snapshotFile, { readOnly: true });
+  let db;
   let body;
   try {
+    db = new DatabaseSync(snapshotFile, { readOnly: true });
     validateDatabase(db);
     const project = db.prepare('SELECT id,created_at,updated_at FROM projects WHERE id=?').get(projectId);
     if (!project) throw receiptError('development_receipt_project_missing', { project_id: projectId });
     const window = resolveWindow(db, project, from, to);
     body = buildReceiptBody(db, project, window);
   } finally {
-    db.close();
+    db?.close();
     fs.rmSync(snapshotRoot, { recursive: true, force: true });
   }
   const after = stateSnapshot(root, file);
@@ -143,18 +146,17 @@ function buildReceiptBody(db, project, window) {
   const semanticProposals = db.prepare('SELECT id,status,created_at,updated_at,decided_at FROM semantic_proposals WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
   const selections = db.prepare('SELECT id,token_budget,token_used,created_at FROM context_selections WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
   const packs = db.prepare('SELECT id,selection_id,status,created_at FROM context_packs WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
-  const approvals = db.prepare('SELECT id,status,decided_at,created_at FROM runtime_approvals WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
-  const userInputs = db.prepare('SELECT id,status,answered_at,created_at FROM runtime_user_inputs WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
+  const approvals = db.prepare('SELECT id,status,decided_at,decision_actor_id,created_at FROM runtime_approvals WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
+  const userInputs = db.prepare('SELECT id,status,answered_at,answered_by_actor_id,created_at FROM runtime_user_inputs WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
   const humanReviews = db.prepare('SELECT id,decision,created_at FROM human_reviews WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
   const deliveries = db.prepare('SELECT id,status,created_at,updated_at,completed_at,operation_id FROM deliveries WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
   const runnerReceipts = db.prepare(`SELECT r.started_at,r.finished_at,r.status,a.error_code FROM runner_receipts r
     JOIN task_attempts a ON a.id=r.task_attempt_id JOIN executions e ON e.id=a.execution_id
     WHERE e.project_id=? AND r.created_at>=? AND r.created_at<=? ORDER BY r.created_at,r.id`).all(...params);
   const testResults = db.prepare('SELECT status,duration_ms,created_at FROM test_results WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
-  const parserRuns = db.prepare('SELECT status,error_code FROM parser_runs WHERE project_id=? AND created_at>=? AND created_at<=?').all(...params);
-  const qualityRuns = db.prepare('SELECT status,error_code FROM quality_review_runs WHERE project_id=? AND created_at>=? AND created_at<=?').all(...params);
 
-  const failures = failureRecords({ operationRecords, executionRecords, attempts, generations, deliveries, runnerReceipts, testResults, parserRuns, qualityRuns });
+  const failures = operationRecords.filter((row) => ['failed', 'expired'].includes(row.status))
+    .map((row) => ({ source: 'operation', operation_id: row.operation_id, ...failure('operation', row.owner, row.error_code || `operation_${row.status}`) }));
   const packedSelections = new Set(packs.map((row) => row.selection_id));
   return {
     project: { id: project.id, window },
@@ -204,20 +206,22 @@ function buildReceiptBody(db, project, window) {
       pack_convergence_reason: selections.length ? null : 'no_persisted_context_selections'
     },
     human_intervention: {
-      approvals: { total: approvals.length, decisions: approvals.filter((row) => row.decided_at).length, statuses: counts(approvals, (row) => row.status, 'status') },
-      user_inputs: { total: userInputs.length, answered: userInputs.filter((row) => row.answered_at).length, statuses: counts(userInputs, (row) => row.status, 'status') },
+      approvals: { total: approvals.length, decisions: approvals.filter((row) => row.decided_at && row.decision_actor_id).length, statuses: counts(approvals, (row) => row.status, 'status') },
+      user_inputs: { total: userInputs.length, answered: userInputs.filter((row) => row.answered_at && row.answered_by_actor_id && row.status === 'approved').length, statuses: counts(userInputs, (row) => row.status, 'status') },
       human_reviews: { total: humanReviews.length, decisions: counts(humanReviews, (row) => row.decision, 'decision') },
-      total_decisions: approvals.filter((row) => row.decided_at).length + userInputs.filter((row) => row.answered_at).length + humanReviews.length + workflowProposals.filter((row) => ['applied', 'rejected', 'stale'].includes(row.status)).length + semanticProposals.filter((row) => ['approved', 'rejected', 'expired', 'cancelled'].includes(row.status)).length
+      total_decisions: operationRecords.filter((row) => row.status === 'succeeded' && ['approval.decide', 'user.input.answer', 'user.input.cancel', 'quality.decision', 'brief.confirm', 'workflow.proposal.apply', 'proposal.apply', 'proposal.reject', 'proposal.undo'].includes(row.command)).length
     },
     measurable_durations: {
       delivery: durationMetric(operationRecords.filter((row) => row.command.startsWith('delivery.')).map((row) => row.duration_ms)),
       gate: durationMetric(testResults.map((row) => Number(row.duration_ms))),
       runner: durationMetric(runnerReceipts.map((row) => duration(row.started_at, row.finished_at)))
     },
+    deliveries: { total: deliveries.length, statuses: counts(deliveries, (row) => row.status, 'status') },
     failures_by_owner: counts(failures, (row) => row.owner, 'owner'),
     failures_by_error_code: counts(failures, (row) => row.error_code, 'error_code'),
     failures_by_class: counts(failures, (row) => row.failure_class, 'failure_class'),
     failure_records: failures,
+    failure_counting_basis: 'one-record-per-terminal-failed-generic-operation',
     manual_workarounds: { value: null, reason: 'not_persisted' },
     model_tokens: { value: null, reason: 'not_persisted' }
   };
@@ -239,6 +243,7 @@ function validateDatabase(db) {
   const version = Number(db.prepare('PRAGMA user_version').get().user_version);
   const ledger = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => Number(row.version));
   if (version !== 9 || JSON.stringify(ledger) !== JSON.stringify([1, 2, 3, 4, 5, 6, 7, 8, 9])) throw receiptError('development_receipt_schema_invalid', { user_version: version, migration_ledger: ledger });
+  if (db.prepare('PRAGMA quick_check').get().quick_check !== 'ok' || db.prepare('PRAGMA foreign_key_check').all().length) throw receiptError('development_receipt_integrity_invalid');
 }
 
 function resolveWindow(db, project, requestedFrom, requestedTo) {
@@ -265,44 +270,17 @@ function resolveWindow(db, project, requestedFrom, requestedTo) {
 
 function commandOwnerRegistry() {
   const exact = new Map();
-  const first = new Map();
   for (const entry of CLEAN_COMMAND_REGISTRY) {
     if (!exact.has(entry.command_id)) exact.set(entry.command_id, new Set());
     exact.get(entry.command_id).add(entry.owner);
-    const prefix = entry.command_id.split('.')[0];
-    if (!first.has(prefix)) first.set(prefix, new Set());
-    first.get(prefix).add(entry.owner);
   }
-  return { exact, first };
+  return { exact };
 }
 
 function resolveCommandOwner(commandId, registry) {
-  const exact = registry.exact.get(commandId);
+  const exact = registry.exact.get(commandId) || registry.exact.get(INTERNAL_COMMAND_PARENTS[commandId]);
   if (exact?.size === 1) return [...exact][0];
-  let prefix = String(commandId || '');
-  while (prefix.includes('.')) {
-    prefix = prefix.slice(0, prefix.lastIndexOf('.'));
-    const candidates = new Set([...registry.exact.entries()].filter(([id]) => id === prefix || id.startsWith(`${prefix}.`)).flatMap(([, owners]) => [...owners]));
-    if (candidates.size === 1) return [...candidates][0];
-  }
-  const first = String(commandId || '').split('.')[0];
-  const firstOwners = registry.first.get(first);
-  if (firstOwners?.size === 1) return [...firstOwners][0];
-  return INTERNAL_OWNER_ALIASES[first] || null;
-}
-
-function failureRecords({ operationRecords, executionRecords, attempts, generations, deliveries, runnerReceipts, testResults, parserRuns, qualityRuns }) {
-  const rows = [];
-  for (const row of operationRecords.filter((item) => item.status === 'failed')) rows.push({ source: 'operation', owner: row.owner, error_code: row.error_code || 'operation_failed', failure_class: row.failure_class });
-  for (const row of executionRecords.filter((item) => item.status === 'failed')) rows.push(failure('execution', 'Execution', row.error_code || 'execution_failed'));
-  for (const row of attempts.filter((item) => ['failed', 'expired', 'external_result_unknown'].includes(item.status))) rows.push(failure('task_attempt', 'Runner', row.error_code || `runner_${row.status}`));
-  for (const row of generations.filter((item) => item.phase === 'failed')) rows.push(failure('workflow_generation', 'Workflow', row.error_code || 'generation_failed'));
-  for (const row of deliveries.filter((item) => ['failed', 'needs_reconcile'].includes(item.status))) rows.push(failure('delivery', 'Delivery', row.error_code || `delivery_${row.status}`));
-  for (const row of runnerReceipts.filter((item) => item.status === 'failed')) rows.push(failure('runner_receipt', 'Runner', row.error_code || 'runner_failed'));
-  for (const row of testResults.filter((item) => item.status === 'failed')) rows.push(failure('test_result', 'Execution', 'test_failed'));
-  for (const row of parserRuns.filter((item) => ['failed', 'external_result_unknown'].includes(item.status))) rows.push(failure('parser_run', 'Parser', row.error_code || `parser_${row.status}`));
-  for (const row of qualityRuns.filter((item) => row.status === 'failed')) rows.push(failure('quality_review', 'Quality', row.error_code || 'quality_failed'));
-  return rows.sort((left, right) => `${left.owner}\0${left.error_code}\0${left.source}`.localeCompare(`${right.owner}\0${right.error_code}\0${right.source}`));
+  return null;
 }
 
 function failure(source, owner, errorCode) { return { source, owner, error_code: errorCode, failure_class: classifyFailure(errorCode, owner) }; }

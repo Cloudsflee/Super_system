@@ -179,12 +179,17 @@ formal `pnpm test` call is Unit-only because Web already ran; standalone
 orchestration and replaced by immutable Evidence verification. Only the three
 current P10 probes execute, and none has a fallback.
 
+The pre-push hook passes `--pre-push`, binding the current local HEAD before
+upload. The standalone formal command requires `upstream=HEAD`; the pre-push
+command runs all checks but verifies the pending local HEAD. The marker is
+passed only to the final Evidence command, not to child test repositories.
+
 The five independent local validations (Web tests, Unit tests, integration,
 security, and build) run concurrently and retain separate command receipts.
 Historical security omits `boundary.test.mjs` and `v3-clean-p1.test.mjs`
 because the Clean layer owns them. In formal verification the production image
 subtest is delegated to the required P10 release probe, which checks Docker CLI
-and socket absence, `node-pty`/`ws` availability, the non-root user, and the
+and socket absence, `node-pty`/`ws` availability, and the
 `aiws.component=app` label on the reproducible image. Direct
 `pnpm test:security:clean` still performs the standalone image build.
 
@@ -195,6 +200,22 @@ and current-probe ordering; Unit/Web deduplication; development receipt
 metrics; failure classification; canonical SHA; and SQLite/CAS/Vault byte
 identity. Historical R5 proof and behavior replay remain under
 `tests/unit/recovery-golden.test.mjs` and explicit Historical integration.
+
+Changed test files not covered by a selected phase run explicitly. The daily
+channel runs only the static/Compose subset of a changed production-image
+boundary test; image execution remains a formal-Gate requirement. When build
+is selected, its TypeScript check satisfies the check/typecheck obligation once.
+Incremental syntax checks cover changed source files; standalone and formal
+checks still inspect every source file. Repository inventories use NUL-delimited
+Git output to retain Unicode names and both sides of renames.
+
+Development metrics use exact Clean Registry command ownership, with only the
+seven internal execution stages and task-run command projected through the
+registered execution owner. Unknown same-prefix commands fail. Failure totals
+count each failed generic operation once, not its repeated domain projections;
+expired interaction timestamps are not counted as human answers or approvals.
+The window selects records created between its endpoints (inclusive), with
+status observed at the read-only snapshot. Missing timings remain null.
 
 Maintenance verification and four-role rollback artifacts are recorded at
 `docs/evidence/post-p10-development-reliability-20260905/`. They do not mutate

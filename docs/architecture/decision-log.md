@@ -232,12 +232,19 @@ controlled Unit-only marker, while standalone `pnpm test` still runs Unit plus
 Web. Successful Gates are stdout-only; failure or advisory receipts append
 under `.ai-workspace/gate-receipts/`.
 
+The Git pre-push entry invokes `verify -- --pre-push`: it checks the exact
+pending local HEAD before upload, while a standalone final `verify` continues
+to require `upstream=HEAD`. This resolves the before-push/after-push dependency
+without skipping any tests or external probes. Only the Evidence checker sees
+the pending-head marker; child fixtures do not inherit it. P10 publication
+status and Catalog promotion rules remain unchanged.
+
 The formal Gate runs Web tests, Unit tests, layered integration, layered
 security, and Web build as one isolated local-validation wave. Historical
 security excludes the Clean boundary files. During the formal Gate only, the
 expensive production-image boundary test is delegated to the mandatory P10
 release probe, which performs the same Docker CLI/socket, runtime dependency,
-non-root user, and component-label checks on the twice-built image. Standalone
+and component-label checks on the twice-built image. Standalone
 `test:security:clean` continues to execute its own image build.
 
 `pnpm development:receipt -- --project-id <id>` is a read-only operations

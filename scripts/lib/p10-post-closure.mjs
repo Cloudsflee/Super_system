@@ -20,7 +20,7 @@ export const P10_ADDITIVE_MAINTENANCE_PREFIXES = Object.freeze([
 ]);
 export const P10_CATALOG_PATHS = Object.freeze(['feature-catalog.json', 'feature-catalog.clean.json', 'feature-catalog.historical.json']);
 
-export function postClosureFailures({ root, verification, tag = P10_FINAL_TAG, expectedTagCommit = P10_FINAL_TAG_COMMIT } = {}) {
+export function postClosureFailures({ root, verification, tag = P10_FINAL_TAG, expectedTagCommit = P10_FINAL_TAG_COMMIT, prePushHead = process.env.AIWS_PRE_PUSH_HEAD || null } = {}) {
   const failures = [];
   const git = (args) => {
     const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true, maxBuffer: 128 * 1024 * 1024 });
@@ -39,7 +39,9 @@ export function postClosureFailures({ root, verification, tag = P10_FINAL_TAG, e
   if (!head || !tagCommit || !succeeds(['merge-base', '--is-ancestor', tagCommit, head])) failures.push('tag_ancestry');
 
   const upstream = git(['rev-parse', '@{u}']);
-  if (!upstream || upstream !== head) failures.push('upstream_head');
+  if (prePushHead) {
+    if (prePushHead !== head) failures.push('pre_push_head');
+  } else if (!upstream || upstream !== head) failures.push('upstream_head');
   const status = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: root, encoding: 'utf8', windowsHide: true });
   if (status.status !== 0 || String(status.stdout || '').trim()) failures.push('worktree_clean');
 

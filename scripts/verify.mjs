@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { resolveGitCommit } from './lib/git-blob.mjs';
 import {
   executableInvocation,
   nodeInvocation,
@@ -37,7 +38,7 @@ export function createFormalVerificationPlan({ skipP1Evidence = false } = {}) {
     owner: options.owner || 'platform'
   });
   return [
-    pnpm('check', ['check'], ['pnpm check'], { env: { AIWS_CHECK_SKIP_WEB_TYPECHECK: '1' } }),
+    pnpm('check', ['check'], ['pnpm check'], { env: { AIWS_CHECK_SKIP_WEB_TYPECHECK: '1', AIWS_CHECK_CHANGED_PATHS: '' } }),
     pnpm('audit-p1', ['audit:p1', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])], ['pnpm audit:p1']),
     pnpm('scan-clean', ['scan:clean', ...(skipP1Evidence ? ['--', '--skip-evidence'] : [])], ['pnpm scan:clean']),
     pnpm('audit-parity', ['audit:parity'], ['pnpm audit:parity']),
@@ -79,11 +80,15 @@ export function createFormalVerificationPlan({ skipP1Evidence = false } = {}) {
 
 export async function main(argv = process.argv.slice(2), root = process.cwd()) {
   const started = Date.now();
+  const prePush = argv.includes('--pre-push');
+  const prePushHead = prePush ? resolveGitCommit(root, 'HEAD') : null;
+  delete process.env.AIWS_PRE_PUSH_HEAD;
   const skipP1Evidence = argv.includes('--skip-p1-evidence') || process.env.AIWS_P1_EVIDENCE_GENERATING === '1';
   const records = [];
   const advisoryFailures = [];
   let blockingFailure = null;
   const plan = createFormalVerificationPlan({ skipP1Evidence });
+  if (prePushHead) plan.find((entry) => entry.id === 'evidence-p10').env.AIWS_PRE_PUSH_HEAD = prePushHead;
   for (let index = 0; index < plan.length;) {
     const specification = plan[index];
     const group = specification.parallel_group
@@ -111,6 +116,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
     generated_at: new Date().toISOString(),
     duration_ms: Date.now() - started,
     policy: {
+      publication_check: prePush ? 'pending-push-local-head' : 'pushed-upstream-head',
       current_phase: 'P10',
       prior_phase_validation: 'immutable-evidence-only',
       current_probe_failure_blocks: true,

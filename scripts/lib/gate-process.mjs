@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 
 export const GATE_ERROR_CODES = Object.freeze({
   notFound: 'gate_command_not_found',
@@ -188,10 +189,11 @@ export function redactGateText(value, workspaceRoot = process.cwd()) {
   }
   replace(/Bearer\s+[^\s"'`]+/gi, 'Bearer <TOKEN>');
   replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?proof|cookie|secret|password)\s*[:=]\s*)[^,\s"'`]+/gi, '$1<TOKEN>');
-  replace(/file:\/\/[A-Za-z]:[^\r\n"'`)]+/gi, '<PATH>');
+  replace(/file:\/\/\/[A-Za-z]:[^\r\n"'`)]+/gi, '<PATH>');
   replace(/(?:^|[\s("'=])((?:[A-Za-z]:[\\/]|\\\\)[^\r\n"'`<>)]*)/g, (match, candidate) => `${match.slice(0, match.indexOf(candidate))}<PATH>`);
   replace(/(?:^|[\s("'=])((?:\/(?:Users|home|tmp|private|var|workspace|mnt)\/)[^\r\n"'`<>\s)]*)/g, (match, candidate) => `${match.slice(0, match.indexOf(candidate))}<PATH>`);
-  replace(/\b[A-Za-z0-9_-]{32,}\b/g, (candidate) => /^[a-f0-9]{40,64}$/i.test(candidate) ? candidate : '<TOKEN>');
+  replace(/\b(?:gh[pousr]_|github_pat_|sk-)[A-Za-z0-9_-]{8,}/g, '<TOKEN>');
+  replace(/("(?:token|api_key|access_token|refresh_token|session_proof|cookie|secret|password|private_key)"\s*:\s*)"(?:\\.|[^"\\])*"/gi, '$1"<TOKEN>"');
   return { value: text, removed };
 }
 
@@ -240,10 +242,11 @@ function boundedCapture(maxBytes) {
 
 function lineForwarder(stream, root, prefix) {
   let pending = '';
+  const decoder = new StringDecoder('utf8');
   return {
     add(chunk) {
       if (!stream) return;
-      pending += String(chunk);
+      pending += decoder.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       const lines = pending.split(/(?<=\n)/);
       pending = lines.pop() || '';
       for (const line of lines) stream.write(`${prefix}${redactGateText(line, root).value}`);
@@ -253,6 +256,7 @@ function lineForwarder(stream, root, prefix) {
       }
     },
     finish() {
+      pending += decoder.end();
       if (stream && pending) stream.write(`${prefix}${redactGateText(pending, root).value}`);
       pending = '';
     }

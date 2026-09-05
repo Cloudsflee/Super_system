@@ -17,6 +17,7 @@ import {
   validateReceiptHash
 } from '../../scripts/development-receipt.mjs';
 import { selectDevCommands } from '../../scripts/verify-dev.mjs';
+import { main as devMain, repositoryState } from '../../scripts/verify-dev.mjs';
 import { parseArguments as parseDevArguments } from '../../scripts/verify-dev.mjs';
 import { createFormalVerificationPlan } from '../../scripts/verify.mjs';
 import { commandFor } from '../../scripts/layered-gate.mjs';
@@ -105,7 +106,7 @@ test('Historical security excludes Clean duplicates while formal release owns th
     assert.ok(historical.includes(`tests/security/${file}`), file);
   }
   const release = fs.readFileSync('scripts/v3-clean-p10-release-probe.mjs', 'utf8');
-  for (const marker of ['production_image_boundary', 'command -v docker', '/var/run/docker.sock', "import('node-pty')", '10001:10001']) assert.ok(release.includes(marker), marker);
+  for (const marker of ['production_image_boundary', 'command -v docker', '/var/run/docker.sock', "import('node-pty')", 'aiws.component']) assert.ok(release.includes(marker), marker);
 });
 
 test('incremental selector covers Web, Golden, shared core, governance, and unclassified paths without external probes', () => {
@@ -302,7 +303,7 @@ test('development receipt failure classes are fixed and unknown operation owners
   try {
     const project = await state.runtime.project.createProject({ name: 'Owner missing', idempotency_key: 'owner-missing-project' }, state.principal);
     await state.runtime.operations.create({
-      actorId: state.principal.actorId, commandId: 'unknown.fixture.command', kind: 'unknown.fixture.command',
+      actorId: state.principal.actorId, commandId: 'execution.unknown.command', kind: 'execution.unknown.command',
       resourceType: 'fixture', resourceId: 'fixture', projectId: project.id,
       requestHash: sha256Hex(canonicalJson({ fixture: true })), idempotencyKey: 'owner-missing-operation', status: 'succeeded'
     });
@@ -318,3 +319,55 @@ function feature(id, domain, ownerModules, files) {
   return { id, domain, owner_modules: ownerModules, source_files: files, target_modules: [], behavior_tests: [], ui_tests: [], tests: [] };
 }
 function ids(selection) { return selection.commands.map((command) => command.id); }
+
+test('combined development layers preserve advisory status and receipts omit raw invocations', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-advisory-'));
+  const originalWrite = process.stdout.write;
+  let output = '';
+  process.stdout.write = (chunk) => { output += String(chunk); return true; };
+  try {
+    const exit = await devMain(['--all'], directory, {
+      repositoryState: () => ({ base: 'a'.repeat(40), head: 'b'.repeat(40), base_source: 'fixture', changed_paths: [] }),
+      loadCatalog: () => ({ features: [] }),
+      runGateCommand: async (invocation) => {
+        const layered = invocation.args.find((arg) => ['test:integration', 'test:security'].includes(arg));
+        return { command: '<NODE>', args: ['fixture'], exit_status: 0, signal: null, duration_ms: 1, ok: true, error_code: null, output: { stdout: layered ? JSON.stringify({ schema_version: 'aiws.v3-clean.layered-gate-result.v2', status: 'advisory', receipt: null }) : '', stderr: '' }, redaction: { passed: true, removed: 0 } };
+      }
+    });
+    assert.equal(exit, 0);
+    assert.match(output, /"status": "advisory"/);
+    const receiptDirectory = path.join(directory, '.ai-workspace', 'gate-receipts');
+    const receipt = JSON.parse(fs.readFileSync(path.join(receiptDirectory, fs.readdirSync(receiptDirectory)[0]), 'utf8'));
+    assert.equal(receipt.schema_version, 'aiws.v3-clean.dev-verification-receipt.v1');
+    assert.equal(receipt.status, 'advisory');
+    assert.equal(receipt.historical_advisory.length, 2);
+    assert.ok(receipt.commands.every((command) => !Object.hasOwn(command, 'invocation') && !Object.hasOwn(command, 'env')));
+    assert.equal(JSON.stringify(receipt).includes(process.execPath), false);
+  } finally {
+    process.stdout.write = originalWrite;
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('changed Git paths preserve Chinese names and include both sides of a rename', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-paths-'));
+  const git = (...args) => {
+    const result = spawnSync('git', args, { cwd: directory, encoding: 'utf8', windowsHide: true });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  try {
+    git('init', '-b', 'main');
+    git('config', 'user.name', 'Fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    fs.writeFileSync(path.join(directory, 'old.txt'), 'baseline');
+    git('add', '.');
+    git('-c', 'core.hooksPath=', 'commit', '-m', 'baseline');
+    const base = git('rev-parse', 'HEAD');
+    git('mv', 'old.txt', 'new.txt');
+    fs.writeFileSync(path.join(directory, '\u4e2d\u6587 space &.mjs'), 'export const value = 1;');
+    const state = repositoryState(directory, base);
+    assert.deepEqual(state.changed_paths, ['new.txt', 'old.txt', '\u4e2d\u6587 space &.mjs']);
+    assert.throws(() => repositoryState(directory, '--output=bad'), /./);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});

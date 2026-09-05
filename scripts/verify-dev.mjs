@@ -56,17 +56,17 @@ const MAINTENANCE_NO_PHASE_PATTERNS = [
   /^scripts\/development-receipt\.mjs$/,
   /^scripts\/e2e\.mjs$/
 ];
-const EXTERNAL_SIDE_EFFECT_PATTERN = /(?:github|deletion|release|assist-probe|docker-runner|bridge-runner|host-runner|parser-probe)/i;
+const EXTERNAL_SIDE_EFFECT_PATTERN = /(?:scripts\/[^\s]*(?:github|deletion|release|assist|docker-runner|bridge-runner|host-runner|parser)[^\s]*-probe\.mjs|\btest:release\b)/i;
 
-export async function main(argv = process.argv.slice(2), root = process.cwd()) {
+export async function main(argv = process.argv.slice(2), root = process.cwd(), dependencies = {}) {
   const started = Date.now();
   let parsed;
   try { parsed = parseArguments(argv); }
   catch (error) { process.stderr.write(`${error.message}\n`); return 2; }
   let repository;
-  try { repository = repositoryState(root, parsed.base); }
+  try { repository = (dependencies.repositoryState || repositoryState)(root, parsed.base); }
   catch (error) { process.stderr.write(`${error.code || 'verify_dev_repository_error'}:${error.message}\n`); return 2; }
-  const catalog = loadCatalog(root);
+  const catalog = (dependencies.loadCatalog || loadCatalog)(root);
   const selection = selectDevCommands({ changedPaths: repository.changed_paths, catalog, all: parsed.all });
   const baseResult = {
     schema_version: DEV_RESULT_SCHEMA,
@@ -91,7 +91,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
   if (!cleanBlocking.length) {
     for (const command of selection.commands) {
       process.stdout.write(`\n== dev:${command.id} ==\n`);
-      const result = await runGateCommand(command.invocation, {
+      const result = await (dependencies.runGateCommand || runGateCommand)(command.invocation, {
         cwd: root,
         workspaceRoot: root,
         cwdRole: 'repository-root',
@@ -106,8 +106,9 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
         result.exit_status = 1;
         result.output.stderr = `${result.output.stderr}\nlayered_gate_result_missing`.trim();
       }
-      const advisory = command.historical && result.ok && layered?.status === 'advisory';
-      const record = { ...command, ...result, layered_status: layered?.status || null, advisory };
+      const advisory = result.ok && layered?.status === 'advisory';
+      const { invocation, env, ...selectionMetadata } = command;
+      const record = { ...selectionMetadata, ...result, layered_status: layered?.status || null, advisory };
       records.push(record);
       if (advisory) historicalAdvisory.push({ command: command.id, receipt: layered.receipt || null });
       if (!result.ok || (!command.historical && layered?.status === 'failed')) {
@@ -118,8 +119,8 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
   }
   const status = cleanBlocking.length ? 'failed' : historicalAdvisory.length ? 'advisory' : 'passed';
   const receipt = {
-    schema_version: DEV_RECEIPT_SCHEMA,
     ...baseResult,
+    schema_version: DEV_RECEIPT_SCHEMA,
     status,
     generated_at: new Date().toISOString(),
     duration_ms: Date.now() - started,
@@ -162,12 +163,12 @@ export function repositoryState(root, requestedBase = null) {
   const base = requestedBase ? validateRequestedBase(root, requestedBase) : defaultBase(root);
   const changed = new Set();
   for (const args of [
-    ['diff', '--name-only', '--diff-filter=ACDMRTUXB', `${base.commit}...${head}`, '--'],
-    ['diff', '--cached', '--name-only', '--diff-filter=ACDMRTUXB', '--'],
-    ['diff', '--name-only', '--diff-filter=ACDMRTUXB', '--'],
-    ['ls-files', '--others', '--exclude-standard']
+    ['diff', '-z', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB', `${base.commit}...${head}`, '--'],
+    ['diff', '-z', '--cached', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB', '--'],
+    ['diff', '-z', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB', '--'],
+    ['ls-files', '-z', '--others', '--exclude-standard']
   ]) {
-    for (const file of gitText(root, args).split(/\r?\n/).map(normalizePath).filter(Boolean)) changed.add(file);
+    for (const file of gitText(root, args).split('\0').map(normalizePath).filter(Boolean)) changed.add(file);
   }
   return { base: base.commit, base_source: base.source, head, changed_paths: [...changed].sort() };
 }
@@ -241,6 +242,21 @@ export function selectDevCommands({ changedPaths, catalog, all = false }) {
 
   collapseLayered(commands, 'integration');
   collapseLayered(commands, 'security');
+  const changedTests = paths.filter((file) => /^tests\/.*\.test\.mjs$/.test(file))
+    .filter((file) => {
+      if (file === 'tests/security/boundary.test.mjs') return false;
+      const phase = file.match(/^tests\/p(\d+)\//)?.[1];
+      if (phase && commands.has(`test-p${phase}`)) return false;
+      if (file.startsWith('tests/integration/') && (commands.has('integration') || commands.has('integration-historical'))) return false;
+      if (file === 'tests/unit/recovery-golden.test.mjs' && (commands.has('integration') || commands.has('integration-historical'))) return false;
+      return true;
+    });
+  if (changedTests.length) {
+    commands.set('changed-tests', { id: 'changed-tests', invocation: nodeInvocation('--test', changedTests), satisfies: changedTests, reasons: ['changed-behavior-tests'], owner: 'testing', env: {}, timeoutMs: 900_000, historical: false, layered: false });
+  }
+  if (paths.includes('tests/security/boundary.test.mjs') && !commands.has('security') && !commands.has('security-clean')) {
+    commands.set('boundary-static', { id: 'boundary-static', invocation: nodeInvocation('--test', ['--test-name-pattern=resolved compose|production build context|broker readiness|broker spec', 'tests/security/boundary.test.mjs']), satisfies: ['tests/security/boundary.test.mjs#compose-and-static-contracts'], reasons: ['image-runtime-boundary-requires-formal-release'], owner: 'testing', env: {}, timeoutMs: 30_000, historical: false, layered: false });
+  }
   const check = commands.get('check');
   if (!all) check.env.AIWS_CHECK_CHANGED_PATHS = JSON.stringify(paths.filter((file) => /\.(?:mjs|js|ts|tsx)$/.test(file)));
   if (commands.has('build')) {
@@ -251,6 +267,12 @@ export function selectDevCommands({ changedPaths, catalog, all = false }) {
     check.satisfies = [...new Set([...check.satisfies, 'pnpm --filter @aiws/web typecheck'])];
   }
   const selected = [...commands.values()].sort((left, right) => orderOf(left.id) - orderOf(right.id) || left.id.localeCompare(right.id));
+  for (const command of selected) {
+    const phase = command.id.match(/^test-p(\d+)$/)?.[1];
+    const prefix = phase ? `tests/p${phase}/` : command.id === 'web-test' ? 'apps/web/src/test/' : null;
+    const references = prefix ? impacts.features.flatMap((feature) => ['behavior_tests', 'ui_tests', 'tests'].flatMap((field) => (feature[field] || []).filter((file) => file.startsWith(prefix)))) : [];
+    command.satisfies = [...new Set([...command.satisfies, ...references])];
+  }
   if (selected.some((command) => EXTERNAL_SIDE_EFFECT_PATTERN.test([command.id, command.invocation.args.join(' ')].join(' ')))) {
     throw new Error('verify_dev_external_probe_selected');
   }
