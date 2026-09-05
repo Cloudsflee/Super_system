@@ -44,7 +44,7 @@ try {
   projectId = created.project?.id || created.id;
   if (!projectId) throw new Error('round2_project_id_missing');
   outcome.steps.push({ step: 'project.create', status: 'passed', project_id: projectId });
-  await api('POST', `/api/v2/projects/${projectId}/repository-connections`, { provider: 'git', source_kind: 'git', source_locator: 'https://github.com/Cloudsflee/designsignal-v5-replay.git', metadata: { source_commit: baseCommit }, expected_revision: 0 });
+  await api('POST', `/api/v2/projects/${projectId}/repository-connections`, { provider: 'git', source_kind: 'git', source_locator: 'https://github.com/Cloudsflee/designsignal-v5-replay.git', source_revision: baseCommit, expected_revision: 0 });
   const intake = await api('POST', `/api/v2/projects/${projectId}/intake`, { mode: 'brainstorm', content: { objective: brief.goal }, expected_revision: 1 });
   await waitOperation(intake.operation.operation_id);
   const sourceRecords = [];
@@ -61,6 +61,8 @@ try {
   if (projected.operation?.operation_id) await waitOperation(projected.operation.operation_id);
   const selection = await api('POST', `/api/v2/projects/${projectId}/context/selections`, { project_id: projectId, query: 'DesignSignal reliability workstreams', token_budget: 32000, expected_revision: 0 });
   await api('POST', `/api/v2/projects/${projectId}/context/packs`, { project_id: projectId, selection_id: selection.selection.id, require_authoritative: false, expected_revision: 0 });
+  const draft = await api('GET', `/api/v2/projects/${projectId}/workflow-draft`);
+  await api('POST', `/api/v2/projects/${projectId}/workflow-draft`, { graph: { name: expected.name, nodes: expected.workstreams.map((item) => ({ id: item.id, kind: 'workstream', title: item.name })) }, expected_revision: (draft.workflow || draft).revision });
   const refreshed = await api('GET', `/api/v2/projects/${projectId}`);
   const generation = await api('POST', `/api/v2/projects/${projectId}/workflow-generations`, { mode: 'initial', expected_revision: (refreshed.project || refreshed).revision });
   generationId = generation.generation?.id;

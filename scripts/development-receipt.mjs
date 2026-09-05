@@ -123,6 +123,7 @@ function buildReceiptBody(db, project, window) {
   const executions = db.prepare('SELECT * FROM executions WHERE project_id=? AND created_at>=? AND created_at<=? ORDER BY created_at,id').all(...params);
   const executionRecords = executions.map((row) => ({
     execution_id: row.id,
+    started: row.started_at != null,
     status: row.status,
     generation: Number(row.generation),
     parent_execution_id: row.parent_execution_id || null,
@@ -131,7 +132,7 @@ function buildReceiptBody(db, project, window) {
     error_code: row.error_code || null,
     duration_ms: duration(row.started_at || row.created_at, row.completed_at || (terminalExecution(row.status) ? row.updated_at : null))
   }));
-  const rootGroups = groupCount(executionRecords.filter((row) => row.parent_execution_id == null), (row) => row.input_fingerprint);
+  const rootGroups = groupCount(executionRecords.filter((row) => row.parent_execution_id == null && row.started), (row) => row.input_fingerprint);
   const fullReruns = [...rootGroups.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
 
   const attempts = db.prepare(`SELECT a.* FROM task_attempts a JOIN executions e ON e.id=a.execution_id
@@ -188,7 +189,7 @@ function buildReceiptBody(db, project, window) {
       stages: STAGES.map((stage) => stageMetric(stage, checkpoints.filter((row) => row.stage === stage)))
     },
     workflow: {
-      generations: { total: generations.length, retries: generations.filter((row) => Number(row.attempt) > 1 || row.retry_of_generation_id).length, attempts: sum(generations, (row) => Number(row.attempt)), phases: counts(generations, (row) => row.phase, 'phase') },
+      generations: { total: generations.length, retries: generations.filter((row) => Number(row.attempt) > 1 || row.retry_of_generation_id).length, attempts: generations.length, phases: counts(generations, (row) => row.phase, 'phase') },
       critics: { total: critics.length, statuses: counts(critics, (row) => row.status, 'status') },
       proposals: {
         workflow_total: workflowProposals.length,
@@ -240,6 +241,7 @@ export function validateReceiptHash(receipt) {
 }
 
 function validateDatabase(db) {
+  if (db.prepare('SELECT family FROM schema_meta').get()?.family !== 'v3-clean') throw receiptError('development_receipt_schema_invalid');
   const version = Number(db.prepare('PRAGMA user_version').get().user_version);
   const ledger = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => Number(row.version));
   if (version !== 9 || JSON.stringify(ledger) !== JSON.stringify([1, 2, 3, 4, 5, 6, 7, 8, 9])) throw receiptError('development_receipt_schema_invalid', { user_version: version, migration_ledger: ledger });

@@ -189,7 +189,7 @@ test('development receipt reports persisted execution metrics and leaves SQLite,
     }, state.principal);
     assert.equal(replanned.execution.parent_execution_id, completed.id);
     const projectRow = state.runtime.db.get('SELECT * FROM projects WHERE id=?', [fixture.project.id]);
-    await state.runtime.execution.create(fixture.project.id, {
+    const rerun = await state.runtime.execution.create(fixture.project.id, {
       repository_workspace_id: fixture.workspace.id,
       context_pack_id: fixture.pack.id,
       runner_profile_id: fixture.profile.id,
@@ -197,6 +197,8 @@ test('development receipt reports persisted execution metrics and leaves SQLite,
       expected_revision: projectRow.revision,
       idempotency_key: 'development-receipt-full-rerun'
     }, state.principal);
+    const rerunStarted = await state.runtime.execution.start(rerun.execution.id, { expected_revision: rerun.execution.revision, idempotency_key: 'development-receipt-full-rerun-start' }, state.principal);
+    await waitOperation(state.runtime, rerunStarted.operation.operation_id, state.principal.actorId);
 
     const approval = await state.runtime.assist.createApproval({
       project_id: fixture.project.id,
@@ -319,6 +321,39 @@ function feature(id, domain, ownerModules, files) {
   return { id, domain, owner_modules: ownerModules, source_files: files, target_modules: [], behavior_tests: [], ui_tests: [], tests: [] };
 }
 function ids(selection) { return selection.commands.map((command) => command.id); }
+
+test('generation attempts count rows once and time windows exclude later retries', async () => {
+  let calls = 0;
+  const state = await openP10({ runtime: { generator: async () => {
+    calls += 1;
+    if (calls === 1) throw Object.assign(new Error('provider_timeout'), { code: 'provider_timeout' });
+    return { nodes: [{ id: 'ready', kind: 'workstream', title: 'Ready' }] };
+  } } });
+  let closed = false;
+  try {
+    const flow = await prepare(state, 'generation-count');
+    const current = state.runtime.project.getProject(flow.project.id, state.principal);
+    const first = await state.runtime.project.startGeneration(flow.project.id, { expected_revision: current.revision, idempotency_key: 'receipt-generation-first' }, state.principal);
+    await waitOperation(state.runtime, first.operation.operation_id, state.principal.actorId);
+    const failed = state.runtime.project.getGeneration(first.generation.id, state.principal);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const retry = await state.runtime.project.retryGeneration(failed.id, { expected_revision: failed.revision, idempotency_key: 'receipt-generation-retry' }, state.principal);
+    await waitOperation(state.runtime, retry.operation.operation_id, state.principal.actorId);
+    await state.runtime.close(); closed = true;
+    const full = generateDevelopmentReceipt({ home: state.root, projectId: flow.project.id });
+    assert.equal(full.workflow.generations.total, 2);
+    assert.equal(full.workflow.generations.attempts, 2);
+    assert.equal(full.workflow.generations.retries, 1);
+    assert.equal(full.executions.full_reruns, 0);
+    const window = generateDevelopmentReceipt({ home: state.root, projectId: flow.project.id, from: failed.created_at, to: failed.created_at });
+    assert.equal(window.workflow.generations.attempts, 1);
+    assert.equal(window.workflow.generations.retries, 0);
+    assert.equal(full.failure_records.filter((row) => row.error_code === 'provider_timeout').length, 1);
+  } finally {
+    if (!closed) await state.runtime.close();
+    fs.rmSync(state.root, { recursive: true, force: true });
+  }
+});
 
 test('combined development layers preserve advisory status and receipts omit raw invocations', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-advisory-'));

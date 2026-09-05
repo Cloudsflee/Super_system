@@ -216,6 +216,9 @@ count each failed generic operation once, not its repeated domain projections;
 expired interaction timestamps are not counted as human answers or approvals.
 The window selects records created between its endpoints (inclusive), with
 status observed at the read-only snapshot. Missing timings remain null.
+Generation attempts count immutable rows once, rather than summing ordinal
+attempt numbers. Full reruns require multiple started root executions with the
+same pinned-input fingerprint; unused draft executions do not count as reruns.
 
 Maintenance verification and four-role rollback artifacts are recorded at
 `docs/evidence/post-p10-development-reliability-20260905/`. They do not mutate
