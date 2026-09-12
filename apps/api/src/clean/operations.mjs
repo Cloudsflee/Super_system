@@ -353,6 +353,12 @@ export class OperationService {
       if (error?.code === 'provider_request_failed' && error?.details && typeof error.details === 'object') {
         for (const key of ['provider_code', 'rpc_method', 'provider_error_type']) if (typeof error.details[key] === 'string' && error.details[key]) errorDetails[key] = error.details[key].slice(0, 120);
       }
+      if (error?.code === 'redaction_blocked' && error?.details && typeof error.details === 'object') {
+        errorDetails.redaction_reasons = Array.isArray(error.details.redactions)
+          ? error.details.redactions.slice(0, 20).map((item) => ({ path: String(item?.path || '').slice(0, 160), reason: String(item?.reason || '').slice(0, 80) }))
+          : [];
+        errorDetails.receipt_status = 'redacted_failure';
+      }
       return await this.fail(operationId, { expectedRevision: latest.revision, errorCode: /^[a-z][a-z0-9_.-]{2,100}$/.test(String(error?.code || '')) ? error.code : 'operation_failed', errorDetails });
     } finally {
       this.active.delete(String(operationId));

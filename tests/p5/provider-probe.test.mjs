@@ -75,6 +75,22 @@ test('process provider request failures preserve diagnostic RPC fields without c
   assert.doesNotMatch(error.message, /sk_live_fixture/);
 });
 
+test('redaction failures expose only bounded field reasons', async () => {
+  const { open, close } = await import('./helpers.mjs');
+  const state = await open();
+  try {
+    const error = new Error('payload contains a restricted value');
+    error.code = 'redaction_blocked';
+    error.details = { redactions: [{ path: '$.candidate.prompt', reason: 'restricted_field', value: 'secret-value' }] };
+    const failed = await state.runtime.operations.create({ actorId: state.principal.actorId, commandId: 'p5.redaction-diagnostics', resourceType: 'fixture', resourceId: 'fixture', requestHash: 'a'.repeat(64), idempotencyKey: 'p5-redaction-diagnostics', status: 'accepted' });
+    await state.runtime.operations.run(failed.operation_id, async () => { throw error; });
+    const operation = state.runtime.operations.get(failed.operation_id, { actorId: state.principal.actorId });
+    assert.equal(operation.error_code, 'redaction_blocked');
+    assert.deepEqual(operation.error_details.redaction_reasons, [{ path: '$.candidate.prompt', reason: 'restricted_field' }]);
+    assert.equal(Object.hasOwn(operation.error_details.redaction_reasons[0], 'value'), false);
+  } finally { await close(state); }
+});
+
 test('isolated provider cleanup removes read-only Git pack files', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'p5-provider-cleanup-'));
   const pack = path.join(home, '.tmp', 'plugins-clone-fixture', '.git', 'objects', 'pack', 'fixture.pack');
