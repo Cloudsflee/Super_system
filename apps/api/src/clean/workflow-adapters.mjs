@@ -61,6 +61,9 @@ export class ProcessWorkflowGenerator {
         }
       }
       if (!response || Array.isArray(response) || typeof response !== 'object') throw new PlatformError('provider_output_invalid_json', 'provider JSON object is required', {}, 502);
+      if (input.purpose !== 'critic' && Array.isArray(response.nodes) && response.nodes.some((node) => String(node?.kind || node?.node_kind || 'task') === 'check')) {
+        throw new PlatformError('provider_workflow_invalid', 'provider workflow must attach checks to business tasks', {}, 422);
+      }
       const outputHash = sha256Hex(canonicalJson(response));
       const receipt = { adapter: 'process-app-server', profile_id: leased.profile_id, profile_revision: leased.profile_revision, profile_hash: leased.profile_hash, input_sha256: sha256Hex(prompt), output_sha256: outputHash, turn_completed: true };
       return { candidate: response, provider_receipt: receipt, input_sha256: sha256Hex(prompt), output_sha256: outputHash };
@@ -195,12 +198,25 @@ export class LocalGitRepositoryAdapter {
     try { const result = await execFileAsync(this.git, ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=', '-C', root, ...args], { encoding: 'buffer', shell: false, windowsHide: true, timeout: 30000, maxBuffer: this.maxBytes, env: { PATH: process.env.PATH || process.env.Path || '', SystemRoot: process.env.SystemRoot || '', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1' } }); return result.stdout; }
     catch { throw new PlatformError('repository_probe_failed', 'Git source inspection failed', {}, 422); }
   }
+  async gitDiffClean(root, relative) {
+    try {
+      await execFileAsync(this.git, ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=', '-C', root, 'diff', '--no-ext-diff', '--quiet', '--', relative], { encoding: 'buffer', shell: false, windowsHide: true, timeout: 30000, maxBuffer: this.maxBytes, env: { PATH: process.env.PATH || process.env.Path || '', SystemRoot: process.env.SystemRoot || '', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1' } });
+      return true;
+    } catch (error) {
+      // `git diff --quiet` exits 1 for a real worktree difference. Other
+      // failures (for example an unavailable repository) are probe failures.
+      if (Number(error?.code) === 1) return false;
+      throw new PlatformError('repository_probe_failed', 'Git source inspection failed', {}, 422);
+    }
+  }
   async probe(source = {}) {
     if (source.kind === 'none') return { revision: '', hash: '' };
     const root = this.root(source);
     const commit = String(await this.gitBytes(root, ['rev-parse','--verify','HEAD^{commit}'])).trim();
     const tree = String(await this.gitBytes(root, ['rev-parse','--verify',commit + '^{tree}'])).trim();
     if (!/^[a-f0-9]{40}$/.test(commit) || !/^[a-f0-9]{40}$/.test(tree)) throw new PlatformError('repository_probe_failed', 'Git revision is invalid', {}, 422);
+    const worktreeStatus = String(await this.gitBytes(root, ['status', '--porcelain=v1', '--untracked-files=all']));
+    if (worktreeStatus.trim()) throw new PlatformError('source_drift', 'Git worktree is dirty', {}, 409);
     const entries = []; let size = 0;
     const raw = String(await this.gitBytes(root, ['ls-tree','-rz','--full-tree',commit]));
     for (const record of raw.split('\0').filter(Boolean)) {
@@ -210,9 +226,11 @@ export class LocalGitRepositoryAdapter {
       const bytes = await this.gitBytes(root, ['cat-file','blob',match[3]]);
       size += bytes.length; if (size > this.maxBytes || entries.length >= 10000) throw new PlatformError('repository_source_too_large', 'source quota exceeded', {}, 422);
       if (!fs.existsSync(file) || !fs.lstatSync(file).isFile()) throw new PlatformError('source_drift', 'tracked file is missing', {}, 409);
-      // Git filters and autocrlf are observed with hash-object; materialization always uses commit bytes.
+      // `hash-object` hashes the worktree bytes. When a clean/smudge filter
+      // (notably core.autocrlf) changes those bytes, defer to Git's diff
+      // machinery, which compares the filtered worktree to the pinned commit.
       const workingBlob = String(await this.gitBytes(root, ['hash-object','--',relative])).trim();
-      if (workingBlob !== match[3]) throw new PlatformError('source_drift', 'tracked file differs from the pinned commit', {}, 409);
+      if (workingBlob !== match[3] && !(await this.gitDiffClean(root, relative))) throw new PlatformError('source_drift', 'tracked file differs from the pinned commit', {}, 409);
       entries.push({ path: relative, mode: match[1], blob_sha1: match[3], sha256: sha256Hex(bytes), byte_length: bytes.length });
     }
     entries.sort((a,b) => a.path.localeCompare(b.path));

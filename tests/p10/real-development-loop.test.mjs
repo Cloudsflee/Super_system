@@ -79,6 +79,22 @@ test('local Git reads commit blobs, verifies drift and materializes without touc
   } finally { fs.rmSync(root,{recursive:true,force:true}); }
 });
 
+test('local Git accepts clean autocrlf worktrees while rejecting real content drift', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-local-git-autocrlf-')); const source = path.join(root, 'source'); fs.mkdirSync(source);
+  const git = (args) => execFileSync('git', ['-C', source, ...args], { encoding: 'utf8', windowsHide: true });
+  try {
+    git(['init', '-q']); git(['config', 'user.name', 'Fixture']); git(['config', 'user.email', 'fixture@example.test']);
+    git(['config', 'core.autocrlf', 'true']); fs.writeFileSync(path.join(source, 'README.md'), 'baseline\n'); git(['add', '.']); git(['commit', '-qm', 'baseline']);
+    // Materialize the CRLF-smudged representation through Git itself so the
+    // index remains clean under core.autocrlf.
+    git(['checkout', '--', 'README.md']);
+    const adapter = new LocalGitRepositoryAdapter(); const pin = await adapter.probe({ kind: 'local', path: source });
+    assert.equal(pin.file_count, 1);
+    fs.writeFileSync(path.join(source, 'README.md'), 'changed\r\n');
+    await assert.rejects(adapter.probe({ kind: 'local', path: source }), { code: 'source_drift' });
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('provider JSON gets one repair and zeroizes its lease after a separate critic turn', async () => {
   const buffers=[];let calls=0,threads=0;
   const adapter={ async startThread(){threads++;return {thread_id:String(threads)};},async startTurn(){calls++;return events(calls===1?'invalid':JSON.stringify(candidate()));},async close(){} };

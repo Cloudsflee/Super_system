@@ -87,6 +87,18 @@ function fileManifest(root) {
   walk(root); return rows.sort((a, b) => a.path.localeCompare(b.path));
 }
 
+function sourceSnapshot(source) {
+  const commit = git(source, ['rev-parse', 'HEAD']);
+  const tree = git(source, ['rev-parse', 'HEAD^{tree}']);
+  const entries = git(source, ['ls-tree', '-r', '-z', '--full-tree', 'HEAD']).split('\0').filter(Boolean).map((entry) => {
+    const match = /^(\d{6}) (\w+) ([a-f0-9]{40})\t(.+)$/.exec(entry);
+    if (!match) throw new Error('repository_source_invalid');
+    const bytes = execFileSync('git', ['-C', source, 'cat-file', 'blob', match[3]], { encoding: 'buffer', windowsHide: true });
+    return { path: match[4].replaceAll('\\', '/'), mode: match[1], blob_sha1: match[3], sha256: sha256Hex(bytes), byte_length: bytes.length };
+  }).sort((a, b) => a.path.localeCompare(b.path));
+  return { commit, tree, manifest_sha256: sha256Hex(canonicalJson({ commit, tree, entries })), file_count: entries.length };
+}
+
 function copyTree(source, target) {
   fs.mkdirSync(target, { recursive: true, mode: 0o700 });
   for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
@@ -104,6 +116,10 @@ function rollbackVerification(root, runId) {
   db.close();
   for (const component of ['cas', 'vault', 'workspace', 'broker', 'bridge', 'parser', 'web']) fs.mkdirSync(path.join(baseline, component), { recursive: true });
   const expected = fileManifest(baseline);
+  // Preserve a manifest of the actual run state before replaying rollback in
+  // an isolated volume. The apply step never mutates the live run root.
+  const managed = ['data', 'cas', 'vault', 'workspaces', 'runner-homes', 'receipts'];
+  const before = Object.fromEntries(managed.map((name) => [name, fileManifest(path.join(root, name))]));
   const dryRun = { status: expected.length > 0 ? 0 : 1, writes: 0 };
   copyTree(baseline, isolated);
   const actual = fileManifest(isolated);
@@ -117,7 +133,9 @@ function rollbackVerification(root, runId) {
   const existingNames = new Set(verifyDb.query("SELECT name FROM sqlite_schema WHERE type='table'").map((row) => row.name));
   const p10TablesAbsent = p10Names.filter((name) => existingNames.has(name));
   verifyDb.close();
-  const result = { status: dryRun.status === 0 && !mismatches.length && integrity.user_version === 8 && JSON.stringify(ledger) === JSON.stringify([1, 2, 3, 4, 5, 6, 7, 8]) && !p10TablesAbsent.length ? 'passed' : 'failed', dry_run: { status: dryRun.status, writes: dryRun.writes }, apply: { status: mismatches.length || p10TablesAbsent.length ? 1 : 0 }, restored_user_version: integrity.user_version, ledger, p10_tables_absent: p10TablesAbsent, byte_exact_mismatches: mismatches, baseline_manifest_sha256: sha256Hex(canonicalJson(expected)), isolated_manifest_sha256: sha256Hex(canonicalJson(actual)) };
+  const result = { status: dryRun.status === 0 && !mismatches.length && integrity.user_version === 8 && JSON.stringify(ledger) === JSON.stringify([1, 2, 3, 4, 5, 6, 7, 8]) && !p10TablesAbsent.length ? 'passed' : 'failed', dry_run: { status: dryRun.status, writes: dryRun.writes }, apply: { status: mismatches.length || p10TablesAbsent.length ? 1 : 0 }, restored_user_version: integrity.user_version, ledger, p10_tables_absent: p10TablesAbsent, byte_exact_mismatches: mismatches, baseline_manifest_sha256: sha256Hex(canonicalJson(expected)), isolated_manifest_sha256: sha256Hex(canonicalJson(actual)), managed_before_manifest_sha256: sha256Hex(canonicalJson(before)) };
+  fs.mkdirSync(path.join(root, 'receipts'), { recursive: true, mode: 0o700 });
+  writeJson(path.join(root, 'receipts', 'rollback-actual.json'), result);
   fs.rmSync(baseline, { recursive: true, force: true }); fs.rmSync(isolated, { recursive: true, force: true });
   return result;
 }
@@ -173,10 +191,15 @@ function candidateSummary(candidate) {
 
 async function run(input) {
   const source = assertSource(input.source);
+  const sourceBefore = sourceSnapshot(source);
   const runId = `run-${Date.now()}-${randomBytes(4).toString('hex')}`;
   const runRoot = resolveRunRoot(input.root, source, runId);
   const root = runRoot.root;
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  const managedBefore = Object.fromEntries(['data', 'cas', 'vault', 'workspaces', 'runner-homes', 'receipts'].map((name) => {
+    const manifest = fileManifest(path.join(root, name));
+    return [name, sha256Hex(canonicalJson(manifest))];
+  }));
   const objective = String(input.request || 'Add a concrete, reviewable repository change and prove it with node_test and git_diff_check.');
   const config = {
     runtime: 'v3-clean', apiVersion: '2', host: '127.0.0.1', port: 0,
@@ -286,10 +309,18 @@ async function run(input) {
     const plan = JSON.parse(executionRow.plan_json || '{}');
     const attempts = runtime.db.query('SELECT * FROM task_attempts WHERE execution_id=? ORDER BY generation,task_ordinal,attempt_no,id', [execution.execution.id]);
     const contracts = attempts.map((attempt) => { const spec = runtime.db.get('SELECT spec_json FROM job_specs WHERE id=?', [attempt.job_spec_id]); const value = spec ? JSON.parse(spec.spec_json) : {}; return value.input_refs?.find((ref) => ref.type === 'task_contract')?.hash || null; }).filter(Boolean);
+    const sourceAfter = sourceSnapshot(source);
+    const sourceUnchanged = sourceBefore.commit === sourceAfter.commit
+      && sourceBefore.tree === sourceAfter.tree
+      && sourceBefore.manifest_sha256 === sourceAfter.manifest_sha256;
+    if (!sourceUnchanged) throw Object.assign(new Error('source_drift'), { code: 'source_drift', details: { source_before: sourceBefore, source_after: sourceAfter } });
     const rollback = rollbackVerification(root, runId);
     if (rollback.status !== 'passed') throw Object.assign(new Error('rollback_verification_failed'), { code: 'rollback_verification_failed' });
-    const checkResults = runtime.db.query('SELECT check_id,status,command_sha256,input_sha256,output_sha256,details_json FROM test_results WHERE execution_id=? ORDER BY id', [execution.execution.id]).map((row) => ({ check_id: row.check_id, status: row.status, exit_status: Number(JSON.parse(row.details_json || '{}').exit_code ?? 0), command_sha256: row.command_sha256, input_sha256: row.input_sha256, output_sha256: row.output_sha256 }));
-    receipt = { ...receipt, status: 'passed', project_id: project.id, execution_id: execution.execution.id, generation_id: generated.id, provider_profile_id: profile.id, provider_profile_revision: providerPin.profile_revision, provider_profile_hash: providerPin.profile_hash, model: 'gpt-5.6-sol', reasoning_effort: 'high', generation_input_hash: generationRow?.input_sha256 || null, generation_output_hash: generationRow?.candidate_sha256 || null, critic_coverage_hash: criticCoverageHash, workflow_hash: executionRow.workflow_hash, brief_hash: executionRow.brief_hash, context_pack_hash: executionRow.context_pack_hash, repository: { commit_sha: line.source_revision, source_manifest_sha256: line.source_hash, workspace_hash: executionRow.repository_hash }, task_contract_hashes: contracts, actual_argv: plan.tasks?.map((task) => ({ task_id: task.id, command: task.argv?.[0] || null, argument_count: Math.max(0, (task.argv || []).length - 1) })) || [], runner_profile_id: executionRow.runner_profile_id, runner_profile_revision: executionRow.runner_profile_revision, runner_receipt_hashes: attempts.map((item) => item.runner_receipt_id).filter(Boolean), output_manifest_hashes: attempts.map((item) => item.output_sha256).filter(Boolean), check_results: checkResults, evidence_capture_count: Number(runtime.db.get('SELECT count(*) AS count FROM assets WHERE execution_id=?', [execution.execution.id])?.count || 0), cursor_before: cursorBefore, cursor_after: cursorAfter, root_redirected: runRoot.redirected, rollback };
+    const checkResults = runtime.db.query('SELECT check_id,status,command_sha256,input_sha256,output_sha256,details_json FROM test_results WHERE execution_id=? ORDER BY id', [execution.execution.id]).map((row) => {
+      let details = {}; try { details = JSON.parse(row.details_json || '{}'); } catch { details = {}; }
+      return { check_id: row.check_id, status: row.status, exit_status: Number(details.exit_code ?? 0), command_sha256: row.command_sha256, input_sha256: row.input_sha256, output_sha256: row.output_sha256 };
+    });
+    receipt = { ...receipt, status: 'passed', project_id: project.id, execution_id: execution.execution.id, generation_id: generated.id, provider_profile_id: profile.id, provider_profile_revision: providerPin.profile_revision, provider_profile_hash: providerPin.profile_hash, model: 'gpt-5.6-sol', reasoning_effort: 'high', generation_input_hash: generationRow?.input_sha256 || null, generation_output_hash: generationRow?.candidate_sha256 || null, critic_coverage_hash: criticCoverageHash, workflow_hash: executionRow.workflow_hash, brief_hash: executionRow.brief_hash, context_pack_hash: executionRow.context_pack_hash, repository: { commit_sha: line.source_revision, source_manifest_sha256: line.source_hash, workspace_hash: executionRow.repository_hash }, source_before: sourceBefore, source_after: sourceAfter, source_unchanged: sourceUnchanged, managed_before: managedBefore, task_contract_hashes: contracts, actual_argv: plan.tasks?.map((task) => ({ task_id: task.id, command: task.argv?.[0] || null, argument_count: Math.max(0, (task.argv || []).length - 1) })) || [], runner_profile_id: executionRow.runner_profile_id, runner_profile_revision: executionRow.runner_profile_revision, runner_receipt_hashes: attempts.map((item) => item.runner_receipt_id).filter(Boolean), output_manifest_hashes: attempts.map((item) => item.output_sha256).filter(Boolean), check_results: checkResults, evidence_capture_count: Number(runtime.db.get('SELECT count(*) AS count FROM assets WHERE execution_id=?', [execution.execution.id])?.count || 0), cursor_before: cursorBefore, cursor_after: cursorAfter, root_redirected: runRoot.redirected, rollback };
     receipt.receipt_sha256 = sha256Hex(canonicalJson(receipt));
     writeJson(path.join(root, 'receipts', 'final.json'), redacted(receipt, root));
     return { ...redacted(receipt, root), run_root: '<redacted-path>' };
