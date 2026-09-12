@@ -7,6 +7,26 @@ import { ProcessAppServerAdapter } from './app-server-adapter.mjs';
 import { treeManifest, containedPath, relativePath, taskContract } from './runner-input-provider.mjs';
 import { canonicalJson, sha256Hex } from './canonical.mjs';
 
+function extractJsonObject(text) {
+  const source = String(text || '');
+  for (let start = source.indexOf('{'); start >= 0; start = source.indexOf('{', start + 1)) {
+    let depth = 0; let quoted = false; let escaped = false;
+    for (let index = start; index < source.length; index += 1) {
+      const character = source[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') quoted = false;
+        continue;
+      }
+      if (character === '"') { quoted = true; continue; }
+      if (character === '{') depth += 1;
+      else if (character === '}' && --depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
 const execFileAsync = promisify(execFile);
 
 // Real workflow generation is deliberately provider-backed.  There is no
@@ -34,11 +54,8 @@ export class ProcessWorkflowGenerator {
         if (!message?.trim()) throw new PlatformError('provider_output_empty', 'provider returned no JSON response', {}, 502);
         try { response = JSON.parse(message); break; } catch {
           if (attempt === 1) {
-            const start = message.indexOf('{');
-            const end = message.lastIndexOf('}');
-            if (start >= 0 && end > start) {
-              try { response = JSON.parse(message.slice(start, end + 1)); break; } catch { /* retain the stable failure below */ }
-            }
+            const extracted = extractJsonObject(message);
+            if (extracted) { try { response = JSON.parse(extracted); break; } catch { /* retain the stable failure below */ } }
             throw new PlatformError('provider_output_invalid_json', 'provider JSON repair failed', {}, 502);
           }
         }
@@ -86,6 +103,8 @@ export class ProcessWorkflowCritic {
     return { ...assessed, status, provider: 'process-app-server-critic', candidate_sha256: sha256Hex(canonicalJson(input.candidate)), coverage_sha256: sha256Hex(canonicalJson(assessed.coverage)), provider_receipt: result.provider_receipt };
   }
 }
+
+export { extractJsonObject };
 
 const REGISTERED_COMMANDS = new Set(['node', 'pnpm', 'npm', 'git', 'codex']);
 const EXECUTION_MODES = new Set(['read', 'write']);

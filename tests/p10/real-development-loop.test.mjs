@@ -8,7 +8,7 @@ import { open, close } from './helpers.mjs';
 import { prepare, waitOperation } from '../p6/helpers.mjs';
 import { createAssistPrerequisites } from '../p5/helpers.mjs';
 import { HostRunnerAdapter } from '../../apps/api/src/clean/runner-adapters.mjs';
-import { LocalGitRepositoryAdapter, ProcessWorkflowGenerator, ProcessWorkflowCritic, compileWorkflowToExecutionPlan } from '../../apps/api/src/clean/workflow-adapters.mjs';
+import { LocalGitRepositoryAdapter, ProcessWorkflowGenerator, ProcessWorkflowCritic, compileWorkflowToExecutionPlan, extractJsonObject } from '../../apps/api/src/clean/workflow-adapters.mjs';
 import { canonicalJson, sha256Hex } from '../../apps/api/src/clean/canonical.mjs';
 import { taskContract, treeManifest } from '../../apps/api/src/clean/runner-input-provider.mjs';
 import { assertSource, resolveRunRoot } from '../../scripts/v3-clean-real-development-loop.mjs';
@@ -31,6 +31,11 @@ test('task contracts bind complete execution fields and reject commands, paths a
   ] });
   assert.equal(withCheckNode.tasks.length, 1);
   assert.deepEqual(withCheckNode.tasks[0].check_ids, ['node_test', 'git_diff_check']);
+});
+
+test('provider JSON repair extracts one balanced object without accepting trailing objects', () => {
+  const extracted = extractJsonObject('Here is the result:\n```json\n{"nodes":[{"id":"x","title":"brace } inside string"}]}\n```');
+  assert.deepEqual(JSON.parse(extracted), { nodes: [{ id: 'x', title: 'brace } inside string' }] });
 });
 
 test('real loop preflight requires a clean, real Git worktree', () => {
