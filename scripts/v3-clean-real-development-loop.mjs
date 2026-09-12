@@ -239,13 +239,33 @@ async function run(input) {
     const pack = await runtime.context.createPack(project.id, { selection_id: selection.selection.id, require_authoritative: false, idempotency_key: `${runId}-context-pack` }, principal);
     const seed = { nodes: [{ id: 'implementation', kind: 'task', title: 'Implement change', config: { execution: { mode: 'write', argv: ['node', '-e', "process.exit(0)"], cwd_role: 'task', input_paths: [], output_paths: [], runner_profile_ref: '', resource_profile: 'light', deadline_seconds: 900, check_ids: ['node_test', 'git_diff_check'], capabilities: ['network:none'] } }, contract: { acceptance: ['node_test', 'git_diff_check'] } }] };
     await runtime.project.reviseWorkflow(project.id, { graph: seed, expected_revision: 1, idempotency_key: `${runId}-workflow-seed` }, principal);
-    const currentProject = runtime.project.getProject(project.id, principal);
-    const generation = await runtime.project.startGeneration(project.id, { provider_profile_id: profile.id, expected_revision: currentProject.revision, idempotency_key: `${runId}-generation` }, principal);
-    const generationOperation = await waitOperation(runtime, generation.operation.operation_id, principal.actorId);
-    if (generationOperation.status !== 'succeeded') throw operationFailure(generationOperation, 'provider_turn_incomplete', 'generation');
-    const generated = runtime.project.getGeneration(generation.generation.id, principal);
-    const critic = await runtime.project.evaluateCritic(generated.id, { status: 'passed', expected_revision: generated.revision, idempotency_key: `${runId}-critic` }, principal);
-    if (critic.critic?.status !== 'passed') throw Object.assign(new Error('critic_failed'), { code: 'critic_failed', details: { critic_status: critic.critic?.status || 'missing', provider: critic.critic?.provider || null, issues: Array.isArray(critic.critic?.issues) ? critic.critic.issues.slice(0, 20) : [], coverage_missing: Array.isArray(critic.critic?.coverage?.missing) ? critic.critic.coverage.missing.slice(0, 50) : [], candidate_summary: candidateSummary(generated.candidate) } });
+    let generated = null;
+    let critic = null;
+    let generation = null;
+    for (let generationAttempt = 0; generationAttempt < 3; generationAttempt += 1) {
+      const currentProject = runtime.project.getProject(project.id, principal);
+      generation = generationAttempt === 0
+        ? await runtime.project.startGeneration(project.id, { provider_profile_id: profile.id, expected_revision: currentProject.revision, idempotency_key: `${runId}-generation-${generationAttempt}` }, principal)
+        : await runtime.project.retryGeneration(generation.generation.id, { provider_profile_id: profile.id, expected_revision: runtime.project.getGeneration(generation.generation.id, principal).revision, idempotency_key: `${runId}-generation-retry-${generationAttempt}` }, principal);
+      const generationOperation = await waitOperation(runtime, generation.operation.operation_id, principal.actorId);
+      if (generationOperation.status !== 'succeeded') {
+        if (generationAttempt < 2) continue;
+        throw operationFailure(generationOperation, 'provider_turn_incomplete', 'generation');
+      }
+      generated = runtime.project.getGeneration(generation.generation.id, principal);
+      try {
+        critic = await runtime.project.evaluateCritic(generated.id, { status: 'passed', expected_revision: generated.revision, idempotency_key: `${runId}-critic-${generationAttempt}` }, principal);
+      } catch (error) {
+        if (generationAttempt < 2) continue;
+        throw error;
+      }
+      if (critic.critic?.status === 'passed') break;
+      if (generationAttempt === 2) {
+        const criticManifest = runtime.db.get('SELECT payload_json FROM receipt_manifests WHERE id=?', [critic.critic?.id]);
+        const criticPayload = criticManifest ? JSON.parse(criticManifest.payload_json) : {};
+        throw Object.assign(new Error('critic_failed'), { code: 'critic_failed', details: { critic_status: critic.critic?.status || 'missing', provider: critic.critic?.provider || null, issues: Array.isArray(critic.critic?.issues) ? critic.critic.issues.slice(0, 20) : [], coverage_missing: Array.isArray(criticPayload.coverage?.missing) ? criticPayload.coverage.missing.slice(0, 50) : [], candidate_summary: candidateSummary(generated.candidate) } });
+      }
+    }
     const criticManifest = runtime.db.get('SELECT payload_json FROM receipt_manifests WHERE id=?', [critic.critic.id]);
     const criticCoverageHash = criticManifest ? JSON.parse(criticManifest.payload_json).coverage_sha256 : null;
     const workflow = runtime.db.get('SELECT * FROM workflows WHERE project_id=?', [project.id]);

@@ -30,7 +30,15 @@ export class RunnerInputProvider {
     const bytes = this.cas.read(ref.hash);
     if (sha256Hex(bytes) !== ref.hash) fail('runner_input_mismatch');
     const contract = taskContract(JSON.parse(bytes.toString('utf8')));
-    if (sha256Hex(canonicalJson(contract)) !== ref.hash || contract.mode !== spec.execution_mode || canonicalJson(contract.input_paths) !== canonicalJson(spec.input_paths) || canonicalJson(contract.output_paths) !== canonicalJson(spec.output_paths) || canonicalJson(contract.check_ids) !== canonicalJson(spec.check_ids) || contract.resource_profile !== spec.resource_profile || (contract.runner_profile_ref && contract.runner_profile_ref !== spec.runner_profile_ref)) fail('runner_input_mismatch');
+    const mismatches = [];
+    if (sha256Hex(canonicalJson(contract)) !== ref.hash) mismatches.push('contract_hash');
+    if (contract.mode !== spec.execution_mode) mismatches.push('mode');
+    if (canonicalJson(contract.input_paths) !== canonicalJson(spec.input_paths)) mismatches.push('input_paths');
+    if (canonicalJson(contract.output_paths) !== canonicalJson(spec.output_paths)) mismatches.push('output_paths');
+    if (canonicalJson(contract.check_ids) !== canonicalJson(spec.check_ids)) mismatches.push('check_ids');
+    if (contract.resource_profile !== spec.resource_profile) mismatches.push('resource_profile');
+    if (contract.runner_profile_ref && contract.runner_profile_ref !== spec.runner_profile_ref) mismatches.push('runner_profile_ref');
+    if (mismatches.length) fail('runner_input_mismatch', { mismatches, contract_hash: sha256Hex(canonicalJson(contract)), spec_hash: ref.hash });
     const execution = this.db.get('SELECT * FROM executions WHERE id=?', [spec.execution_ref]);
     if (!execution) fail('runner_input_missing');
     for (const input of spec.input_refs.filter((item) => item.type !== 'task_contract')) {
@@ -88,4 +96,4 @@ export function outputManifest(root, outputPaths) {
   });
   return { schema_version: 'runner.output-manifest.v1', entries: entries.sort((a, b) => a.path.localeCompare(b.path)) };
 }
-function fail(code) { throw new PlatformError(code, 'runner input or output validation failed', {}, 422); }
+function fail(code, details = {}) { throw new PlatformError(code, 'runner input or output validation failed', details, 422); }

@@ -294,7 +294,7 @@ export class CleanExecutionService {
       if (!ready.length) throw new PlatformError('execution_dag_cycle', 'execution task graph has a cycle', {}, 422);
       const firstWrite = ready.findIndex((task) => task.mode === 'write'); const batch = firstWrite === 0 ? [ready[0]] : ready.slice(0, Math.min(firstWrite < 0 ? ready.length : firstWrite, 4));
       const batchResults = await Promise.all(batch.map((task) => this.runTask(executionId, task, principal)));
-      for (let index = 0; index < batch.length; index += 1) { const result = batchResults[index]; results.push(result); if (result.status !== 'succeeded') { if (result.status === 'external_result_unknown') throw new PlatformError('external_result_unknown', 'runner result could not be reconciled', {}, 409); throw new PlatformError(result.error_code || 'runner_failed', 'runner task failed', { task_id: batch[index].id }, 409); } completed.add(batch[index].id); }
+      for (let index = 0; index < batch.length; index += 1) { const result = batchResults[index]; results.push(result); if (result.status !== 'succeeded') { if (result.status === 'external_result_unknown') throw new PlatformError('external_result_unknown', 'runner result could not be reconciled', {}, 409); throw new PlatformError(result.error_code || 'runner_failed', 'runner task failed', { task_id: batch[index].id, ...(result.error_details || {}) }, 409); } completed.add(batch[index].id); }
     }
     return { task_count: results.length, receipt_hashes: results.map((result) => result.receipt_sha256).filter(Boolean) };
   }
@@ -302,7 +302,7 @@ export class CleanExecutionService {
   async runTask(executionId, task, principal) {
     let last; const prior = this.db.get('SELECT max(attempt_no) AS attempt_no FROM task_attempts WHERE execution_id=? AND generation=(SELECT generation FROM executions WHERE id=?) AND task_id=?', [executionId, executionId, task.id]);
     for (let attemptNo = Number(prior?.attempt_no || 0) + 1; attemptNo <= 3; attemptNo += 1) {
-      const started = await this.startAttempt(executionId, task, attemptNo, principal); let result; let merge = null;
+      const started = await this.startAttempt(executionId, task, attemptNo, principal); let result; let merge = null; let fatalError = null;
       try {
         result = await this.runner.runSignedJob(started.signed, started.profile, {
           workspacePath: started.taskWorkspace,
@@ -316,8 +316,9 @@ export class CleanExecutionService {
           onStatus: (job) => this.markAttemptRunning(started.attempt.id, job, principal.actorId)
         });
         if (result.status === 'succeeded' && task.mode === 'write') merge = await this.mergeWriteAttempt(started, task, principal);
-      } catch (error) { result = { status: String(error?.code || '') === 'external_result_unknown' ? 'external_result_unknown' : 'failed', error_code: String(error?.code || 'runner_failed'), job_id: '' }; }
+      } catch (error) { fatalError = error?.code === 'runner_input_mismatch' ? error : null; result = { status: String(error?.code || '') === 'external_result_unknown' ? 'external_result_unknown' : 'failed', error_code: String(error?.code || 'runner_failed'), error_details: error?.details || {}, job_id: '' }; }
       last = await this.finishAttempt(started, result, merge, principal.actorId); fs.rmSync(started.taskWorkspace, { recursive: true, force: true });
+      if (fatalError) throw fatalError;
       if (last.status === 'succeeded' || last.status === 'external_result_unknown') return last;
       if (!TRANSIENT.has(last.error_code) || attemptNo >= 3) return last;
       await this.sleep(Number(this.retryDelays[attemptNo - 1] || 0));

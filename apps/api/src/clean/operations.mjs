@@ -359,6 +359,10 @@ export class OperationService {
           : [];
         errorDetails.receipt_status = 'redacted_failure';
       }
+      if (error?.code === 'runner_input_mismatch' && error?.details && typeof error.details === 'object') {
+        errorDetails.mismatches = Array.isArray(error.details.mismatches) ? error.details.mismatches.slice(0, 20).map(String) : [];
+        for (const key of ['contract_hash', 'spec_hash']) if (typeof error.details[key] === 'string') errorDetails[key] = error.details[key].slice(0, 80);
+      }
       return await this.fail(operationId, { expectedRevision: latest.revision, errorCode: /^[a-z][a-z0-9_.-]{2,100}$/.test(String(error?.code || '')) ? error.code : 'operation_failed', errorDetails });
     } finally {
       this.active.delete(String(operationId));
