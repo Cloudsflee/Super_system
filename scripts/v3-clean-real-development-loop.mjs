@@ -166,6 +166,11 @@ function operationFailure(operation, fallback, stage) {
   return error;
 }
 
+function candidateSummary(candidate) {
+  const nodes = Array.isArray(candidate?.nodes) ? candidate.nodes : [];
+  return { node_count: nodes.length, nodes: nodes.slice(0, 20).map((node) => ({ id: String(node.id || ''), kind: String(node.kind || ''), mode: String(node.config?.execution?.mode || ''), command: String(node.config?.execution?.argv?.[0] || ''), input_paths: Array.isArray(node.config?.execution?.input_paths) ? node.config.execution.input_paths.slice(0, 20).map(String) : [], output_paths: Array.isArray(node.config?.execution?.output_paths) ? node.config.execution.output_paths.slice(0, 20).map(String) : [], check_ids: Array.isArray(node.config?.execution?.check_ids) ? node.config.execution.check_ids.slice(0, 20).map(String) : [], acceptance: Array.isArray(node.contract?.acceptance) ? node.contract.acceptance.slice(0, 20).map(String) : [] })) };
+}
+
 async function run(input) {
   const source = assertSource(input.source);
   const runId = `run-${Date.now()}-${randomBytes(4).toString('hex')}`;
@@ -240,7 +245,7 @@ async function run(input) {
     if (generationOperation.status !== 'succeeded') throw operationFailure(generationOperation, 'provider_turn_incomplete', 'generation');
     const generated = runtime.project.getGeneration(generation.generation.id, principal);
     const critic = await runtime.project.evaluateCritic(generated.id, { status: 'passed', expected_revision: generated.revision, idempotency_key: `${runId}-critic` }, principal);
-    if (critic.critic?.status !== 'passed') throw Object.assign(new Error('critic_failed'), { code: 'critic_failed', details: { critic_status: critic.critic?.status || 'missing', provider: critic.critic?.provider || null, issues: Array.isArray(critic.critic?.issues) ? critic.critic.issues.slice(0, 20) : [], coverage_missing: Array.isArray(critic.critic?.coverage?.missing) ? critic.critic.coverage.missing.slice(0, 50) : [] } });
+    if (critic.critic?.status !== 'passed') throw Object.assign(new Error('critic_failed'), { code: 'critic_failed', details: { critic_status: critic.critic?.status || 'missing', provider: critic.critic?.provider || null, issues: Array.isArray(critic.critic?.issues) ? critic.critic.issues.slice(0, 20) : [], coverage_missing: Array.isArray(critic.critic?.coverage?.missing) ? critic.critic.coverage.missing.slice(0, 50) : [], candidate_summary: candidateSummary(generated.candidate) } });
     const criticManifest = runtime.db.get('SELECT payload_json FROM receipt_manifests WHERE id=?', [critic.critic.id]);
     const criticCoverageHash = criticManifest ? JSON.parse(criticManifest.payload_json).coverage_sha256 : null;
     const workflow = runtime.db.get('SELECT * FROM workflows WHERE project_id=?', [project.id]);
