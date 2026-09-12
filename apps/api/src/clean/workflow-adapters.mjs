@@ -111,7 +111,10 @@ export function compileWorkflowToExecutionPlan(graph = {}, pins = {}, policy = n
     const task = {
       id, ordinal: index + 1, title: String(node.title || id), mode, depends_on: dependsOn,
       argv, cwd_role: String(execution.cwd_role || 'task'), input_paths: paths(execution.input_paths, 'input_paths'),
-      output_paths: paths(execution.output_paths, 'output_paths'), runner_profile_ref: String(execution.runner_profile_ref || ''),
+      output_paths: paths(execution.output_paths, 'output_paths'),
+      // Runner profile identity is pinned by the Execution/Runner owner; a
+      // Provider-generated symbolic reference cannot be authoritative here.
+      runner_profile_ref: '',
       resource_profile: String(execution.resource_profile || 'light'), deadline_seconds: Number(execution.deadline_seconds || 900),
       check_ids: Array.isArray(execution.check_ids) ? execution.check_ids.map(String) : [],
       capabilities: Array.isArray(execution.capabilities) ? execution.capabilities.map(String) : ['network:none']
