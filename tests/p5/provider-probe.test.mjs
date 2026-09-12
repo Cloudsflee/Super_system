@@ -41,6 +41,15 @@ test('isolated provider configuration uses an environment lease and rejects inli
   }
 });
 
+test('isolated provider configuration supplies a name for discovered providers that omit one', () => {
+  const isolated = isolateProviderConfiguration({
+    model_provider: 'custom',
+    model: 'gpt-5.6-sol',
+    model_providers: { custom: { base_url: 'https://example.invalid/v1', wire_api: 'responses', requires_openai_auth: true } }
+  });
+  assert.equal(isolated.model_providers.custom.name, 'custom');
+});
+
 test('process adapter does not inherit parent session or provider credentials', () => {
   const adapter = new ProcessAppServerAdapter({
     command: 'fixture-provider-command',

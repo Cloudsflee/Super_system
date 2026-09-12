@@ -68,6 +68,10 @@ export function isolateProviderConfiguration(input = {}) {
       else if (field.endsWith('_retries') || field.endsWith('_timeout_ms')) definition[field] = boundedInteger(source[field], field);
       else definition[field] = optionalIdentifier(source[field], field, 160);
     }
+    // Codex rejects an isolated provider definition without a display name.
+    // Discovery records may omit it, so derive a stable non-secret name from
+    // the already validated provider identifier.
+    if (!definition.name) definition.name = modelProvider || 'Custom Provider';
     // The provider credential is always supplied through the child process
     // lease. It is never serialized into the isolated CODEX_HOME.
     definition.env_key = 'OPENAI_API_KEY';

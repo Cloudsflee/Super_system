@@ -160,9 +160,9 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${canonicalJson(value)}\n`, { encoding: 'utf8', mode: 0o600 });
 }
 
-function operationFailure(operation, fallback) {
+function operationFailure(operation, fallback, stage) {
   const error = Object.assign(new Error(operation?.error_code || fallback), { code: operation?.error_code || fallback });
-  if (operation?.error_details && typeof operation.error_details === 'object') error.details = operation.error_details;
+  error.details = { ...(operation?.error_details && typeof operation.error_details === 'object' ? operation.error_details : {}), ...(stage ? { stage } : {}) };
   return error;
 }
 
@@ -213,7 +213,7 @@ async function run(input) {
     profile = updated.profile;
     const probe = await runtime.identity.probeProfile(profile.id, { expected_revision: profile.revision, idempotency_key: `${runId}-profile-probe` }, principal);
     const probeResult = await waitOperation(runtime, probe.operation_id || probe.id, principal.actorId);
-    if (probeResult.status !== 'succeeded') throw operationFailure(probeResult, 'provider_unavailable');
+    if (probeResult.status !== 'succeeded') throw operationFailure(probeResult, 'provider_unavailable', 'provider_probe');
     profile = runtime.identity.profiles(principal).find((item) => item.id === profile.id);
     if (profile.provider !== 'codex' || profile.config?.model !== 'gpt-5.6-sol' || profile.config?.model_reasoning_effort !== 'high' || profile.status !== 'available') throw Object.assign(new Error('provider_profile_invalid'), { code: 'provider_profile_invalid' });
     const providerPin = runtime.identity.providerProfileSnapshot(profile.id, principal);
@@ -236,10 +236,10 @@ async function run(input) {
     const currentProject = runtime.project.getProject(project.id, principal);
     const generation = await runtime.project.startGeneration(project.id, { provider_profile_id: profile.id, expected_revision: currentProject.revision, idempotency_key: `${runId}-generation` }, principal);
     const generationOperation = await waitOperation(runtime, generation.operation.operation_id, principal.actorId);
-    if (generationOperation.status !== 'succeeded') throw operationFailure(generationOperation, 'provider_turn_incomplete');
+    if (generationOperation.status !== 'succeeded') throw operationFailure(generationOperation, 'provider_turn_incomplete', 'generation');
     const generated = runtime.project.getGeneration(generation.generation.id, principal);
     const critic = await runtime.project.evaluateCritic(generated.id, { status: 'passed', expected_revision: generated.revision, idempotency_key: `${runId}-critic` }, principal);
-    if (critic.critic?.status !== 'passed') throw Object.assign(new Error('critic_failed'), { code: 'critic_failed' });
+    if (critic.critic?.status !== 'passed') throw Object.assign(new Error('critic_failed'), { code: 'critic_failed', details: { critic_status: critic.critic?.status || 'missing', provider: critic.critic?.provider || null, issues: Array.isArray(critic.critic?.issues) ? critic.critic.issues.slice(0, 20) : [], coverage_missing: Array.isArray(critic.critic?.coverage?.missing) ? critic.critic.coverage.missing.slice(0, 50) : [] } });
     const criticManifest = runtime.db.get('SELECT payload_json FROM receipt_manifests WHERE id=?', [critic.critic.id]);
     const criticCoverageHash = criticManifest ? JSON.parse(criticManifest.payload_json).coverage_sha256 : null;
     const workflow = runtime.db.get('SELECT * FROM workflows WHERE project_id=?', [project.id]);
@@ -247,11 +247,11 @@ async function run(input) {
     const runnerProfile = await runtime.runner.createProfile({ runner_type: 'host', label: 'Real local Host', expected_revision: 0, idempotency_key: `${runId}-runner-profile` }, principal);
     const runnerProbe = await runtime.runner.probeProfile(runnerProfile.profile.id, { expected_revision: runnerProfile.profile.revision, idempotency_key: `${runId}-runner-probe` }, principal);
     const runnerProbeResult = await waitOperation(runtime, runnerProbe.operation.operation_id, principal.actorId);
-    if (runnerProbeResult.status !== 'succeeded') throw operationFailure(runnerProbeResult, 'runner_unavailable');
+    if (runnerProbeResult.status !== 'succeeded') throw operationFailure(runnerProbeResult, 'runner_unavailable', 'runner_probe');
     const execution = await runtime.execution.create(project.id, { repository_workspace_id: workspace.id, context_pack_id: pack.pack.id, runner_profile_id: runnerProfile.profile.id, expected_revision: runtime.project.getProject(project.id, principal).revision, idempotency_key: `${runId}-execution` }, principal);
     const started = await runtime.execution.start(execution.execution.id, { expected_revision: execution.execution.revision, idempotency_key: `${runId}-execution-start` }, principal);
     const executionResult = await waitOperation(runtime, started.operation.operation_id, principal.actorId);
-    if (executionResult.status !== 'succeeded') throw operationFailure(executionResult, 'execution_failed');
+    if (executionResult.status !== 'succeeded') throw operationFailure(executionResult, 'execution_failed', 'execution');
     const cursorBefore = Number(runtime.db.get("SELECT cursor_sequence FROM event_cursors WHERE actor_id=? AND consumer_id='p7-evidence-capture' AND stream='events'", [runtime.metadata.bootstrap_actor_id])?.cursor_sequence || 0);
     await runtime.evidence?.recoverPending?.();
     const cursorAfter = Number(runtime.db.get("SELECT cursor_sequence FROM event_cursors WHERE actor_id=? AND consumer_id='p7-evidence-capture' AND stream='events'", [runtime.metadata.bootstrap_actor_id])?.cursor_sequence || 0);
