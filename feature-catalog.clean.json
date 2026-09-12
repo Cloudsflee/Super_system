@@ -160,7 +160,15 @@
         "docs/evidence/post-p10-real-development-loop-20260912-134500/rollback-actual.json",
         "docs/evidence/post-p10-real-development-loop-20260912-134500",
         "docs/evidence/post-p10-real-development-loop-20260912-134500/original-artifact.tgz",
-        "docs/evidence/post-p10-real-development-loop-20260912-134500/hashes.json"
+        "docs/evidence/post-p10-real-development-loop-20260912-134500/hashes.json",
+        "docs/evidence/post-p10-real-development-loop-run-1789218707588-a01bc26f/verification.json",
+        "docs/evidence/post-p10-real-development-loop-run-1789218707588-a01bc26f/preflight.txt",
+        "docs/evidence/post-p10-real-development-loop-run-1789218707588-a01bc26f/modified-artifact.tgz",
+        "docs/evidence/post-p10-real-development-loop-run-1789218707588-a01bc26f/change.patch",
+        "docs/evidence/post-p10-real-development-loop-run-1789218707588-a01bc26f/rollback.ps1",
+        "docs/evidence/post-p10-real-development-loop-run-1789218707588-a01bc26f/rollback-actual.json",
+        "docs/evidence/post-p10-real-development-loop-run-1789218707588-a01bc26f/original-artifact.tgz",
+        "docs/evidence/post-p10-real-development-loop-run-1789218707588-a01bc26f/hashes.json"
       ]
     },
     {
