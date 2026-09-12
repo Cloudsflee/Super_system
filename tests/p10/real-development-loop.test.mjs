@@ -25,6 +25,12 @@ test('task contracts bind complete execution fields and reject commands, paths a
   assert.throws(()=>taskContract(task({argv:['powershell','x']})),{code:'runner_command_not_allowed'});
   for(const relative of ['/tmp/out','../out','C:/out','..\\out']) assert.throws(()=>taskContract(task({output_paths:[relative]})),{code:'runner_path_invalid'});
   assert.throws(()=>compileWorkflowToExecutionPlan({nodes:[{id:'a',depends_on:['b'],config:{execution:task()}},{id:'b',depends_on:['a'],config:{execution:task()}}]}),{code:'execution_dag_cycle'});
+  const withCheckNode = compileWorkflowToExecutionPlan({ nodes: [
+    { id: 'change', kind: 'task', config: { execution: task({ check_ids: ['node_test'] }) }, contract: { acceptance: ['node_test'] } },
+    { id: 'diff', kind: 'check', parent_id: 'change', config: { execution: task({ mode: 'read', argv: ['git', 'diff', '--check'], input_paths: ['README.md'], output_paths: [], check_ids: ['git_diff_check'] }) }, contract: { acceptance: ['git_diff_check'] } }
+  ] });
+  assert.equal(withCheckNode.tasks.length, 1);
+  assert.deepEqual(withCheckNode.tasks[0].check_ids, ['node_test', 'git_diff_check']);
 });
 
 test('real loop preflight requires a clean, real Git worktree', () => {

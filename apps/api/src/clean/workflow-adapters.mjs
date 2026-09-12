@@ -93,7 +93,20 @@ const EXECUTION_MODES = new Set(['read', 'write']);
 export function compileWorkflowToExecutionPlan(graph = {}, pins = {}, policy = null) {
   const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
   const ids = new Set(nodes.map((node) => String(node.id || node.node_key || '')));
-  const tasks = nodes.filter((node) => String(node.kind || node.node_kind || 'task') !== 'workstream').map((node, index) => {
+  const checkIdsByParent = new Map();
+  for (const node of nodes) {
+    if (String(node.kind || node.node_kind || 'task') !== 'check' || !node.parent_id) continue;
+    const checks = Array.isArray(node.config?.execution?.check_ids) ? node.config.execution.check_ids.map(String) : [];
+    if (checks.length) checkIdsByParent.set(String(node.parent_id), [...new Set([...(checkIdsByParent.get(String(node.parent_id)) || []), ...checks])]);
+  }
+  const executableNodes = nodes.filter((node) => String(node.kind || node.node_kind || 'task') !== 'workstream' && String(node.kind || node.node_kind || 'task') !== 'check');
+  const tasks = executableNodes.map((originalNode, index) => {
+    const node = structuredClone(originalNode);
+    const inheritedChecks = checkIdsByParent.get(String(node.id || node.node_key || '')) || [];
+    if (inheritedChecks.length) {
+      node.config = { ...(node.config || {}), execution: { ...(node.config?.execution || {}), check_ids: [...new Set([...(node.config?.execution?.check_ids || []).map(String), ...inheritedChecks])] } };
+      node.contract = { ...(node.contract || {}), acceptance: [...new Set([...(node.contract?.acceptance || []).map(String), ...inheritedChecks])] };
+    }
     const id = String(node.id || node.node_key || `task_${index + 1}`);
     const execution = node.config?.execution;
     if (!execution || typeof execution !== 'object') throw new PlatformError('execution_config_missing', `task ${id} has no execution configuration`, { task_id: id }, 422);
