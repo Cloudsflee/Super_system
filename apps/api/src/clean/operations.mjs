@@ -355,7 +355,7 @@ export class OperationService {
       }
       if (error?.code === 'redaction_blocked' && error?.details && typeof error.details === 'object') {
         errorDetails.redaction_reasons = Array.isArray(error.details.redactions)
-          ? error.details.redactions.slice(0, 20).map((item) => ({ path: String(item?.path || '').slice(0, 160), reason: String(item?.reason || '').slice(0, 80) }))
+          ? error.details.redactions.slice(0, 20).map((item) => ({ path: String(item?.path || '').slice(0, 160), reason: String(item?.reason || '').slice(0, 80), ...(Array.isArray(item?.patterns) ? { patterns: item.patterns.slice(0, 8).map((pattern) => String(pattern).slice(0, 40)) } : {}) }))
           : [];
         errorDetails.receipt_status = 'redacted_failure';
       }

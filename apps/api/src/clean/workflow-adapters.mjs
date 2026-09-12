@@ -24,15 +24,24 @@ export class ProcessWorkflowGenerator {
       thread = await adapter.startThread({ credential, provider_config: leased.provider_config || {}, sandbox: 'read-only', approval_policy: 'never' });
       let response;
       for (let attempt = 0; attempt < 2; attempt++) {
-        const generationContract = 'Generation constraints: execution.mode must be exactly "read" or "write"; argv[0] must be one of node,pnpm,npm,git,codex; cwd_role must be task; input_paths and output_paths must be relative; capabilities must include network:none; check_ids must contain only node_test or git_diff_check; every check_id must appear in that task contract.acceptance list; return one JSON object only, with no markdown or prose. ';
-        const result = await adapter.startTurn({ thread_id: thread.thread_id, message: attempt ? 'The response was not valid JSON. Return only the requested JSON object without markdown, and obey every enum and field constraint.' : (input.purpose === 'critic' ? 'Independently review the candidate. Return JSON {status:"passed"|"rejected",issues:[{code,severity}],coverage:{requirement_to_task:[],task_to_acceptance:[],missing:[]}}. ' : 'Return a workflow JSON {nodes:[{id,kind,title,parent_id,config:{execution:{argv,cwd_role,mode,input_paths,output_paths,runner_profile_ref,resource_profile,deadline_seconds,check_ids,capabilities}},contract:{acceptance:[]}}]}. Every task needs an independent check. ' + generationContract) + prompt, credential, approval_policy: 'never' });
+        const generationContract = 'Generation constraints: the platform already owns source preflight, original hashes, candidate workspace isolation, verification records, Evidence capture, and rollback; do not add workflow nodes for those governance steps. Plan only the requested business change and its direct checks. execution.mode must be exactly "read" or "write"; argv[0] must be one of node,pnpm,npm,git,codex; cwd_role must be task; input_paths and output_paths must be relative; every argv argument must use only relative workspace paths and must contain no absolute path, URL, token, credential, environment secret, shell redirection, or host path; capabilities must include network:none; check_ids must contain only node_test or git_diff_check; every check_id must appear in that task contract.acceptance list; return one JSON object only, with no markdown or prose. ';
+        const result = await adapter.startTurn({ thread_id: thread.thread_id, message: attempt ? 'The response was not valid JSON. Return only the requested JSON object without markdown, and obey every enum and field constraint.' : (input.purpose === 'critic' ? 'Independently review the candidate. The platform already performs preflight, original-hash, verification, Evidence, and rollback governance. Judge only whether business requirements and Brief acceptance are covered by valid task contracts. If the candidate has valid tasks, valid modes/checks, and covers every Brief acceptance, return status passed. Return JSON {status:"passed"|"rejected",issues:[{code,severity}],coverage:{requirement_to_task:[],task_to_acceptance:[],missing:[]}}. ' : 'Return a workflow JSON {nodes:[{id,kind,title,parent_id,config:{execution:{argv,cwd_role,mode,input_paths,output_paths,runner_profile_ref,resource_profile,deadline_seconds,check_ids,capabilities}},contract:{acceptance:[]}}]}. Every task needs an independent check. ' + generationContract) + prompt, credential, approval_policy: 'never' });
         const events = result?.events || [];
         if (events.some((event,index) => event.sequence !== index + 1)) throw new PlatformError('provider_protocol_drift', 'provider sequence is not contiguous', {}, 502);
         if (events.some((event) => event.method.includes('requestApproval') || event.method.includes('requestUserInput'))) throw new PlatformError('provider_input_required', 'provider turn is waiting for a human decision', {}, 409);
         if (events.at(-1)?.method !== 'turn/completed') throw new PlatformError('provider_turn_incomplete', 'provider turn did not complete', {}, 502);
         const message = events.filter((event) => event.method === 'item/completed' && event.params?.role === 'assistant').map((event) => String(event.params.content || event.params.summary || '')).at(-1);
         if (!message?.trim()) throw new PlatformError('provider_output_empty', 'provider returned no JSON response', {}, 502);
-        try { response = JSON.parse(message); break; } catch { if (attempt === 1) throw new PlatformError('provider_output_invalid_json', 'provider JSON repair failed', {}, 502); }
+        try { response = JSON.parse(message); break; } catch {
+          if (attempt === 1) {
+            const start = message.indexOf('{');
+            const end = message.lastIndexOf('}');
+            if (start >= 0 && end > start) {
+              try { response = JSON.parse(message.slice(start, end + 1)); break; } catch { /* retain the stable failure below */ }
+            }
+            throw new PlatformError('provider_output_invalid_json', 'provider JSON repair failed', {}, 502);
+          }
+        }
       }
       if (!response || Array.isArray(response) || typeof response !== 'object') throw new PlatformError('provider_output_invalid_json', 'provider JSON object is required', {}, 502);
       const outputHash = sha256Hex(canonicalJson(response));

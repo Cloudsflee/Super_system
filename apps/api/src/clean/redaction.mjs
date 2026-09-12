@@ -88,10 +88,19 @@ export class RedactionPolicy {
       output = `${output.slice(0, this.maxString)}...[truncated]`;
     }
     const before = output;
+    const patterns = [];
+    if (BEARER.test(output)) patterns.push('bearer');
+    BEARER.lastIndex = 0;
+    if (KEY_TOKEN.test(output)) patterns.push('key_token');
+    KEY_TOKEN.lastIndex = 0;
+    if (WINDOWS_PATH.test(output)) patterns.push('windows_path');
+    WINDOWS_PATH.lastIndex = 0;
+    if (POSIX_PATH.test(output)) patterns.push('posix_path');
+    POSIX_PATH.lastIndex = 0;
     output = output.replace(BEARER, 'Bearer [redacted]').replace(KEY_TOKEN, '[redacted]');
     output = output.replace(WINDOWS_PATH, '[redacted-path]');
     output = output.replace(POSIX_PATH, '$1[redacted-path]');
-    if (output !== before) findings.push({ path, reason: 'restricted_text' });
+    if (output !== before) findings.push({ path, reason: 'restricted_text', patterns });
     return output;
   }
 }
