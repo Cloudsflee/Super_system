@@ -6,6 +6,7 @@ const KEY_TOKEN = /\b(?:sk|rk|key|token|ghp|gho|xox[baprs])[-_][A-Za-z0-9_-]{16,
 const WINDOWS_PATH = /\b[A-Za-z]:\\[^\r\n\t"']{2,}\b/g;
 // Public API-relative URIs are contract data, not host filesystem paths.
 const POSIX_PATH = /(^|[\s(])\/(?!(?:\/|api(?:\/|$)|livez(?:[/?#]|$)|readyz(?:[/?#]|$)))[^\r\n\t"']{2,}/g;
+const REGEX_LITERAL = /(^|[\s(=,:])\/(?:\\.|[^\/\r\n]){1,160}\/[dgimsuvy]*/g;
 
 export class RedactionError extends Error {
   constructor(message, details = {}) {
@@ -95,11 +96,14 @@ export class RedactionPolicy {
     KEY_TOKEN.lastIndex = 0;
     if (WINDOWS_PATH.test(output)) patterns.push('windows_path');
     WINDOWS_PATH.lastIndex = 0;
-    if (POSIX_PATH.test(output)) patterns.push('posix_path');
+    const protectedLiterals = [];
+    const pathProbe = output.replace(REGEX_LITERAL, (match) => { const marker = `__AIWS_REGEX_${protectedLiterals.length}__`; protectedLiterals.push([marker, match]); return marker; });
+    if (POSIX_PATH.test(pathProbe)) patterns.push('posix_path');
     POSIX_PATH.lastIndex = 0;
     output = output.replace(BEARER, 'Bearer [redacted]').replace(KEY_TOKEN, '[redacted]');
     output = output.replace(WINDOWS_PATH, '[redacted-path]');
     output = output.replace(POSIX_PATH, '$1[redacted-path]');
+    for (const [marker, literal] of protectedLiterals) output = output.replace(marker, literal);
     if (output !== before) findings.push({ path, reason: 'restricted_text', patterns });
     return output;
   }
