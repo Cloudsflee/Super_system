@@ -25,7 +25,7 @@ function args(argv) {
     const key = value.slice(2).replaceAll('-', '_');
     result[key] = argv[index + 1] && !argv[index + 1].startsWith('--') ? argv[++index] : true;
   }
-  if (!result.source || !result.project_name) throw new Error('usage: node scripts/v3-clean-real-development-loop.mjs --source <SOURCE_PATH> --project-name <PROJECT_NAME>');
+  if (!result.source || !result.project_name) throw new Error('usage: node scripts/v3-clean-real-development-loop.mjs --source <SOURCE_PATH> --project-name <PROJECT_NAME> [--request <CHANGE_REQUEST>]');
   return result;
 }
 
@@ -172,6 +172,7 @@ async function run(input) {
   const runRoot = resolveRunRoot(input.root, source, runId);
   const root = runRoot.root;
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  const objective = String(input.request || 'Add a concrete, reviewable repository change and prove it with node_test and git_diff_check.');
   const config = {
     runtime: 'v3-clean', apiVersion: '2', host: '127.0.0.1', port: 0,
     home: root, databaseFile: path.join(root, 'data', 'state.sqlite'),
@@ -219,15 +220,15 @@ async function run(input) {
     const providerPin = runtime.identity.providerProfileSnapshot(profile.id, principal);
 
     const project = await runtime.project.createProject({ name: String(input.project_name), idempotency_key: `${runId}-project` }, principal);
-    const intake = await runtime.project.submitIntake(project.id, { mode: 'brainstorm', content: { objective: 'Implement the requested change in the local repository and prove it with tests.' }, expected_revision: 1, idempotency_key: `${runId}-intake` }, principal);
+    const intake = await runtime.project.submitIntake(project.id, { mode: 'brainstorm', content: { objective }, expected_revision: 1, idempotency_key: `${runId}-intake` }, principal);
     await waitOperation(runtime, intake.operation.operation_id, principal.actorId);
-    await runtime.project.createBrief(project.id, { objective: 'Implement the requested change in the local repository.', acceptance: ['node_test', 'git_diff_check'], expected_revision: 1, idempotency_key: `${runId}-brief` }, principal);
+    await runtime.project.createBrief(project.id, { objective, acceptance: ['node_test', 'git_diff_check'], expected_revision: 1, idempotency_key: `${runId}-brief` }, principal);
     await runtime.project.confirmBrief(project.id, { brief_revision: 1, expected_revision: 2, idempotency_key: `${runId}-brief-confirm` }, principal);
     await runtime.project.createRepositoryConnection(project.id, { provider: 'local', source_kind: 'local', source_locator: source, read_only: true, idempotency_key: `${runId}-repository` }, principal);
     const line = runtime.project.listRepositoryLines(project.id, principal)[0];
     const workspaceResult = await runtime.project.createRepositoryWorkspace(project.id, { line_id: line.id, expected_revision: 0, idempotency_key: `${runId}-workspace` }, principal);
     const workspace = workspaceResult.workspace;
-    await runtime.context.createSource(project.id, { kind: 'note', title: 'Local repository context', uri: `notes/${runId}`, content: 'Use the pinned repository snapshot. Keep changes in the candidate workspace and satisfy every acceptance check.', idempotency_key: `${runId}-context-source` }, principal);
+    await runtime.context.createSource(project.id, { kind: 'note', title: 'Local repository context', uri: `notes/${runId}`, content: `${objective} Use the pinned repository snapshot. Keep changes in the candidate workspace and satisfy every acceptance check.`, idempotency_key: `${runId}-context-source` }, principal);
     await runtime.context.rebuild(project.id, { idempotency_key: `${runId}-context-rebuild` }, principal);
     const selection = await runtime.context.createSelection(project.id, { query: 'repository implementation acceptance', token_budget: 512, idempotency_key: `${runId}-context-selection` }, principal);
     const pack = await runtime.context.createPack(project.id, { selection_id: selection.selection.id, require_authoritative: false, idempotency_key: `${runId}-context-pack` }, principal);

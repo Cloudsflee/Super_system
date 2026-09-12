@@ -243,7 +243,7 @@ export class ProcessAppServerAdapter {
       const providerConfig = isolateProviderConfiguration(input.provider_config || {});
       connection = await this.openConnection({ home, credential: input.credential });
       const result = await connection.request('thread/start', {
-        approvalPolicy: 'on-request',
+        approvalPolicy: input.approval_policy || 'on-request',
         cwd: input.cwd || undefined,
         sandbox: input.sandbox || 'workspace-write',
         model: input.model || providerConfig?.model || undefined,
@@ -252,7 +252,7 @@ export class ProcessAppServerAdapter {
       });
       const threadId = String(result?.thread?.id || '');
       if (!threadId) throw new PlatformError('provider_protocol_drift', 'app-server thread id is missing', {}, 503);
-      this.connections.set(threadId, { connection, home, threadId, pending: null, resumeResolutions: null, collector: null });
+      this.connections.set(threadId, { connection, home, threadId, approvalPolicy: input.approval_policy || 'on-request', pending: null, resumeResolutions: null, collector: null });
       return { thread_id: threadId };
     } catch (error) {
       await connection?.close();
@@ -304,7 +304,7 @@ export class ProcessAppServerAdapter {
       threadId,
       input: [{ type: 'text', text: String(input.message || '') }],
       cwd: input.cwd || undefined,
-      approvalPolicy: 'on-request',
+      approvalPolicy: input.approval_policy || state.approvalPolicy || 'on-request',
       sandboxPolicy: input.sandbox || undefined
     });
     const turnId = String(result?.turn?.id || input.turn_id || '');
