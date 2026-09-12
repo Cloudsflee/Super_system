@@ -1,1 +1,0 @@
-{"schema_version":"aiws.post-p10.real-development-loop.rollback.v2","status":"passed","dry_run":{"status":0,"writes":0},"apply":{"status":0},"restored_user_version":8,"ledger":[1,2,3,4,5,6,7,8],"p10_tables_absent":[],"byte_exact_mismatches":[]}

@@ -760,3 +760,41 @@ The branch performance thresholds are `verify:dev <= 120000 ms` and formal
 `verify <= 360000 ms` on the workstation whose recorded baseline is
 `549714 ms`. A failure freezes status and is recorded literally; it is never
 converted into a release claim.
+
+## Anti-bypass development controls
+
+Every maintenance task MUST begin by recording the trusted baseline commit,
+hashes for validation and Evidence files, the active object, the last confirmed
+result, and the next action. Work MUST be performed on a copy or isolated
+worktree so an existing artifact cannot become an implicit input.
+
+Critic rules, P10 allowlists, Catalog validators, gate implementations, and
+formal Evidence are protected surfaces. A business change MUST NOT modify
+those surfaces in the same change. Any diff touching tests, validators,
+allowlists, Catalog status, or formal Evidence requires an explicit gate-sync
+review under GS-001 through GS-007.
+
+All gates MUST fail closed. Missing coverage, malformed provider receipts,
+stale revisions, missing Evidence, or a status/behavior mismatch remain
+failures; code MUST NOT convert a rejected result into `passed`, infer missing
+metrics, or synthesize a successful receipt. Provider output is validated
+before it reaches the Critic and invalid output is retried or reported with
+its literal error.
+
+Formal Evidence is append-only and independently generated. Existing success
+receipts MUST NOT be edited, overwritten, or used as proof for a new run.
+Failed and checkpoint receipts remain immutable and diagnostic only. A release
+claim requires a fresh final receipt whose hashes, Catalog mappings, behavior,
+and rollback proof all match the current commit.
+
+Verification MUST run once in a clean temporary clone or isolated worktree
+with the exact pending HEAD. The original stdout, stderr, exit status, and
+error code MUST be retained before any business fix is attempted. The
+pre-push hook MUST reject `--no-verify`; pushing is permitted only after the
+formal Gate validates the exact commit. A bypass flag, skipped hook, or
+unclassified changed path freezes the affected status and blocks promotion.
+
+Before completion, inspect the diff for changes to `critic`, `allowlist`,
+`whitelist`, `validator`, `Catalog`, `Evidence`, `status`, and `receipt`; run
+the relevant gate suite; and verify that the reported result is produced by
+the current code rather than by a modified test or validation rule.
