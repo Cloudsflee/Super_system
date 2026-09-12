@@ -6,7 +6,7 @@ import test from 'node:test';
 import { stringify as stringifyToml } from 'smol-toml';
 import {
   DeterministicAppServerAdapter, ProcessAppServerAdapter,
-  isolateProviderConfiguration, removeIsolatedProviderTree, writeIsolatedProviderConfiguration
+  isolateProviderConfiguration, removeIsolatedProviderTree, writeIsolatedProviderConfiguration, providerRequestFailure
 } from '../../apps/api/src/clean/app-server-adapter.mjs';
 import {
   acquireProviderCredentialLease, loadCodexProviderConfiguration,
@@ -54,6 +54,16 @@ test('process adapter does not inherit parent session or provider credentials', 
   });
   assert.deepEqual(adapter.env, { PATH: 'fixture-path', SYSTEMROOT: 'fixture-system-root', JAVA_HOME: 'fixture-java-home' });
   assert.deepEqual(adapter.args, ['--disable', 'plugins', '--disable', 'remote_plugin', 'app-server', '--stdio']);
+});
+
+test('process provider request failures preserve diagnostic RPC fields without credentials', () => {
+  const error = providerRequestFailure({ code: 'invalid_request', type: 'protocol_error', message: 'bad request with sk_live_fixture_12345678' }, 'turn/start');
+  assert.equal(error.code, 'provider_request_failed');
+  assert.equal(error.details.provider_code, 'invalid_request');
+  assert.equal(error.details.provider_error_type, 'protocol_error');
+  assert.equal(error.details.rpc_method, 'turn/start');
+  assert.doesNotMatch(JSON.stringify(error.details), /sk_live_fixture/);
+  assert.doesNotMatch(error.message, /sk_live_fixture/);
 });
 
 test('isolated provider cleanup removes read-only Git pack files', async () => {

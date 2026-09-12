@@ -349,7 +349,11 @@ export class OperationService {
       const latest = this.get(operationId);
       if (latest.status === 'cancelled') return latest;
       if (controller.signal.aborted && latest.cancellation_requested) return await this.acknowledgeCancel(operationId, { expectedRevision: latest.revision });
-      return await this.fail(operationId, { expectedRevision: latest.revision, errorCode: /^[a-z][a-z0-9_.-]{2,100}$/.test(String(error?.code || '')) ? error.code : 'operation_failed', errorDetails: { message: String(error?.message || 'operation failed').slice(0, 300) } });
+      const errorDetails = { message: String(error?.message || 'operation failed').replace(/(?:sk|gh[opurs])_[A-Za-z0-9_-]{8,}/g, '<redacted-token>').replace(/[A-Za-z]:[\\/][^\s"']+|\/(?:Users|home|tmp|var)\/[^\s"']+/g, '<redacted-path>').slice(0, 300) };
+      if (error?.code === 'provider_request_failed' && error?.details && typeof error.details === 'object') {
+        for (const key of ['provider_code', 'rpc_method', 'provider_error_type']) if (typeof error.details[key] === 'string' && error.details[key]) errorDetails[key] = error.details[key].slice(0, 120);
+      }
+      return await this.fail(operationId, { expectedRevision: latest.revision, errorCode: /^[a-z][a-z0-9_.-]{2,100}$/.test(String(error?.code || '')) ? error.code : 'operation_failed', errorDetails });
     } finally {
       this.active.delete(String(operationId));
       this.executors.delete(String(operationId));

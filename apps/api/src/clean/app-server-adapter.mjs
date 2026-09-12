@@ -382,6 +382,16 @@ export class ProcessAppServerAdapter {
   }
 }
 
+export function providerRequestFailure(message, rpcMethod) {
+  const error = message && typeof message === 'object' ? message : {};
+  const summary = String(error.message || 'app-server request failed').replace(/(?:sk|gh[opurs])_[A-Za-z0-9_-]{8,}/g, '<redacted-token>').replace(/[A-Za-z]:[\\/][^\s"']+|\/(?:Users|home|tmp|var)\/[^\s"']+/g, '<redacted-path>').slice(0, 300);
+  return new PlatformError('provider_request_failed', summary, {
+    provider_code: typeof error.code === 'string' ? error.code.slice(0, 120) : null,
+    rpc_method: String(rpcMethod || '').slice(0, 120),
+    provider_error_type: typeof error.type === 'string' ? error.type.slice(0, 120) : null
+  }, 503);
+}
+
 class JsonRpcConnection {
   constructor({ command, args, env, home, credential, timeoutMs }) {
     const childEnv = { ...env, CODEX_HOME: home };
@@ -419,7 +429,7 @@ class JsonRpcConnection {
     const id = opaqueId('rpc');
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new PlatformError('provider_timeout', 'app-server request timed out', {}, 503)); }, this.timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { resolve, reject, timer, method });
       this.write({ jsonrpc: '2.0', id, method, params });
     });
   }
@@ -468,7 +478,7 @@ class JsonRpcConnection {
       try { message = JSON.parse(line); } catch { continue; }
       if (message.id != null && this.pending.has(message.id)) {
         const entry = this.pending.get(message.id); this.pending.delete(message.id); clearTimeout(entry.timer);
-        if (message.error) entry.reject(new PlatformError('provider_request_failed', String(message.error.message || 'app-server request failed'), { provider_code: message.error.code || null }, 503));
+        if (message.error) entry.reject(providerRequestFailure(message.error, entry.method));
         else entry.resolve(message.result);
       } else {
         for (const listener of this.listeners) { try { listener(message); } catch {} }
