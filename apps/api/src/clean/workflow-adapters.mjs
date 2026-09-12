@@ -27,6 +27,20 @@ function extractJsonObject(text) {
   return null;
 }
 
+function invalidGeneratedTaskContracts(candidate) {
+  if (!candidate || typeof candidate !== 'object' || !Array.isArray(candidate.nodes)) return false;
+  return candidate.nodes.some((node) => {
+    const kind = String(node?.kind || node?.node_kind || 'task');
+    if (kind === 'workstream') return false;
+    if (kind === 'check') return true;
+    const checks = Array.isArray(node?.config?.execution?.check_ids)
+      ? node.config.execution.check_ids.map(String).filter((value) => value.trim()) : [];
+    const acceptance = Array.isArray(node?.contract?.acceptance)
+      ? node.contract.acceptance.map(String).filter((value) => value.trim()) : [];
+    return !checks.length || !acceptance.length;
+  });
+}
+
 const execFileAsync = promisify(execFile);
 
 // Real workflow generation is deliberately provider-backed.  There is no
@@ -43,21 +57,44 @@ export class ProcessWorkflowGenerator {
     try {
       thread = await adapter.startThread({ credential, provider_config: leased.provider_config || {}, sandbox: 'read-only', approval_policy: 'never' });
       let response;
+      let retryInstruction = null;
       for (let attempt = 0; attempt < 2; attempt++) {
         const generationContract = 'Generation constraints: the platform already owns source preflight, original hashes, candidate workspace isolation, verification records, Evidence capture, and rollback; do not add workflow nodes for those governance steps. Plan only the requested business change and its direct checks. Do not create nodes with kind "check"; attach check_ids and matching contract.acceptance to the business task, because the platform executes node_test and git_diff_check after task execution. For README changes, use a node command whose code refers only to the literal relative path README.md and never uses slash-prefixed paths. execution.mode must be exactly "read" or "write"; argv[0] must be one of node,pnpm,npm,git,codex; cwd_role must be task; input_paths and output_paths must be relative; every argv argument must use only relative workspace paths and must contain no absolute path, URL, token, credential, environment secret, shell redirection, or host path; capabilities must include network:none; check_ids must contain only node_test or git_diff_check; contract.acceptance is required and must equal the task check_ids exactly (for example check_ids:["node_test"] and acceptance:["node_test"]); never return an empty acceptance list; return one JSON object only, with no markdown or prose. ';
-        const result = await adapter.startTurn({ thread_id: thread.thread_id, message: attempt ? 'The response was not valid JSON. Return only the requested JSON object without markdown, and obey every enum and field constraint.' : (input.purpose === 'critic' ? 'Independently review the candidate. The platform already performs preflight, original-hash, verification, Evidence, and rollback governance. Judge only whether business requirements and Brief acceptance are covered by valid task contracts. The final diff is produced and verified later by Host Runner and checks; do not reject merely because it is not visible yet. Emit one requirement_to_task row for every Brief acceptance, one task_to_acceptance row for every task check_id, and set missing to [] only when both mappings are complete. If the candidate has valid tasks, valid modes/checks, and covers every Brief acceptance, return status passed. Return JSON {status:"passed"|"rejected",issues:[{code,severity}],coverage:{requirement_to_task:[],task_to_acceptance:[],missing:[]}}. ' : 'Return a workflow JSON {nodes:[{id,kind,title,parent_id,config:{execution:{argv,cwd_role,mode,input_paths,output_paths,runner_profile_ref,resource_profile,deadline_seconds,check_ids,capabilities}},contract:{acceptance:[]}}]}. Every task needs an independent check. ' + generationContract) + prompt, credential, approval_policy: 'never' });
+        const initialInstruction = input.purpose === 'critic'
+          ? 'Independently review the candidate. The platform already performs preflight, original-hash, verification, Evidence, and rollback governance. Judge only whether business requirements and Brief acceptance are covered by valid task contracts. The final diff is produced and verified later by Host Runner and checks; do not reject merely because it is not visible yet. Emit one requirement_to_task row for every Brief acceptance, one task_to_acceptance row for every task check_id, and set missing to [] only when both mappings are complete. If the candidate has valid tasks, valid modes/checks, and covers every Brief acceptance, return status passed. Return JSON {status:"passed"|"rejected",issues:[{code,severity}],coverage:{requirement_to_task:[],task_to_acceptance:[],missing:[]}}. '
+          : 'Return a workflow JSON {nodes:[{id,kind,title,parent_id,config:{execution:{argv,cwd_role,mode,input_paths,output_paths,runner_profile_ref,resource_profile,deadline_seconds,check_ids,capabilities}},contract:{acceptance:[]}}]}. Every task needs an independent check. ' + generationContract;
+        const result = await adapter.startTurn({ thread_id: thread.thread_id, message: (retryInstruction || initialInstruction) + prompt, credential, approval_policy: 'never' });
         const events = result?.events || [];
         if (events.some((event,index) => event.sequence !== index + 1)) throw new PlatformError('provider_protocol_drift', 'provider sequence is not contiguous', {}, 502);
         if (events.some((event) => event.method.includes('requestApproval') || event.method.includes('requestUserInput'))) throw new PlatformError('provider_input_required', 'provider turn is waiting for a human decision', {}, 409);
         if (events.at(-1)?.method !== 'turn/completed') throw new PlatformError('provider_turn_incomplete', 'provider turn did not complete', {}, 502);
         const message = events.filter((event) => event.method === 'item/completed' && event.params?.role === 'assistant').map((event) => String(event.params.content || event.params.summary || '')).at(-1);
         if (!message?.trim()) throw new PlatformError('provider_output_empty', 'provider returned no JSON response', {}, 502);
-        try { response = JSON.parse(message); break; } catch {
+        try {
+          response = JSON.parse(message);
+          if (input.purpose !== 'critic' && invalidGeneratedTaskContracts(response)) {
+            if (attempt === 0) {
+              response = null;
+              retryInstruction = 'The workflow JSON was valid, but one or more ordinary task nodes had an empty execution.check_ids or contract.acceptance. Return the same workflow with non-empty matching check_ids and contract.acceptance on every task; keep workstream nodes allowed and do not add check nodes. Return only one JSON object. ';
+              continue;
+            }
+            throw new PlatformError('provider_workflow_invalid', 'provider task checks and acceptance do not match', {}, 422);
+          }
+          break;
+        } catch (error) {
+          if (error instanceof PlatformError) throw error;
           if (attempt === 1) {
             const extracted = extractJsonObject(message);
-            if (extracted) { try { response = JSON.parse(extracted); break; } catch { /* retain the stable failure below */ } }
+            if (extracted) {
+              try {
+                response = JSON.parse(extracted);
+                if (input.purpose !== 'critic' && invalidGeneratedTaskContracts(response)) throw new PlatformError('provider_workflow_invalid', 'provider task checks and acceptance do not match', {}, 422);
+                break;
+              } catch (repairError) { if (repairError instanceof PlatformError) throw repairError; /* retain the stable failure below */ }
+            }
             throw new PlatformError('provider_output_invalid_json', 'provider JSON repair failed', {}, 502);
           }
+          retryInstruction = 'The response was not valid JSON. Return only the requested JSON object without markdown, and obey every enum and field constraint. ';
         }
       }
       if (!response || Array.isArray(response) || typeof response !== 'object') throw new PlatformError('provider_output_invalid_json', 'provider JSON object is required', {}, 502);
@@ -85,24 +122,10 @@ export class ProcessWorkflowCritic {
     if (!['passed','rejected'].includes(assessed.status) || !Array.isArray(assessed.issues) || !Array.isArray(assessed.coverage?.requirement_to_task) || !Array.isArray(assessed.coverage?.task_to_acceptance) || !Array.isArray(assessed.coverage?.missing)) throw new PlatformError('critic_failed', 'critic coverage receipt is incomplete', {}, 502);
     const taskIds = new Set(tasks.map((task) => task.id));
     const requirements = (input.brief?.acceptance || []).map((value) => typeof value === 'string' ? value : value.id);
-    const requirementRows = Array.isArray(assessed.coverage.requirement_to_task) ? assessed.coverage.requirement_to_task : [];
-    const acceptanceRows = Array.isArray(assessed.coverage.task_to_acceptance) ? assessed.coverage.task_to_acceptance : [];
-    for (const requirement of requirements) {
-      if (!requirementRows.some((row) => row.requirement === requirement && taskIds.has(row.task))) {
-        const owner = tasks.find((task) => task.check_ids.includes(requirement));
-        if (owner) requirementRows.push({ requirement, task: owner.id });
-      }
-    }
-    for (const task of tasks) for (const check of task.check_ids) {
-      if (!acceptanceRows.some((row) => row.task === task.id && row.check === check)) acceptanceRows.push({ task: task.id, check });
-    }
-    assessed.coverage.requirement_to_task = requirementRows;
-    assessed.coverage.task_to_acceptance = acceptanceRows;
     const coverageMissing = requirements.filter((requirement) => !assessed.coverage.requirement_to_task.some((row) => row.requirement === requirement && taskIds.has(row.task)));
     coverageMissing.push(...tasks.filter((task) => !assessed.coverage.task_to_acceptance.some((row) => row.task === task.id && task.check_ids.includes(row.check))).map((task) => task.id));
     assessed.coverage.missing = [...new Set([...assessed.coverage.missing, ...coverageMissing])];
-    const providerRejectedWithoutFinding = assessed.status === 'rejected' && !assessed.coverage.missing.length && !assessed.issues.length;
-    const status = assessed.coverage.missing.length || assessed.issues.some((issue) => ['error','critical'].includes(issue.severity)) ? 'rejected' : providerRejectedWithoutFinding ? 'passed' : assessed.status;
+    const status = assessed.coverage.missing.length || assessed.issues.some((issue) => ['error','critical'].includes(issue.severity)) ? 'rejected' : assessed.status;
     return { ...assessed, status, provider: 'process-app-server-critic', candidate_sha256: sha256Hex(canonicalJson(input.candidate)), coverage_sha256: sha256Hex(canonicalJson(assessed.coverage)), provider_receipt: result.provider_receipt };
   }
 }
