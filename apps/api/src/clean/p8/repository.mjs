@@ -669,8 +669,26 @@ export class CleanP8Service {
 
   #protectedCasReferences() {
     const values = new Set();
-    for (const sql of ['SELECT cas_sha256 AS sha FROM asset_blobs', 'SELECT cas_sha256 AS sha FROM receipt_manifests WHERE cas_sha256 IS NOT NULL', 'SELECT patch_cas_sha256 AS sha FROM pull_request_intents']) for (const row of this.db.query(sql)) if (isHash(row.sha)) values.add(row.sha);
+    const references = [
+      'SELECT cas_sha256 AS sha FROM asset_blobs',
+      'SELECT cas_sha256 AS sha FROM receipt_manifests WHERE cas_sha256 IS NOT NULL',
+      'SELECT payload_cas_hash AS sha FROM context_packs',
+      'SELECT content_cas_hash AS sha FROM assist_messages',
+      'SELECT content_cas_hash AS sha FROM attachments',
+      'SELECT preview_cas_hash AS sha FROM attachments WHERE preview_cas_hash IS NOT NULL',
+      'SELECT patch_cas_hash AS sha FROM file_change_batches',
+      'SELECT before_cas_hash AS sha FROM file_change_items WHERE before_cas_hash IS NOT NULL',
+      'SELECT after_cas_hash AS sha FROM file_change_items WHERE after_cas_hash IS NOT NULL',
+      'SELECT undo_payload_cas_hash AS sha FROM semantic_proposals WHERE undo_payload_cas_hash IS NOT NULL',
+      'SELECT chunk_cas_hash AS sha FROM terminal_events WHERE chunk_cas_hash IS NOT NULL',
+      'SELECT ref_hash AS sha FROM execution_inputs',
+      'SELECT patch_cas_sha256 AS sha FROM pull_request_intents'
+    ];
+    for (const sql of references) {
+      try { for (const row of this.db.query(sql)) if (isHash(row.sha)) values.add(String(row.sha).toLowerCase()); } catch { /* older clean fixtures may omit a later phase table */ }
+    }
     for (const row of this.db.query('SELECT components_json FROM backup_manifests')) collectHashes(parseJson(row.components_json, {}), values);
+    for (const row of this.db.query('SELECT volume_manifest_json FROM deployment_candidates')) collectHashes(parseJson(row.volume_manifest_json, {}), values);
     return values;
   }
 

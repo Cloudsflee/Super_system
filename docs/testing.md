@@ -935,3 +935,24 @@ pnpm test:release
 pnpm verify
 git diff --check
 ```
+
+### Real development loop
+
+The development reliability surface is exercised with:
+
+```text
+pnpm test:development
+node --test tests/p10/real-development-loop.test.mjs
+node scripts/v3-clean-real-development-loop.mjs --source <SOURCE_PATH> --project-name <PROJECT_NAME>
+pnpm probe:development -- --scenario minimal
+pnpm probe:development -- --scenario designsignal
+```
+
+The focused checks cover Evidence cursor compensation and receipt joins,
+provider-backed workflow generation, server-side critic assessment, execution
+plan command/path/DAG validation, and the expanded CAS protection set. A
+missing provider lease remains an explicit pending failure and never becomes a
+deterministic success. The real loop command requires a clean Git worktree,
+imports the local Codex discovery record into its temporary Vault, pins
+`gpt-5.6-sol/high`, and writes a redacted final receipt below
+`.ai-workspace/real-development-loop/<run_id>/receipts/`.

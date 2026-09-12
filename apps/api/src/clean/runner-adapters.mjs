@@ -8,6 +8,7 @@ import {
 } from 'node:crypto';
 import { canonicalJson, opaqueId, sha256Hex } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
+import { containedPath, taskContract, treeManifest, outputManifest } from './runner-input-provider.mjs';
 import { RUNNER_RESOURCE_PROFILES, signRunnerReceipt } from './runner-protocol.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -70,7 +71,7 @@ export class HostRunnerAdapter extends DeterministicRunnerAdapter {
   constructor({ homeRoot = null, clock, spawnImpl = spawn, identity = null } = {}) {
     super({ type: 'host', clock, identity });
     this.homeRoot = path.resolve(homeRoot || path.join(os.tmpdir(), 'aiws-host-runner-homes'));
-    this.spawnImpl = spawnImpl; this.children = new Map();
+    this.spawnImpl = spawnImpl; this.children = new Map(); this.requiresTaskContract = true;
     fs.mkdirSync(this.homeRoot, { recursive: true, mode: 0o700 });
   }
 
@@ -84,42 +85,53 @@ export class HostRunnerAdapter extends DeterministicRunnerAdapter {
     job.status = 'running'; job.started_at = iso(this.clock);
     const home = path.join(this.homeRoot, job.job_id);
     fs.mkdirSync(home, { recursive: true, mode: 0o700 });
-    const script = [
-      "const crypto=require('node:crypto')",
-      "const value=JSON.parse(process.env.AIWS_RUNNER_TASK || '{}')",
-      "process.stdout.write(JSON.stringify({status:'succeeded',task_ref:value.task_ref||'',output_paths:value.output_paths||[]})+'\\n')"
-    ].join(';');
-    const output = []; const errors = [];
+    let result;
     try {
-      const child = this.spawnImpl(process.execPath, ['-e', script], {
-        cwd: job.context.workspacePath || process.cwd(),
-        env: { PATH: process.env.PATH || '', SystemRoot: process.env.SystemRoot || '', CODEX_HOME: home, AIWS_RUNNER_TASK: JSON.stringify({ task_ref: job.spec.task_ref, output_paths: job.spec.output_paths }) },
-        stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32'
-      });
-      this.children.set(job.job_id, child);
-      const deadline = Math.max(1, Date.parse(job.spec.deadline_at) - Date.now());
-      const timer = setTimeout(() => { job.timed_out = true; terminateTree(child); }, deadline); timer.unref?.();
-      child.stdout.on('data', (chunk) => output.push(Buffer.from(chunk)));
-      child.stderr.on('data', (chunk) => errors.push(Buffer.from(chunk)));
-      const result = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code, signal) => resolve({ code, signal })); });
-      clearTimeout(timer); this.children.delete(job.job_id);
-      const { stdout, stderr } = boundedStreams(output, errors);
-      const status = job.status === 'cancelled' ? 'cancelled' : job.timed_out ? 'expired' : result.code === 0 ? 'succeeded' : 'failed';
-      const signed = signRunnerReceipt(receiptValue(job, { status, exit_code: result.code, error_code: status === 'expired' ? 'runner_deadline_exceeded' : status === 'failed' ? 'runner_failed' : status === 'cancelled' ? 'cancelled' : '', stdout, stderr }, iso(this.clock)), this.identity.privateKey, { expectedJobSpecId: job.spec.job_spec_id, expectedJobSpecHash: job.context.specHash });
-      job.status = signed.receipt.status; job.receipt = signed.receipt; job.signature = signed.signature; job.finished_at = signed.receipt.finished_at;
+      const contract = taskContract(job.context.contract);
+      const ref = job.spec.input_refs.find((item) => item.type === 'task_contract');
+      if (!ref || sha256Hex(canonicalJson(contract)) !== ref.hash) throw new PlatformError('runner_input_mismatch', 'signed task contract differs', {}, 409);
+      const root = path.resolve(job.context.workspacePath);
+      const before = treeManifest(root);
+      const invocation = hostInvocation(contract.argv, root);
+      result = await executeHostCommand(invocation, { root, home, spawnImpl: this.spawnImpl, deadline: Date.parse(job.spec.deadline_at), onChild: (child) => this.children.set(job.job_id, child), cancelled: () => job.cancelRequested === true });
+      if (result.status === 'succeeded') {
+        const after = treeManifest(root); const beforeMap = new Map(before.map((entry) => [entry.path, entry.sha256]));
+        const afterMap = new Map(after.map((entry) => [entry.path, entry.sha256]));
+        const changed = new Set([...beforeMap.keys(), ...afterMap.keys()].filter((relative) => beforeMap.get(relative) !== afterMap.get(relative)));
+        if (changed.size && (contract.mode !== 'write' || [...changed].some((relative) => !contract.output_paths.includes(relative)))) throw new PlatformError('runner_output_mismatch', 'task changed undeclared files', {}, 409);
+        const manifest = outputManifest(root, contract.output_paths);
+        if (!job.context.cas) throw new PlatformError('runner_input_missing', 'output CAS is required', {}, 409);
+        const stored = job.context.cas.putCanonical(manifest);
+        result = { ...result, output_sha256: stored.hash, output_bytes: manifest.entries.reduce((total, item) => total + item.byte_length, 0), output_paths: manifest.entries.map((item) => item.path) };
+      }
     } catch (error) {
-      const status = job.status === 'cancelled' ? 'cancelled' : 'failed'; const signed = signRunnerReceipt(receiptValue(job, { status, exit_code: status === 'cancelled' ? null : 1, error_code: status === 'cancelled' ? 'cancelled' : String(error?.code || 'runner_spawn_failed') }, iso(this.clock)), this.identity.privateKey, { expectedJobSpecId: job.spec.job_spec_id, expectedJobSpecHash: job.context.specHash });
-      job.status = status; job.receipt = signed.receipt; job.signature = signed.signature;
+      result = { ...(result || {}), status: job.status === 'cancelled' ? 'cancelled' : 'failed', exit_code: result?.exit_code ?? null, error_code: job.status === 'cancelled' ? 'runner_cancelled' : String(error?.code || 'runner_spawn_failed'), output_paths: [], output_sha256: '' };
     } finally {
       this.children.delete(job.job_id);
-      if (Buffer.isBuffer(job.context?.credential)) job.context.credential.fill(0);
+      job.context.credential?.fill(0);
       fs.rmSync(home, { recursive: true, force: true });
     }
+    const signed = signRunnerReceipt(receiptValue(job, result, iso(this.clock)), this.identity.privateKey, { expectedJobSpecId: job.spec.job_spec_id, expectedJobSpecHash: job.context.specHash });
+    job.status = signed.receipt.status; job.receipt = signed.receipt; job.signature = signed.signature; job.finished_at = signed.receipt.finished_at;
+    const durable = { job_id: job.job_id, status: job.status, receipt: job.receipt, signature: job.signature, signer_public_key: this.publicIdentity() };
+    const target = path.join(this.homeRoot, job.job_id + '.receipt.json');
+    fs.writeFileSync(target, canonicalJson(durable), { mode: 0o600, flag: 'wx' });
+  }
+
+  async status(jobId) {
+    if (this.jobs.has(String(jobId))) return super.status(jobId);
+    if (!/^runner_job_[a-f0-9]+$/.test(String(jobId))) return { job_id: String(jobId), status: 'unknown' };
+    const file = path.join(this.homeRoot, String(jobId) + '.receipt.json');
+    if (!fs.existsSync(file)) return { job_id: String(jobId), status: 'unknown' };
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
   }
 
   async cancel(jobId) {
+    const job = this.jobs.get(String(jobId));
+    if (!job || TERMINAL.has(job.status)) return this.status(jobId);
+    job.cancelRequested = true;
     const child = this.children.get(String(jobId)); if (child) terminateTree(child);
-    return super.cancel(jobId);
+    return { job_id: String(jobId), status: 'running' };
   }
 }
 
@@ -201,3 +213,33 @@ function hash(value) { return createHash('sha256').update(value).digest('hex'); 
 function iso(clock) { const value = typeof clock === 'function' ? clock() : new Date(); return typeof value === 'string' ? value : new Date(value).toISOString(); }
 function boundedStreams(output, errors) { const stdout = Buffer.concat(output).subarray(0, 2 * 1024 * 1024); const remaining = Math.max(0, 2 * 1024 * 1024 - stdout.length); return { stdout, stderr: Buffer.concat(errors).subarray(0, remaining) }; }
 function terminateTree(child) { if (!child || child.exitCode != null) return; try { if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); else process.kill(-child.pid, 'SIGTERM'); } catch { try { child.kill('SIGKILL'); } catch { /* process already exited */ } } }
+export function hostInvocation(argv, root) {
+  const [command, ...args] = argv;
+  if (command === 'node') return { command: process.execPath, args: ['--permission', '--allow-fs-read=' + root, '--allow-fs-write=' + root, ...args] };
+  if (process.platform !== 'win32' || command === 'git') return { command, args };
+  const nodeRoot = path.dirname(process.execPath);
+  const script = command === 'npm' ? path.join(nodeRoot, 'node_modules/npm/bin/npm-cli.js') : command === 'pnpm' ? path.join(nodeRoot, 'node_modules/corepack/dist/corepack.js') : null;
+  if (script && fs.existsSync(script)) return { command: process.execPath, args: [script, ...(command === 'pnpm' ? ['pnpm'] : []), ...args] };
+  if (command === 'codex') {
+    const located = requireExecutable('codex.exe');
+    if (located) return { command: located, args };
+  }
+  throw new PlatformError('runner_command_not_allowed', 'registered executable is unavailable without a shell', {}, 422);
+}
+function requireExecutable(name) { return String(process.env.PATH || '').split(path.delimiter).map((entry) => path.join(entry, name)).find((file) => fs.existsSync(file) && fs.lstatSync(file).isFile()); }
+export async function executeHostCommand(invocation, { root, home = root, spawnImpl = spawn, deadline = Date.now() + 120000, onChild = () => {}, cancelled = () => false, allowedExitCodes = [0] } = {}) {
+  const env = {};
+  for (const key of ['PATH','Path','SystemRoot','WINDIR','COMSPEC','PATHEXT','TEMP','TMP']) if (process.env[key]) env[key] = process.env[key];
+  Object.assign(env, { HOME: home, USERPROFILE: home, CODEX_HOME: home, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(home, 'gitconfig') });
+  const child = spawnImpl(invocation.command, invocation.args, { cwd: root, env, stdio: ['ignore','pipe','pipe'], shell: false, windowsHide: true, detached: process.platform !== 'win32' });
+  onChild(child);
+  const stdout = [], stderr = []; let size = 0, timedOut = false, tooLarge = false, spawnError = null;
+  const capture = (chunks) => (value) => { size += value.length; if (size > 2 * 1024 * 1024) { tooLarge = true; terminateTree(child); } else chunks.push(Buffer.from(value)); };
+  child.stdout?.on('data', capture(stdout)); child.stderr?.on('data', capture(stderr));
+  const timer = setTimeout(() => { timedOut = true; terminateTree(child); }, Math.max(1, deadline - Date.now()));
+  const completion = await new Promise((resolve) => { child.once('error', (error) => { spawnError = error; }); child.once('close', (code, signal) => resolve({ code, signal })); });
+  clearTimeout(timer);
+  const output = Buffer.concat(stdout), errors = Buffer.concat(stderr);
+  const errorCode = cancelled() ? 'runner_cancelled' : timedOut ? 'runner_timeout' : tooLarge ? 'runner_output_too_large' : spawnError ? 'runner_spawn_failed' : completion.code != null && !allowedExitCodes.includes(completion.code) ? (errors.includes('ERR_ACCESS_DENIED') ? 'runner_path_invalid' : 'runner_failed') : '';
+  return { status: cancelled() ? 'cancelled' : errorCode ? 'failed' : 'succeeded', exit_code: completion.code, signal: completion.signal, timeout: timedOut, cancellation: cancelled(), error_code: errorCode, stdout: output, stderr: errors };
+}

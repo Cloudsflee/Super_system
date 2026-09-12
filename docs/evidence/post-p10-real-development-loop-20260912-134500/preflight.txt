@@ -1,0 +1,17 @@
+Target: post-P10 real development loop CLI and rollback verification
+目标: real Provider loop, isolated v8 rollback, append-only maintenance receipt
+Non-target: /api/v2, schema v9, ledger [1..9], production volumes and pointers
+非目标: historical runtime, new migration, production cutover
+Forbidden: deterministic fallback, fixed byte_exact_mismatches, source mutation
+禁止项: 伪造 Provider 成功、覆盖 P1-P10 Evidence
+Reuse: existing Clean owners, Provider, Runner, Check, Evidence and P10 tests
+复用项: 现有运行时与治理边界
+Delete/retire: fixed rollback empty-array assignment
+删除/退役: 固定空数组回滚逻辑
+Acceptance commands: pnpm check; pnpm test; pnpm test:p10; node --test tests/p10/real-development-loop.test.mjs; pnpm test:integration:clean; pnpm test:security:clean; pnpm build; pnpm test:e2e; pnpm test:release; git diff --check
+验收命令: 同上
+Rollback artifact: rollback.ps1 and rollback-actual.json
+回滚工件: rollback.ps1 与 rollback-actual.json
+active_object: scripts/v3-clean-real-development-loop.mjs
+last_confirmed_result: focused loop tests and isolated v8 rollback passed; Docker security gate unavailable
+next_action: commit the synchronized worktree and run formal verify

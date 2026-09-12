@@ -2,6 +2,7 @@ import {
   createPrivateKey, createPublicKey, generateKeyPairSync
 } from 'node:crypto';
 import { canonicalJson, opaqueId, sha256Hex } from './canonical.mjs';
+import { RunnerInputProvider, taskContract, outputManifest } from './runner-input-provider.mjs';
 import { PlatformError } from './platform-error.mjs';
 import {
   appendAggregate, createOperation, priorResponse, requestHash, requireIdempotency,
@@ -20,9 +21,10 @@ const DEFAULT_CAPABILITIES = Object.freeze({
 });
 
 export class CleanRunnerService {
-  constructor({ db, events, operations, authorization, vault, adapters = {}, clock, pollIntervalMs = 10, config = {} } = {}) {
+  constructor({ db, events, operations, authorization, vault, cas = null, adapters = {}, clock, pollIntervalMs = 10, config = {} } = {}) {
     if (!db || !events || !operations || !authorization || !vault) throw new TypeError('runner_service_dependencies_required');
     this.db = db; this.events = events; this.operations = operations; this.authorization = authorization; this.vault = vault;
+    this.cas = cas; this.inputs = cas ? new RunnerInputProvider({ db, cas }) : null;
     this.adapters = { ...adapters }; this.clock = clock; this.pollIntervalMs = Math.max(1, Number(pollIntervalMs || 10)); this.config = config;
     const identity = serviceIdentity(vault);
     this.servicePrivateKey = identity.privateKey; this.servicePublicKey = identity.publicKey; this.serviceKeyId = identity.keyId;
@@ -143,6 +145,16 @@ export class CleanRunnerService {
   }
 
   createJobSpecInTransaction(tx, { execution, attempt, task, profile, inputRefs = [], workspaceHash, contextPackHash, now, actorId }) {
+    const contractRefs = [];
+    if (task.argv?.length) {
+      if (!this.cas) throw new PlatformError('runner_input_missing', 'shared CAS is required', {}, 409);
+      const contract = taskContract(task);
+      if (task.task_contract_sha256 && task.task_contract_sha256 !== sha256Hex(canonicalJson(contract))) throw new PlatformError('runner_input_mismatch', 'task contract hash changed', {}, 409);
+      const object = this.cas.putCanonical(contract);
+      const payload = canonicalJson({ contract_sha256: object.hash });
+      tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'runner.task-contract','verified',?,?,?,?)", [opaqueId('receipt'), payload, sha256Hex(payload), object.hash, now]);
+      contractRefs.push({ type: 'task_contract', ref: `task-contract:${execution.id}:${task.id}:${Number(attempt.attempt_no)}`, revision: Number(attempt.revision), hash: object.hash });
+    }
     const id = opaqueId('job_spec'); const deadlineAt = new Date(Math.min(Date.parse(now) + 15 * 60 * 1000, Date.parse(now) + Math.max(1, Number(task.deadline_seconds || 900)) * 1000)).toISOString();
     const profileHash = profileSnapshotHash(profile); const checkIds = Array.isArray(task.check_ids) ? task.check_ids : [];
     const capabilities = [...new Set(['workspace:read', task.mode === 'write' ? 'workspace:write' : null, 'network:none', ...checkIds.map((check) => `check:${check}`)].filter(Boolean))].sort();
@@ -150,7 +162,7 @@ export class CleanRunnerService {
       schema_version: 'runner.job-spec.v2', job_spec_id: id, execution_ref: execution.id, generation: Number(execution.generation), task_ref: String(task.id), attempt: Number(attempt.attempt_no),
       runner_profile_ref: profile.id, runner_profile_revision: Number(profile.revision), runner_profile_hash: profileHash,
       image_digest: profile.image_digest || '', deadline_at: deadlineAt, capabilities, resource_profile: task.resource_profile || 'light', execution_mode: task.mode || 'read',
-      input_refs: inputRefs.map((item) => ({ type: item.input_type || item.type, ref: item.ref_id || item.ref, revision: Number(item.ref_revision ?? item.revision ?? 0), hash: item.ref_hash || item.hash })),
+      input_refs: [...inputRefs.map((item) => ({ type: item.input_type || item.type, ref: item.ref_id || item.ref, revision: Number(item.ref_revision ?? item.revision ?? 0), hash: item.ref_hash || item.hash })), ...contractRefs],
       input_paths: Array.isArray(task.input_paths) ? task.input_paths : [], output_paths: Array.isArray(task.output_paths) ? task.output_paths : [], check_ids: checkIds,
       workspace_ref: execution.repository_workspace_id, workspace_hash: workspaceHash, context_pack_ref: execution.context_pack_id, context_pack_hash: contextPackHash,
       service_key_id: this.serviceKeyId, created_at: now
@@ -162,7 +174,11 @@ export class CleanRunnerService {
   }
 
   async runSignedJob(signed, profile, context = {}) {
-    const adapter = this.adapterFor(profile); const submitted = await adapter.submit(signed.spec, { ...context, profile: profileView(profile), specHash: signed.spec_sha256, specSignature: signed.signature, servicePublicKey: this.servicePublicKey });
+    const adapter = this.adapterFor(profile);
+    let materialized = {};
+    if (signed.spec.input_refs.some((ref) => ref.type === 'task_contract')) materialized = this.inputs.materialize(signed.spec, context.workspacePath);
+    else if (adapter.requiresTaskContract) throw new PlatformError('execution_config_missing', 'Host task requires a signed CAS contract', {}, 422);
+    const submitted = await adapter.submit(signed.spec, { ...context, ...materialized, cas: this.cas, profile: profileView(profile), specHash: signed.spec_sha256, specSignature: signed.signature, servicePublicKey: this.servicePublicKey });
     const jobId = String(submitted?.job_id || ''); if (!jobId) throw new PlatformError('runner_submit_invalid', 'runner did not return a job reference', {}, 503);
     await context.onSubmitted?.({ job_id: jobId, status: String(submitted.status || 'queued') });
     let current = submitted; let priorStatus = String(current.status || '');
@@ -189,12 +205,20 @@ export class CleanRunnerService {
     if (current.status === 'external_result_unknown' || current.status === 'unknown' || !current.receipt) return { job_id: jobId, status: 'external_result_unknown' };
     const signer = String(current.signer_public_key || ''); if (!signer || signer.trim() !== String(profile.identity_public_key || '').trim()) throw new PlatformError('runner_identity_mismatch', 'runner receipt identity differs from the probed profile', {}, 409);
     const verified = verifyRunnerReceipt(current.receipt, current.signature, signer, { expectedJobSpecId: signed.spec.job_spec_id, expectedJobSpecHash: signed.spec_sha256 });
+    if (verified.receipt.status === 'succeeded' && signed.spec.input_refs.some((ref) => ref.type === 'task_contract')) {
+      const manifest = JSON.parse(this.cas.read(verified.receipt.output_sha256).toString('utf8'));
+      if (manifest.schema_version !== 'runner.output-manifest.v1' || canonicalJson(manifest.entries.map((entry) => entry.path).sort()) !== canonicalJson([...signed.spec.output_paths].sort())) throw new PlatformError('runner_output_mismatch', 'output manifest paths differ', {}, 409);
+    }
     return { job_id: jobId, status: verified.receipt.status, ...verified, signature: current.signature, signer_public_key: signer };
   }
 
   persistReceiptInTransaction(tx, { attempt, profile, result, now }) {
     if (result.status === 'external_result_unknown') return null;
     const id = result.receipt.receipt_id;
+    if (result.receipt.output_sha256 && this.cas?.has(result.receipt.output_sha256)) {
+      const payload = canonicalJson({ execution_id: attempt.execution_id, generation: attempt.generation, task_id: attempt.task_id, task_attempt_id: attempt.id, output_sha256: result.receipt.output_sha256 });
+      tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'runner.output-manifest','verified',?,?,?,?)", [opaqueId('receipt'), payload, sha256Hex(payload), result.receipt.output_sha256, now]);
+    }
     tx.run(`INSERT INTO runner_receipts(id,job_spec_id,task_attempt_id,runner_profile_id,schema_version,receipt_json,receipt_sha256,signer_public_key,signature,status,exit_code,stdout_sha256,stderr_sha256,output_sha256,stdout_bytes,stderr_bytes,output_bytes,started_at,finished_at,created_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [id, result.receipt.job_spec_id, attempt.id, profile.id, result.receipt.schema_version, result.receipt_json, result.receipt_sha256, result.signer_public_key, result.signature, result.receipt.status, result.receipt.exit_code, result.receipt.stdout_sha256, result.receipt.stderr_sha256, result.receipt.output_sha256, result.receipt.stdout_bytes, result.receipt.stderr_bytes, result.receipt.output_bytes, result.receipt.started_at, result.receipt.finished_at, now]);
     return id;

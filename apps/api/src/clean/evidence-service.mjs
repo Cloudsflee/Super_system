@@ -24,7 +24,7 @@ export class CleanEvidenceService {
     this.bootstrapActorId = bootstrapActorId;
     this.workspaceRoot = path.resolve(config.workspaceRoot || path.join(process.cwd(), '.ai-workspace', 'v3-clean', 'workspaces'));
     this.unsubscribe = null;
-    this.captureQueue = Promise.resolve();
+    this.captureQueue = Promise.resolve(); this.captureRetries = 0; this.captureTimer = null; this.closing = false;
   }
 
   listAssets(projectId, input = {}, principal) {
@@ -221,38 +221,62 @@ export class CleanEvidenceService {
   async recoverPending() {
     const cursor = this.db.get("SELECT * FROM event_cursors WHERE actor_id=? AND consumer_id='p7-evidence-capture' AND stream='events'", [this.bootstrapActorId]);
     const after = Number(cursor?.cursor_sequence || 0);
-    const rows = this.db.query("SELECT * FROM events WHERE sequence>? AND type='execution.completed' ORDER BY sequence LIMIT 1000", [after]);
+    // Scan the complete completion history on startup.  The capture operation is
+    // idempotent, so this also compensates events whose cursor was acknowledged
+    // by an older runtime before their Evidence transaction committed.
+    const rows = this.db.query("SELECT * FROM events WHERE type='execution.completed' ORDER BY sequence");
     let captured = 0;
     let last = after;
     for (const event of rows) {
-      await this.captureCompletedExecution(event.aggregate_id).catch(() => undefined);
-      last = Number(event.sequence);
-      captured += 1;
+      if (Number(event.sequence) <= after) {
+        // Historical rows are still checked for compensation, but never move a
+        // monotonic cursor backwards.
+        try { captured += await this.captureCompletedExecution(event.aggregate_id, parseJson(event.data_json, {}).generation); } catch (error) { this.recordCaptureFailure(event.aggregate_id, error); }
+        continue;
+      }
+      try {
+        captured += await this.captureCompletedExecution(event.aggregate_id, parseJson(event.data_json, {}).generation);
+        last = Number(event.sequence);
+      } catch (error) {
+        this.recordCaptureFailure(event.aggregate_id, error);
+        break;
+      }
     }
     if (last > after) this.events.ackCursor({ actorId: this.bootstrapActorId, consumerId: 'p7-evidence-capture', stream: 'events', cursor: last, expectedRevision: cursor?.revision || 0 });
     if (!this.unsubscribe) this.unsubscribe = this.events.subscribe({}, (event) => {
       if (event.type !== 'execution.completed') return;
-      this.captureQueue = this.captureQueue.then(() => this.captureCompletedExecution(event.aggregate.id)).catch(() => undefined);
+      this.captureQueue = this.captureQueue
+        .then(() => this.recoverPending())
+        .catch((error) => { this.recordCaptureFailure(event.aggregate.id, error); });
     });
     return captured;
   }
 
-  async captureCompletedExecution(executionId) {
-    const execution = this.db.get('SELECT * FROM executions WHERE id=?', [String(executionId)]);
-    if (!execution || execution.status !== 'completed') return 0;
+  async captureCompletedExecution(executionId, generation = null) {
+    let execution = this.db.get('SELECT * FROM executions WHERE id=?', [String(executionId)]);
+    if (!execution) return 0;
+    if (generation != null) {
+      const completed = this.db.query("SELECT data_json FROM events WHERE aggregate_id=? AND type='execution.completed'", [execution.id]).some((event) => Number(parseJson(event.data_json,{}).generation) === Number(generation));
+      if (!completed) throw new PlatformError('evidence_capture_pending', 'completion event is missing', {}, 409);
+      execution = { ...execution, generation: Number(generation), status: 'completed' };
+    }
+    if (execution.status !== 'completed') return 0;
     const handoff = parseJson(execution.handoff_manifest_json, {});
-    if (handoff.delivery_ready !== true || Number(handoff.generation) !== Number(execution.generation) || sha256Hex(canonicalJson(handoff)) !== execution.handoff_manifest_sha256) return 0;
+    if (generation == null && (handoff.delivery_ready !== true || Number(handoff.generation) !== Number(execution.generation) || sha256Hex(canonicalJson(handoff)) !== execution.handoff_manifest_sha256)) throw new PlatformError('evidence_capture_pending', 'handoff is incomplete', {}, 409);
     const checkpoint = this.db.get("SELECT * FROM execution_stage_checkpoints WHERE execution_id=? AND generation=? AND stage='deliver'", [execution.id, execution.generation]);
-    const receipts = this.db.query("SELECT r.* FROM runner_receipts r JOIN task_attempts a ON a.receipt_id=r.id WHERE a.execution_id=? AND a.generation=? ORDER BY a.task_ordinal,a.attempt_no", [execution.id, execution.generation]);
-    if (!checkpoint || receipts.some((row) => !row.receipt_sha256)) return 0;
+    const receipts = this.db.query("SELECT r.* FROM runner_receipts r JOIN task_attempts a ON a.runner_receipt_id=r.id WHERE a.execution_id=? AND a.generation=? ORDER BY a.task_ordinal,a.attempt_no", [execution.id, execution.generation]);
+    if (!checkpoint) throw new PlatformError('evidence_capture_pending', 'completed execution deliver checkpoint is unavailable', { execution_id: execution.id }, 409);
+    if (receipts.some((row) => !row.receipt_sha256)) throw new PlatformError('evidence_capture_pending', 'completed execution runner receipt is unavailable', { execution_id: execution.id }, 409);
     const principal = { actorId: this.bootstrapActorId, effectiveActorId: this.bootstrapActorId, scopes: ['*'] };
     const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]);
     const plan = parseJson(execution.plan_json, {});
     let count = 0;
     for (const task of plan.tasks || []) {
       for (const relative of task.output_paths || []) {
-        const file = safeJoin(this.workspaceRoot, workspace?.relative_path, relative);
-        if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) continue;
+        const candidateRoot = `candidates/${execution.id}/${execution.generation}`;
+        const rootRef = fs.existsSync(path.join(this.workspaceRoot, candidateRoot)) ? candidateRoot : workspace?.relative_path;
+        const file = safeJoin(this.workspaceRoot, rootRef, relative);
+        if (!file || !fs.existsSync(file) || !fs.lstatSync(file).isFile() || fs.lstatSync(file).isSymbolicLink()) throw new PlatformError('evidence_capture_pending', 'execution output is missing', {}, 409);
         const bytes = fs.readFileSync(file);
         await this.capture({ project_id: execution.project_id, execution_id: execution.id, logical_name: relative, asset_kind: 'execution_output', source_type: 'execution', source_ref: `${execution.id}:${execution.generation}:${relative}`, relative_path: relative, media_type: mediaTypeFor(relative), content_base64: bytes.toString('base64'), metadata: { generation: Number(execution.generation), checkpoint_sha256: checkpoint.checkpoint_sha256 }, idempotency_key: `p7-capture-${sha256Hex(`${execution.id}:${execution.generation}:${relative}`).slice(0, 40)}`, expected_revision: 0 }, principal);
         count += 1;
@@ -261,7 +285,34 @@ export class CleanEvidenceService {
     return count;
   }
 
-  close() { this.unsubscribe?.(); this.unsubscribe = null; }
+  async recordCheckResult({ execution, attempt, checkId, status, commandHash, inputHash, outputHash, durationMs, details }, principal) {
+    this.assertProject(principal, 'run', execution.project_id, 'evidence');
+    const detailsJson = canonicalJson(details);
+    await this.db.withTransaction((tx) => {
+      const prior = tx.get('SELECT * FROM test_results WHERE execution_id=? AND check_id=? AND input_sha256=?', [execution.id, checkId, inputHash]);
+      if (prior) { if (prior.output_sha256 !== outputHash || prior.status !== status) throw new PlatformError('check_result_changed', 'immutable check input produced a different result', {}, 409); return; }
+      tx.run('INSERT INTO test_results(id,project_id,execution_id,task_attempt_id,check_id,status,command_sha256,input_sha256,output_sha256,duration_ms,details_json,details_sha256,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [opaqueId('test_result'),execution.project_id,execution.id,attempt?.id || null,checkId,status,commandHash,inputHash,outputHash,durationMs,detailsJson,sha256Hex(detailsJson),time(this.clock),principal.actorId]);
+    });
+  }
+
+  recordCaptureFailure(executionId, error) {
+    if (!this.captureTimer && !this.closing && this.captureRetries < 3) {
+      this.captureRetries++;
+      this.captureTimer = setTimeout(() => { this.captureTimer = null; if (!this.closing) this.captureQueue = this.captureQueue.then(() => this.recoverPending()).catch(() => undefined); }, 1000 * this.captureRetries);
+      this.captureTimer.unref?.();
+    }
+    const payload = canonicalJson({
+      execution_id: String(executionId || ''),
+      status: 'pending',
+      error_code: String(error?.code || 'evidence_capture_failed').slice(0, 120)
+    });
+    try {
+      this.db.run(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
+        VALUES(?,?,?,?,?,?,?,?)`, [opaqueId('receipt'), 'evidence.capture.failure', 'failed', payload, sha256Hex(payload), null, time(this.clock), null]);
+    } catch { /* diagnostic receipt creation must not hide the pending event */ }
+  }
+
+  close() { this.closing = true; clearTimeout(this.captureTimer); this.unsubscribe?.(); this.unsubscribe = null; return this.captureQueue; }
 
   assetView(row) {
     const current = row?.current_version_id ? this.db.get('SELECT * FROM asset_versions WHERE id=?', [row.current_version_id]) : null;

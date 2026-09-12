@@ -16,7 +16,9 @@ export const P10_APPEND_ONLY_MAINTENANCE_PATHS = Object.freeze({
   'docs/architecture/v3-clean-development-plan.md': '## 21. Post-P10 development reliability maintenance'
 });
 export const P10_ADDITIVE_MAINTENANCE_PREFIXES = Object.freeze([
-  'docs/evidence/post-p10-development-reliability-20260905/'
+  'docs/evidence/post-p10-development-reliability-20260905/',
+  'docs/evidence/post-p10-real-development-loop-20260911/',
+  'docs/evidence/post-p10-real-development-loop-20260912-134500/'
 ]);
 export const P10_CATALOG_PATHS = Object.freeze(['feature-catalog.json', 'feature-catalog.clean.json', 'feature-catalog.historical.json']);
 

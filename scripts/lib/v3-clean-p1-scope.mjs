@@ -175,6 +175,8 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'fixture:legacy:security': { command: 'node scripts/layered-gate.mjs security --historical', role: 'deferred_fixture', phase: 'historical' },
   'test:release': { command: 'node --test tests/release/*.test.mjs', role: 'characterization_gate', phase: 'P8-P9' },
   'test:runner-real': { command: 'node scripts/runner-real-smoke.mjs', role: 'characterization_gate', phase: 'P6' },
+  'test:development': { command: 'node --test tests/p10/development-reliability.test.mjs', role: 'development_gate', phase: 'P10+' },
+  'probe:development': { command: 'node scripts/runner-real-smoke.mjs', role: 'development_probe', phase: 'P10+' },
   'github:seed-fixture': { command: 'node scripts/github-seed-fixture.mjs', role: 'deferred_fixture', phase: 'P7' },
   'verify:dev': { command: 'node scripts/verify-dev.mjs', role: 'development_gate', phase: 'P10+' },
   verify: { command: 'node scripts/verify.mjs', role: 'p1_gate', phase: 'P1' },

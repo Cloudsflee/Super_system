@@ -1,3 +1,4 @@
+import { createPrivateKey, createPublicKey, generateKeyPairSync } from 'node:crypto';
 import { loadCleanConfig } from './config.mjs';
 import { initializeCleanDatabase, CleanNotReadyError } from './database.mjs';
 import { RedactionPolicy } from './redaction.mjs';
@@ -7,7 +8,7 @@ import { OperationService } from './operations.mjs';
 import { CleanPlatform } from './platform.mjs';
 import { createCleanCommandRegistry } from './registry.mjs';
 import { ReceiptService } from './receipts.mjs';
-import { canonicalJson } from './canonical.mjs';
+import { canonicalJson, sha256Hex } from './canonical.mjs';
 import { validateCleanOwnership } from './ownership.mjs';
 import { AuthorizationService } from './authorization.mjs';
 import { IdentityService } from './identity.mjs';
@@ -25,7 +26,7 @@ import { CleanBridgeService } from './bridge-service.mjs';
 import { DeterministicAppServerAdapter, ProcessAppServerAdapter } from './app-server-adapter.mjs';
 import { CleanRunnerService } from './runner-service.mjs';
 import { CleanExecutionService } from './execution-service.mjs';
-import { BrokerRunnerAdapter, BridgeJobAdapter, HostRunnerAdapter } from './runner-adapters.mjs';
+import { BrokerRunnerAdapter, BridgeJobAdapter, DeterministicRunnerAdapter, HostRunnerAdapter } from './runner-adapters.mjs';
 import { CleanEvidenceService } from './evidence-service.mjs';
 import { CleanParserService } from './parser-service.mjs';
 import { CleanQualityService, DeterministicQualityAdviceAdapter, ProcessQualityAdviceAdapter } from './quality-service.mjs';
@@ -37,6 +38,7 @@ import { CleanP8Service } from './p8-service.mjs';
 import { CleanP10Service } from './p10-service.mjs';
 import { CleanLocalSetupService } from './local-setup-service.mjs';
 import { CleanGithubSetupService } from './github-setup-service.mjs';
+import { ProcessWorkflowGenerator, ProcessWorkflowCritic, LocalGitRepositoryAdapter } from './workflow-adapters.mjs';
 
 export function createCleanRuntime(options = {}) {
   const config = options.config || loadCleanConfig(options.env || process.env);
@@ -73,7 +75,10 @@ export function createCleanRuntime(options = {}) {
     ? createRealProviderAdapters({ config, fetchImpl: options.fetchImpl })
     : createFakeProviderAdapters());
   const identity = new IdentityService({ db, events, operations, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, sessionSecret: options.sessionSecret || config.sessionSecret, authorization, vault, clock: options.now || undefined, projectScopeResolver, providerAdapters });
-  const projectWorkflow = targetVersion >= 3 ? new ProjectWorkflowService({ db, events, operations, policy, authorization, clock: options.now || undefined, repositoryAdapter: options.repositoryAdapter, generator: options.generator, critic: options.critic }) : null;
+  const workflowGenerator = options.generator || (targetVersion >= 9 && config.providerMode !== 'deterministic' ? new ProcessWorkflowGenerator({ config, credentialResolver: (input) => input.provider_profile_id && input.principal_actor_id ? identity.leaseProviderCredential(input.provider_profile_id, { actorId: input.principal_actor_id }) : null }) : null);
+  const workflowCritic = options.critic || (targetVersion >= 9 && config.providerMode !== 'deterministic' ? new ProcessWorkflowCritic({ generator: workflowGenerator }) : null);
+  const repositoryAdapter = options.repositoryAdapter || (targetVersion >= 9 && config.providerMode !== 'deterministic' ? new LocalGitRepositoryAdapter({ vault }) : null);
+  const projectWorkflow = targetVersion >= 3 ? new ProjectWorkflowService({ db, events, operations, policy, authorization, clock: options.now || undefined, repositoryAdapter, identity, cas, config, generator: workflowGenerator, critic: workflowCritic }) : null;
   const registry = createCleanCommandRegistry({ targetVersion, runtimePhase });
   const context = targetVersion >= 4 ? new CleanContextService({ db, cas, events, operations, authorization, policy, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const mcp = targetVersion >= 4 ? new CleanMcpExchangeService({ db, context, operations, authorization, registry, policy, clock: options.now || undefined, pepper: options.mcpPepper || config.mcpPepper, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
@@ -86,8 +91,8 @@ export function createCleanRuntime(options = {}) {
   const terminal = targetVersion >= 5 ? new CleanTerminalService({ db, cas, events, operations, authorization, projectWorkflow, clock: options.now || undefined, config, pty: options.pty }) : null;
   const bridge = targetVersion >= 5 ? new CleanBridgeService({ db, events, operations, authorization, vault, clock: options.now || undefined, adapter: options.bridgeAdapter, config }) : null;
   const runnerAdapters = targetVersion >= 6 ? createRunnerAdapters({ options, config, bridge, db, vault }) : null;
-  const runner = targetVersion >= 6 ? new CleanRunnerService({ db, events, operations, authorization, vault, adapters: runnerAdapters, clock: options.now || undefined, pollIntervalMs: options.runnerPollIntervalMs || config.runnerPollIntervalMs, config }) : null;
-  const execution = targetVersion >= 6 ? new CleanExecutionService({ db, events, operations, authorization, runner, projectWorkflow, assist, clock: options.now || undefined, config, sleep: options.runnerSleep, retryDelays: options.runnerRetryDelays }) : null;
+  const runner = targetVersion >= 6 ? new CleanRunnerService({ db, events, operations, authorization, vault, cas, adapters: runnerAdapters, clock: options.now || undefined, pollIntervalMs: options.runnerPollIntervalMs || config.runnerPollIntervalMs, config }) : null;
+  const execution = targetVersion >= 6 ? new CleanExecutionService({ db, events, operations, authorization, runner, projectWorkflow, assist, cas, clock: options.now || undefined, config, sleep: options.runnerSleep, retryDelays: options.runnerRetryDelays }) : null;
   const evidence = targetVersion >= 7 ? new CleanEvidenceService({ db, cas, events, operations, authorization, files, clock: options.now || undefined, config, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const parserAdapter = targetVersion >= 7 ? createParserAdapter(options, config, targetVersion) : null;
   const parser = targetVersion >= 7 ? new CleanParserService({ db, cas, events, operations, authorization, evidence, adapter: parserAdapter, clock: options.now || undefined, pollIntervalMs: options.parserPollIntervalMs || config.parserPollIntervalMs, sleep: options.parserSleep, retryDelays: options.parserRetryDelays, serviceIdentity: options.parserServiceIdentity, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
@@ -96,6 +101,7 @@ export function createCleanRuntime(options = {}) {
     : null;
   const quality = targetVersion >= 7 ? new CleanQualityService({ db, cas, events, operations, authorization, evidence, vault, adviceAdapter: qualityAdviceAdapter, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const outcomeEvaluation = targetVersion >= 7 ? new CleanOutcomeEvaluationService({ db, events, operations, authorization, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+  if (execution && evidence) execution.checkEvidence = evidence;
   const p8Service = targetVersion >= 8 ? new CleanP8Service({ db, cas, events, operations, authorization, vault, projectWorkflow, githubAdapter: options.githubAdapter, operationsAdapter: options.operationsAdapter, config, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const p10Service = targetVersion >= 9 ? new CleanP10Service({ db, cas, events, operations, authorization, vault, assist, githubAdapter: p8Service?.github || options.githubAdapter, repositoryDeletionAdapter: options.repositoryDeletionAdapter, clock: options.now || undefined }) : null;
   const localSetup = targetVersion >= 9 ? new CleanLocalSetupService({ config, db, identity, operations, clock: options.now || undefined, deviceLoginRunner: options.deviceLoginRunner, spawnImpl: options.deviceLoginSpawn }) : null;
@@ -224,6 +230,8 @@ export function createCleanRuntime(options = {}) {
   return runtime;
 }
 
+
+
 function createAssistProvider(options, config) {
   const mode = String(options.providerMode || config.providerMode || 'process').toLowerCase();
   if (mode === 'deterministic') return new DeterministicAppServerAdapter(options.providerOptions || {});
@@ -333,7 +341,7 @@ function createRunnerAdapters({ options, config, bridge, db, vault }) {
     }
   }) : null;
   return {
-    host: options.hostRunnerAdapter || new HostRunnerAdapter({ homeRoot: config.runnerHomeRoot, clock: options.now || undefined }),
+    host: options.hostRunnerAdapter || (config.providerMode === 'deterministic' ? new DeterministicRunnerAdapter({ type: 'host', clock: options.now || undefined }) : new HostRunnerAdapter({ homeRoot: config.runnerHomeRoot, clock: options.now || undefined, identity: hostIdentity(vault) })),
     docker: options.dockerRunnerAdapter || new BrokerRunnerAdapter({ baseUrl: config.runnerBrokerUrl, secret: config.runnerBrokerSecret, clock: options.runnerClock }),
     ...(bridgeJobs ? { windows_bridge: options.bridgeRunnerAdapter || bridgeJobs } : {})
   };
@@ -361,4 +369,13 @@ function runtimePhaseFromOptions(options = {}, targetVersion = targetVersionFrom
     if (options[`p${phase}`] || options.phase === `p${phase}` || options.cleanPhase === `p${phase}`) return phase;
   }
   return Number(targetVersion);
+}
+function hostIdentity(vault) {
+  const ref = 'host-runner-signing-v1';
+  if (!vault.has(ref)) {
+    const identity = generateKeyPairSync('ed25519'); const bytes = Buffer.from(identity.privateKey.export({type:'pkcs8',format:'pem'}));
+    try { vault.put(ref,bytes); } finally { bytes.fill(0); }
+  }
+  const bytes = vault.read(ref);
+  try { const privateKey = createPrivateKey(bytes); return {privateKey,publicKey:createPublicKey(privateKey)}; } finally { bytes.fill(0); }
 }

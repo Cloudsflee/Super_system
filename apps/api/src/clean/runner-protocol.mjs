@@ -60,7 +60,10 @@ export function validateRunnerJobSpec(value, { now = Date.now(), expectedImageDi
   const normalizedRefs = inputRefs.map((item) => {
     assertRecord(item, 'runner_job_spec_invalid');
     rejectUnknown(item, new Set(['type', 'ref', 'revision', 'hash']), 'runner_job_spec_invalid');
-    assertOpaque(item.type, 'input_ref.type'); assertOpaque(item.ref, 'input_ref.ref');
+    assertOpaque(item.type, 'input_ref.type');
+    if (item.type === 'task_contract') {
+      if (!/^task-contract:[A-Za-z][A-Za-z0-9_.~-]{0,159}:[A-Za-z][A-Za-z0-9_.~-]{0,159}:[1-3]$/.test(String(item.ref || ''))) fail('runner_job_spec_invalid', 'task contract reference is invalid');
+    } else assertOpaque(item.ref, 'input_ref.ref');
     assertInteger(item.revision, 0, Number.MAX_SAFE_INTEGER, 'input_ref.revision'); assertHash(item.hash, 'input_ref.hash');
     return { type: String(item.type), ref: String(item.ref), revision: Number(item.revision), hash: String(item.hash) };
   });

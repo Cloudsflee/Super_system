@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { treeManifest } from './runner-input-provider.mjs';
 import { canonicalJson, opaqueId, parseCanonicalJson, sha256Hex, utcNow } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
 import { projectCommandOwner } from './project-domain-helpers.mjs';
@@ -24,7 +27,7 @@ class ProjectWorkflowCore {
     clock = utcNow,
     repositoryAdapter = null,
     generator = null,
-    critic = null
+    critic = null, identity = null, cas = null, config = {}
   } = {}) {
     if (!db || !events || !operations) throw new TypeError('project_workflow_dependencies_required');
     this.db = db;
@@ -33,6 +36,7 @@ class ProjectWorkflowCore {
     this.policy = policy;
     this.authorization = authorization;
     this.clock = clock;
+    this.identity = identity; this.cas = cas; this.config = config;
     this.repositoryAdapter = repositoryAdapter || deterministicRepositoryAdapter();
     this.generator = generator || deterministicGenerator;
     this.critic = critic || deterministicCritic;
@@ -291,7 +295,7 @@ class ProjectWorkflowCore {
     const expected = positiveRevision(input.expected_revision);
     const key = requireKey(input.idempotency_key);
     const mode = input.mode === 'existing' ? 'existing' : 'brainstorm';
-    const source = sanitizeSource(input.source || {});
+    const source = sanitizeSource(this.repositoryAdapter.bindSource?.(input.source || {}) || input.source || {});
     const hash = requestHash({ project_id: project.id, mode, source, expected_revision: expected });
     const now = this.#time();
     return this.db.withTransaction((tx) => {
@@ -695,17 +699,16 @@ class ProjectWorkflowCore {
       .map((row) => this.#connectionView(row));
   }
 
-  createRepositoryConnection(projectId, input = {}, principal) {
+  async createRepositoryConnection(projectId, input = {}, principal) {
     const project = this.#projectRow(projectId);
     this.#assertProject(principal, 'write', project.id);
     const key = requireKey(input.idempotency_key);
     const now = this.#time();
-    const source = sanitizeSource({
-      kind: input.source_kind,
-      locator: input.source_locator,
-      revision: input.source_revision,
-      hash: input.source_hash
-    });
+    const requested = { kind: input.source_kind, locator: input.source_locator, revision: input.source_revision, hash: input.source_hash };
+    const bound = this.repositoryAdapter.bindSource?.(requested) || requested;
+    const source = sanitizeSource(bound);
+    const observed = source.kind === 'local' ? await this.repositoryAdapter.probe(source) : null;
+    if (observed) { source.revision = observed.revision; source.hash = observed.hash; }
     const provider = boundedString(input.provider || 'fixture', 40);
     const hash = requestHash({ project_id: project.id, provider, source, read_only: input.read_only !== false });
     return this.db.withTransaction((tx) => {
@@ -723,7 +726,7 @@ class ProjectWorkflowCore {
         requestHash: hash,
         now
       });
-      const metadataJson = canonicalJson({ provider });
+      const metadataJson = canonicalJson({ provider, ...(observed ? { manifest: observed } : {}) });
       tx.run(
         `INSERT INTO repository_connections(id,project_id,provider,credential_ref_id,status,source_kind,source_locator,source_revision,source_hash,read_only,metadata_json,metadata_sha256,created_at,updated_at,created_by_actor_id,updated_by_actor_id)
         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -1108,6 +1111,8 @@ class ProjectWorkflowCore {
       project.id
     ]);
     if (!line) throw notFound('repository line');
+    const connection = this.db.get('SELECT c.* FROM repository_connections c JOIN repository_targets t ON t.connection_id=c.id WHERE t.id=?', [line.target_id]);
+    if (connection?.source_kind === 'local') return this.createLocalWorkspace(project, line, connection, input, principal);
     const key = requireKey(input.idempotency_key);
     const relative = safeRelative(input.relative_path || `projects/${project.id}/workspace`);
     const now = this.#time();
@@ -1148,6 +1153,49 @@ class ProjectWorkflowCore {
       saveIdempotency(tx, principal.actorId, 'repository.workspace.create', key, hash, response, op.id, now);
       return response;
     });
+  }
+
+  async createLocalWorkspace(project, line, connection, input, principal) {
+    const key = requireKey(input.idempotency_key), now = this.#time();
+    const relative = safeRelative(input.relative_path || `projects/${project.id}/workspace`);
+    const hash = requestHash({ project_id: project.id, line_id: line.id, relative });
+    const pending = await this.db.withTransaction((tx) => {
+      const replay = getIdempotency(tx, principal.actorId, 'repository.workspace.create', key, hash, now);
+      if (replay) return { replay: JSON.parse(replay.response_json) };
+      const id = opaqueId('repository_workspace');
+      const op = this.operations.createInTransaction(tx, { actorId: principal.actorId, commandId: 'repository.workspace.create', resourceType: 'repository_workspace', resourceId: id, projectId: project.id, requestHash: hash, idempotencyKey: `op-${key}`, status: 'running' }, now);
+      tx.run("INSERT INTO repository_workspaces(id,project_id,line_id,status,relative_path,owner_operation_id,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,'requested',?,?,?,?,?,?)", [id,project.id,line.id,relative,op.operation_id,now,now,principal.actorId,principal.actorId]);
+      appendAggregate(tx,this.events,{ aggregateType:'repository_workspace', aggregateId:id, revision:1, operationId:op.operation_id,actorId:principal.actorId,projectId:project.id,type:'workspace.created',data:{workspace_id:id,status:'requested'},payload:{id,status:'requested',revision:1},now });
+      return { id, operation:op };
+    });
+    if (pending.replay) return pending.replay;
+    const transition = (status, revision) => this.db.withTransaction((tx) => {
+      tx.run('UPDATE repository_workspaces SET status=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?',[status,this.#time(),pending.id,revision],1);
+      appendAggregate(tx,this.events,{aggregateType:'repository_workspace',aggregateId:pending.id,revision:revision+1,operationId:pending.operation.operation_id,actorId:principal.actorId,projectId:project.id,type:'workspace.refreshed',data:{workspace_id:pending.id,status},payload:{id:pending.id,status,revision:revision+1},now:this.#time()});
+    });
+    try {
+      await transition('provisioning',1);
+      const root = path.resolve(this.config.workspaceRoot), destination = path.resolve(root,relative);
+      if (!destination.startsWith(root + path.sep)) throw new PlatformError('runner_path_invalid','managed workspace path is invalid',{},422);
+      const source = { kind:'local',locator:connection.source_locator,revision:line.source_revision,hash:line.source_hash };
+      const observed = await this.repositoryAdapter.materialize(source,destination,source);
+      await this.db.withTransaction((tx) => {
+        const payload = canonicalJson({ workspace_id:pending.id,commit_sha:observed.commit_sha,tree_sha:observed.tree_sha,workspace_hash:observed.workspace_hash,manifest_hash:observed.manifest_hash });
+        tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,created_at) VALUES(?,'repository.materialization','verified',?,?,?)",[opaqueId('receipt'),payload,sha256Hex(payload),this.#time()]);
+      });
+      await transition('ready',2);
+      return await this.db.withTransaction((tx) => {
+        const operation = this.operations.transitionInTransaction(tx,pending.operation.operation_id,'succeeded',{actorId:principal.actorId,expectedRevision:pending.operation.revision,result:{workspace_id:pending.id,workspace_hash:observed.workspace_hash}},this.#time());
+        const response = {workspace:this.#workspaceView(tx.get('SELECT * FROM repository_workspaces WHERE id=?',[pending.id])),operation};
+        saveIdempotency(tx,principal.actorId,'repository.workspace.create',key,hash,response,pending.operation.operation_id,this.#time()); return response;
+      });
+    } catch (error) {
+      // v9 has no faulted workspace state. Orphaned plus a failed Operation is the existing contract.
+      const current = this.db.get('SELECT * FROM repository_workspaces WHERE id=?',[pending.id]);
+      await transition('orphaned',Number(current.revision));
+      await this.operations.fail(pending.operation.operation_id,{actorId:principal.actorId,expectedRevision:pending.operation.revision,errorCode:error.code || 'repository_materialization_failed'});
+      throw error;
+    }
   }
 
   refreshRepositoryWorkspace(workspaceId, input = {}, principal) {
@@ -1427,6 +1475,11 @@ class ProjectWorkflowCore {
     const expected = positiveRevision(input.expected_revision);
     const key = requireKey(input.idempotency_key);
     const source = this.#sourceSnapshot(project.id);
+    if (this.generator.requiresCredentialLease && !input.provider_profile_id) throw new PlatformError('provider_profile_required', 'Codex profile selection is required', {}, 422);
+    const profilePin = input.provider_profile_id ? this.identity.providerProfileSnapshot(input.provider_profile_id, principal) : null;
+    const contextPack = this.generator.requiresCredentialLease ? this.db.get("SELECT * FROM context_packs WHERE project_id=? AND status='sealed' ORDER BY created_at DESC,id DESC LIMIT 1", [project.id]) : null;
+    if (this.generator.requiresCredentialLease && !contextPack) throw new PlatformError('context_pack_required', 'a sealed Context Pack is required', {}, 409);
+
     const candidateInput = input.candidate && typeof input.candidate === 'object' ? input.candidate : {};
     const snapshot = {
       brief_revision: sourceBriefRevision,
@@ -1434,6 +1487,13 @@ class ProjectWorkflowCore {
       workflow_revision: Number(workflow.current_revision),
       repository_revision: source.revision,
       repository_hash: source.hash,
+      provider_profile_id: input.provider_profile_id || null,
+      principal_actor_id: principal.actorId,
+      provider_pin: profilePin,
+      brief: parseCanonicalJson(this.db.get('SELECT content_json FROM brief_revisions WHERE project_id=? AND revision=?', [project.id, sourceBriefRevision])?.content_json, {}),
+      context_pack: contextPack ? { id: contextPack.id, revision: Number(contextPack.revision), hash: contextPack.pack_hash, content: JSON.parse(this.cas.read(contextPack.payload_cas_hash).toString('utf8')) } : {},
+      repository_snapshot: source,
+      policy_revision: 1,
       candidate: candidateInput,
       attempt: Number(input.attempt || 1),
       retry_of_generation_id: input.retry_of_generation_id || null
@@ -1526,7 +1586,8 @@ class ProjectWorkflowCore {
         expected_revision: projectRevision,
         candidate: input.candidate || parseCanonicalJson(row.candidate_json, {}),
         attempt: Number(row.attempt) + 1,
-        retry_of_generation_id: row.id
+        retry_of_generation_id: row.id,
+        provider_profile_id: input.provider_profile_id || parseCanonicalJson(row.input_json, {}).provider_profile_id
       },
       principal,
       'generation.retry'
@@ -1588,20 +1649,36 @@ class ProjectWorkflowCore {
     return response;
   }
 
-  evaluateCritic(generationId, input = {}, principal) {
+  async evaluateCritic(generationId, input = {}, principal) {
     const generation = this.db.get('SELECT * FROM workflow_generations WHERE id=?', [String(generationId)]);
     if (!generation) throw notFound('workflow generation');
     this.#assertProject(principal, 'approve', generation.project_id);
     const expected = positiveRevision(input.expected_revision);
     const key = requireKey(input.idempotency_key);
-    const candidate =
-      input.candidate && typeof input.candidate === 'object'
-        ? input.candidate
-        : parseCanonicalJson(generation.candidate_json, {});
-    const status = input.status || this.critic(candidate).status;
-    const issues = Array.isArray(input.issues) ? input.issues : this.critic(candidate).issues;
+    const candidate = this.critic.requiresCredentialLease ? parseCanonicalJson(generation.candidate_json, {}) : (input.candidate && typeof input.candidate === 'object' ? input.candidate : parseCanonicalJson(generation.candidate_json, {}));
+    const hash = requestHash({ generation_id: generation.id, candidate, requested_status: input.status || null, expected_revision: expected });
     const now = this.#time();
-    const hash = requestHash({ generation_id: generation.id, candidate, status, issues, expected_revision: expected });
+    const prior = await this.db.withTransaction((tx) => getIdempotency(tx, principal.actorId, 'critic.evaluate', key, hash, now));
+    if (prior) return { ...JSON.parse(prior.response_json), replayed: true };
+    assertRevision(generation, expected);
+    if (generation.phase !== 'critic_pending') throw stateConflict('generation is not awaiting critic');
+    let assessed;
+    try {
+      const controlled = parseCanonicalJson(generation.input_json, {});
+      assessed = typeof this.critic === 'function' ? await this.critic(candidate) : await this.critic.evaluate({ ...controlled, candidate, generation_id: generation.id });
+      if (controlled.provider_pin && canonicalJson(this.identity.providerProfileSnapshot(controlled.provider_profile_id, principal)) !== canonicalJson(controlled.provider_pin)) throw new PlatformError('provider_rebind_required', 'provider profile changed during review', {}, 409);
+    } catch (error) {
+      await this.db.withTransaction((tx) => {
+        const current = tx.get('SELECT * FROM workflow_generations WHERE id=?', [generation.id]); assertRevision(current, expected);
+        const op = this.operations.createInTransaction(tx, { actorId: principal.actorId, commandId: 'critic.evaluate', resourceType: 'workflow_generation', resourceId: generation.id, projectId: generation.project_id, requestHash: hash, idempotencyKey: key, status: 'running' }, now);
+        this.operations.transitionInTransaction(tx, op.operation_id, 'failed', { actorId: principal.actorId, expectedRevision: op.revision, errorCode: error.code || 'critic_failed' }, now);
+        tx.run("UPDATE workflow_generations SET phase='failed',error_code=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?", [error.code || 'critic_failed',now,generation.id,expected],1);
+        appendAggregate(tx, this.events, { aggregateType: 'workflow_generation', aggregateId: generation.id, revision: expected + 1, operationId: op.operation_id, actorId: principal.actorId, projectId: generation.project_id, type: 'generation.failed', data: { generation_id: generation.id, error_code: error.code || 'critic_failed' }, payload: { id: generation.id, phase: 'failed', revision: expected + 1 }, now });
+      });
+      throw error;
+    }
+    const status = assessed.status === 'passed' && !(typeof this.critic === 'function' && input.status === 'rejected') ? 'passed' : 'rejected';
+    const issues = assessed.issues || [];
     return this.db.withTransaction((tx) => {
       const prior = getIdempotency(tx, principal.actorId, 'critic.evaluate', key, hash, now);
       if (prior) return { ...JSON.parse(prior.response_json), replayed: true };
@@ -1622,6 +1699,11 @@ class ProjectWorkflowCore {
       const inputJson = row.input_json;
       const issuesJson = canonicalJson(issues);
       const criticId = opaqueId('critic');
+      if (assessed.coverage && this.cas) {
+        const payload = { critic_id: criticId, candidate_sha256: sha256Hex(candidateJson), input_sha256: row.input_sha256, coverage: assessed.coverage, coverage_sha256: sha256Hex(canonicalJson(assessed.coverage)), provider_receipt: assessed.provider_receipt || null };
+        const object = this.cas.putCanonical(payload);
+        tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'workflow.critic','verified',?,?,?,?)", [criticId,canonicalJson(payload),sha256Hex(canonicalJson(payload)),object.hash,now]);
+      }
       tx.run(
         `INSERT INTO workflow_critic_receipts(id,generation_id,project_id,status,candidate_sha256,input_sha256,issues_json,issues_sha256,policy_revision,provider,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
@@ -1634,7 +1716,7 @@ class ProjectWorkflowCore {
           issuesJson,
           sha256Hex(issuesJson),
           1,
-          'fake-critic',
+          String(assessed.provider || (this.critic === deterministicCritic ? 'deterministic-critic' : 'workflow-critic')),
           now,
           principal.actorId
         ]
@@ -1793,7 +1875,14 @@ class ProjectWorkflowCore {
       const briefHead = tx.get('SELECT current_revision FROM briefs WHERE project_id=?', [p.project_id]);
       const workflowDrift = Number(workflow.current_revision) !== Number(p.base_workflow_revision);
       const briefDrift = Number(briefHead?.current_revision || 0) !== Number(generationBefore.source_brief_revision);
-      if (workflowDrift || briefDrift) {
+      const pinnedInput = parseCanonicalJson(generationBefore.input_json, {});
+      const sourceNow = this.#sourceSnapshot(p.project_id);
+      const repositoryDrift = Number(sourceNow.revision) !== Number(generationBefore.source_repository_revision) || sourceNow.hash !== generationBefore.source_repository_hash || (pinnedInput.repository_snapshot?.workspace_hash && sourceNow.workspace_hash !== pinnedInput.repository_snapshot.workspace_hash);
+      const packNow = pinnedInput.context_pack?.id ? tx.get('SELECT * FROM context_packs WHERE id=?', [pinnedInput.context_pack.id]) : null;
+      const contextDrift = pinnedInput.context_pack?.id && (!packNow || packNow.status !== 'sealed' || packNow.pack_hash !== pinnedInput.context_pack.hash || Number(packNow.revision) !== pinnedInput.context_pack.revision);
+      let providerDrift = false;
+      if (pinnedInput.provider_pin) { try { providerDrift = canonicalJson(this.identity.providerProfileSnapshot(pinnedInput.provider_profile_id, principal)) !== canonicalJson(pinnedInput.provider_pin); } catch { providerDrift = true; } }
+      if (workflowDrift || briefDrift || repositoryDrift || contextDrift || providerDrift) {
         const staleOperation = this.operations.createInTransaction(
           tx,
           {
@@ -2270,7 +2359,16 @@ class ProjectWorkflowCore {
       });
       const latest = this.db.get('SELECT * FROM workflow_generations WHERE id=?', [generationId]);
       const input = parseCanonicalJson(latest.input_json, {});
-      const candidate = await this.generator(input);
+      const candidateResult = typeof this.generator === 'function'
+        ? await this.generator(input)
+        : await this.generator.generate(input);
+      const candidate = candidateResult?.candidate || candidateResult;
+      if (input.provider_pin && canonicalJson(this.identity.providerProfileSnapshot(input.provider_profile_id, { actorId: latest.created_by_actor_id })) !== canonicalJson(input.provider_pin)) throw new PlatformError('provider_rebind_required', 'provider profile changed during generation', {}, 409);
+      this.#safe(candidate);
+      if (candidateResult?.provider_receipt && this.cas) {
+        const payload = canonicalJson({ generation_id: generationId, ...candidateResult.provider_receipt }); const object = this.cas.put(payload);
+        await this.db.withTransaction((tx) => tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'workflow.provider','verified',?,?,?,?)", [opaqueId('receipt'),payload,sha256Hex(payload),object.hash,this.#time()]));
+      }
       ctx.ensureActive();
       const candidateJson = canonicalJson(candidate);
       await this.db.withTransaction((tx) => {
@@ -2631,7 +2729,12 @@ class ProjectWorkflowCore {
       "SELECT revision,source_hash FROM repository_lines WHERE project_id=? AND status<>'removed' ORDER BY created_at LIMIT 1",
       [projectId]
     );
-    return { revision: Number(row?.revision || 0), hash: row?.source_hash || '' };
+    const connection = this.db.get('SELECT * FROM repository_connections WHERE project_id=?',[projectId]);
+    const manifest = parseCanonicalJson(connection?.metadata_json,{}).manifest;
+    const workspace = this.db.get("SELECT * FROM repository_workspaces WHERE project_id=? AND status IN ('ready','released') ORDER BY updated_at DESC LIMIT 1",[projectId]);
+    const directory = workspace && this.config.workspaceRoot ? path.resolve(this.config.workspaceRoot, workspace.relative_path) : null;
+    const workspaceHash = directory && fs.existsSync(directory) ? sha256Hex(canonicalJson(treeManifest(directory))) : '';
+    return { revision: Number(row?.revision || 0), hash: row?.source_hash || '', commit_sha:manifest?.commit_sha || '',tree_sha:manifest?.tree_sha || '',workspace_hash:workspaceHash,manifest:manifest?.entries || [] };
   }
   #workflowHash(projectId, revision) {
     const row = this.db.get('SELECT graph_sha256 FROM workflow_revisions WHERE project_id=? AND revision=?', [
@@ -3213,6 +3316,7 @@ function normalizeGraph(value) {
           kind: node.kind === 'workstream' ? 'workstream' : 'task',
           title: String(node.title || node.name || node.id || 'Task').slice(0, 200),
           parent_id: node.parent_id == null ? null : String(node.parent_id),
+          depends_on: Array.isArray(node.depends_on || node.dependencies) ? (node.depends_on || node.dependencies).map(String) : [],
           config: node.config && typeof node.config === 'object' ? node.config : {},
           contract: node.contract && typeof node.contract === 'object' ? node.contract : {}
         }))
@@ -3252,7 +3356,7 @@ async function deterministicGenerator(input) {
               kind: 'task',
               title: 'Deliver',
               parent_id: 'inspect',
-              config: {},
+              config: { execution: { argv: ['node', '--version'], cwd_role: 'task', mode: 'read', input_paths: [], output_paths: [], check_ids: [], resource_profile: 'light', deadline_seconds: 60, capabilities: ['network:none'] } },
               contract: { inputs: ['analysis'], outputs: ['result'] }
             }
           ]

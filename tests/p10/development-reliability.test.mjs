@@ -265,7 +265,8 @@ test('development receipt reports persisted execution metrics and leaves SQLite,
     assert.equal(receipt.human_intervention.total_decisions >= 3, true);
     assert.equal(receipt.measurable_durations.runner.sample_count >= 1, true);
     assert.equal(receipt.measurable_durations.delivery.duration_ms, null);
-    assert.equal(receipt.measurable_durations.gate.duration_ms, null);
+    assert.equal(receipt.measurable_durations.gate.sample_count >= 1, true);
+    assert.equal(receipt.measurable_durations.gate.duration_ms >= 0, true);
     assert.deepEqual(receipt.failures_by_class, [{ failure_class: 'external_dependency', count: 1 }]);
     assert.equal(receipt.manual_workarounds.value, null);
     assert.equal(receipt.manual_workarounds.reason, 'not_persisted');

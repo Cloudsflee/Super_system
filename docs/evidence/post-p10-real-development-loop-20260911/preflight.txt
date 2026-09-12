@@ -1,0 +1,42 @@
+Target:
+AIWS V3-Clean development loop on feat/aiws-real-development-loop from e36a8b2d0d80629b723c0e6f1e3e1a3aab18c998.
+目标:
+Provider-backed Generation/Critic boundary, Evidence compensation, workflow execution compiler, CAS protection, and development gates.
+Non-target:
+P1-P10 immutable Evidence, DesignSignal fixture, Draft PR #2, production pointers/volumes, existing /api/v2 business semantics.
+非目标:
+治理 Evidence、生产卷、既有 API 语义与历史 fixture。
+Forbidden:
+Default deterministic success, client-forged critic pass, stale attempt overwrite, unverified workspace replacement, unsupported release claims.
+禁止项:
+默认固定成功、客户端伪造 Critic、旧 Attempt 覆盖、未验收工作区替换、无证据发布声明。
+Reuse:
+Schema v9, ledger [1..9], shared Operation/Event/CAS/ACL/Revision, Vault, seven stages, Runner v2, Evidence/Outcome/Delivery.
+复用项:
+现有 Clean 共享账本、Vault、七阶段、Runner、Evidence、Outcome、Delivery。
+Delete/retire:
+Deterministic adapters are fixture-only; no default phase-10 deterministic workflow generation.
+删除/退役:
+确定性适配器仅测试入口使用。
+Acceptance commands:
+pnpm test:p3
+pnpm test:p6
+pnpm test:p7
+pnpm test:p8
+pnpm test:p10
+pnpm test:development
+node --test tests/p10/real-development-loop.test.mjs
+pnpm test
+pnpm build
+pnpm test:e2e
+pnpm test:release
+pnpm verify:dev -- --base e36a8b2d0d80629b723c0e6f1e3e1a3aab18c998
+pnpm check
+pnpm scan:clean
+git diff --check
+Rollback artifact:
+original-artifact.tgz, modified-artifact.tgz, change.patch, verification.json, rollback.ps1, rollback-actual.json in this directory.
+Last confirmed result:
+P3, P6, P7, P8, P10, real-loop, unit/Web, integration, security, build, E2E, release, check, scan-clean, recovery catalog, and verify:dev passed; formal verify is blocked only by upstream_head/worktree_clean.
+Next action:
+Reopen rollback dry-run/actual receipts and report the shared-worktree formal gate limitation.

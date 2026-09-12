@@ -1,0 +1,1613 @@
+diff --git a/apps/api/src/clean/evidence-service.mjs b/apps/api/src/clean/evidence-service.mjs
+index 5b60d93..a51550f 100644
+--- a/apps/api/src/clean/evidence-service.mjs
++++ b/apps/api/src/clean/evidence-service.mjs
+@@ -24,7 +24,7 @@ export class CleanEvidenceService {
+     this.bootstrapActorId = bootstrapActorId;
+     this.workspaceRoot = path.resolve(config.workspaceRoot || path.join(process.cwd(), '.ai-workspace', 'v3-clean', 'workspaces'));
+     this.unsubscribe = null;
+-    this.captureQueue = Promise.resolve();
++    this.captureQueue = Promise.resolve(); this.captureRetries = 0; this.captureTimer = null; this.closing = false;
+   }
+ 
+   listAssets(projectId, input = {}, principal) {
+@@ -221,38 +221,62 @@ export class CleanEvidenceService {
+   async recoverPending() {
+     const cursor = this.db.get("SELECT * FROM event_cursors WHERE actor_id=? AND consumer_id='p7-evidence-capture' AND stream='events'", [this.bootstrapActorId]);
+     const after = Number(cursor?.cursor_sequence || 0);
+-    const rows = this.db.query("SELECT * FROM events WHERE sequence>? AND type='execution.completed' ORDER BY sequence LIMIT 1000", [after]);
++    // Scan the complete completion history on startup.  The capture operation is
++    // idempotent, so this also compensates events whose cursor was acknowledged
++    // by an older runtime before their Evidence transaction committed.
++    const rows = this.db.query("SELECT * FROM events WHERE type='execution.completed' ORDER BY sequence");
+     let captured = 0;
+     let last = after;
+     for (const event of rows) {
+-      await this.captureCompletedExecution(event.aggregate_id).catch(() => undefined);
+-      last = Number(event.sequence);
+-      captured += 1;
++      if (Number(event.sequence) <= after) {
++        // Historical rows are still checked for compensation, but never move a
++        // monotonic cursor backwards.
++        try { captured += await this.captureCompletedExecution(event.aggregate_id, parseJson(event.data_json, {}).generation); } catch (error) { this.recordCaptureFailure(event.aggregate_id, error); }
++        continue;
++      }
++      try {
++        captured += await this.captureCompletedExecution(event.aggregate_id, parseJson(event.data_json, {}).generation);
++        last = Number(event.sequence);
++      } catch (error) {
++        this.recordCaptureFailure(event.aggregate_id, error);
++        break;
++      }
+     }
+     if (last > after) this.events.ackCursor({ actorId: this.bootstrapActorId, consumerId: 'p7-evidence-capture', stream: 'events', cursor: last, expectedRevision: cursor?.revision || 0 });
+     if (!this.unsubscribe) this.unsubscribe = this.events.subscribe({}, (event) => {
+       if (event.type !== 'execution.completed') return;
+-      this.captureQueue = this.captureQueue.then(() => this.captureCompletedExecution(event.aggregate.id)).catch(() => undefined);
++      this.captureQueue = this.captureQueue
++        .then(() => this.recoverPending())
++        .catch((error) => { this.recordCaptureFailure(event.aggregate.id, error); });
+     });
+     return captured;
+   }
+ 
+-  async captureCompletedExecution(executionId) {
+-    const execution = this.db.get('SELECT * FROM executions WHERE id=?', [String(executionId)]);
+-    if (!execution || execution.status !== 'completed') return 0;
++  async captureCompletedExecution(executionId, generation = null) {
++    let execution = this.db.get('SELECT * FROM executions WHERE id=?', [String(executionId)]);
++    if (!execution) return 0;
++    if (generation != null) {
++      const completed = this.db.query("SELECT data_json FROM events WHERE aggregate_id=? AND type='execution.completed'", [execution.id]).some((event) => Number(parseJson(event.data_json,{}).generation) === Number(generation));
++      if (!completed) throw new PlatformError('evidence_capture_pending', 'completion event is missing', {}, 409);
++      execution = { ...execution, generation: Number(generation), status: 'completed' };
++    }
++    if (execution.status !== 'completed') return 0;
+     const handoff = parseJson(execution.handoff_manifest_json, {});
+-    if (handoff.delivery_ready !== true || Number(handoff.generation) !== Number(execution.generation) || sha256Hex(canonicalJson(handoff)) !== execution.handoff_manifest_sha256) return 0;
++    if (generation == null && (handoff.delivery_ready !== true || Number(handoff.generation) !== Number(execution.generation) || sha256Hex(canonicalJson(handoff)) !== execution.handoff_manifest_sha256)) throw new PlatformError('evidence_capture_pending', 'handoff is incomplete', {}, 409);
+     const checkpoint = this.db.get("SELECT * FROM execution_stage_checkpoints WHERE execution_id=? AND generation=? AND stage='deliver'", [execution.id, execution.generation]);
+-    const receipts = this.db.query("SELECT r.* FROM runner_receipts r JOIN task_attempts a ON a.receipt_id=r.id WHERE a.execution_id=? AND a.generation=? ORDER BY a.task_ordinal,a.attempt_no", [execution.id, execution.generation]);
+-    if (!checkpoint || receipts.some((row) => !row.receipt_sha256)) return 0;
++    const receipts = this.db.query("SELECT r.* FROM runner_receipts r JOIN task_attempts a ON a.runner_receipt_id=r.id WHERE a.execution_id=? AND a.generation=? ORDER BY a.task_ordinal,a.attempt_no", [execution.id, execution.generation]);
++    if (!checkpoint) throw new PlatformError('evidence_capture_pending', 'completed execution deliver checkpoint is unavailable', { execution_id: execution.id }, 409);
++    if (receipts.some((row) => !row.receipt_sha256)) throw new PlatformError('evidence_capture_pending', 'completed execution runner receipt is unavailable', { execution_id: execution.id }, 409);
+     const principal = { actorId: this.bootstrapActorId, effectiveActorId: this.bootstrapActorId, scopes: ['*'] };
+     const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]);
+     const plan = parseJson(execution.plan_json, {});
+     let count = 0;
+     for (const task of plan.tasks || []) {
+       for (const relative of task.output_paths || []) {
+-        const file = safeJoin(this.workspaceRoot, workspace?.relative_path, relative);
+-        if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) continue;
++        const candidateRoot = `candidates/${execution.id}/${execution.generation}`;
++        const rootRef = fs.existsSync(path.join(this.workspaceRoot, candidateRoot)) ? candidateRoot : workspace?.relative_path;
++        const file = safeJoin(this.workspaceRoot, rootRef, relative);
++        if (!file || !fs.existsSync(file) || !fs.lstatSync(file).isFile() || fs.lstatSync(file).isSymbolicLink()) throw new PlatformError('evidence_capture_pending', 'execution output is missing', {}, 409);
+         const bytes = fs.readFileSync(file);
+         await this.capture({ project_id: execution.project_id, execution_id: execution.id, logical_name: relative, asset_kind: 'execution_output', source_type: 'execution', source_ref: `${execution.id}:${execution.generation}:${relative}`, relative_path: relative, media_type: mediaTypeFor(relative), content_base64: bytes.toString('base64'), metadata: { generation: Number(execution.generation), checkpoint_sha256: checkpoint.checkpoint_sha256 }, idempotency_key: `p7-capture-${sha256Hex(`${execution.id}:${execution.generation}:${relative}`).slice(0, 40)}`, expected_revision: 0 }, principal);
+         count += 1;
+@@ -261,7 +285,34 @@ export class CleanEvidenceService {
+     return count;
+   }
+ 
+-  close() { this.unsubscribe?.(); this.unsubscribe = null; }
++  async recordCheckResult({ execution, attempt, checkId, status, commandHash, inputHash, outputHash, durationMs, details }, principal) {
++    this.assertProject(principal, 'run', execution.project_id, 'evidence');
++    const detailsJson = canonicalJson(details);
++    await this.db.withTransaction((tx) => {
++      const prior = tx.get('SELECT * FROM test_results WHERE execution_id=? AND check_id=? AND input_sha256=?', [execution.id, checkId, inputHash]);
++      if (prior) { if (prior.output_sha256 !== outputHash || prior.status !== status) throw new PlatformError('check_result_changed', 'immutable check input produced a different result', {}, 409); return; }
++      tx.run('INSERT INTO test_results(id,project_id,execution_id,task_attempt_id,check_id,status,command_sha256,input_sha256,output_sha256,duration_ms,details_json,details_sha256,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [opaqueId('test_result'),execution.project_id,execution.id,attempt?.id || null,checkId,status,commandHash,inputHash,outputHash,durationMs,detailsJson,sha256Hex(detailsJson),time(this.clock),principal.actorId]);
++    });
++  }
++
++  recordCaptureFailure(executionId, error) {
++    if (!this.captureTimer && !this.closing && this.captureRetries < 3) {
++      this.captureRetries++;
++      this.captureTimer = setTimeout(() => { this.captureTimer = null; if (!this.closing) this.captureQueue = this.captureQueue.then(() => this.recoverPending()).catch(() => undefined); }, 1000 * this.captureRetries);
++      this.captureTimer.unref?.();
++    }
++    const payload = canonicalJson({
++      execution_id: String(executionId || ''),
++      status: 'pending',
++      error_code: String(error?.code || 'evidence_capture_failed').slice(0, 120)
++    });
++    try {
++      this.db.run(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
++        VALUES(?,?,?,?,?,?,?,?)`, [opaqueId('receipt'), 'evidence.capture.failure', 'failed', payload, sha256Hex(payload), null, time(this.clock), null]);
++    } catch { /* diagnostic receipt creation must not hide the pending event */ }
++  }
++
++  close() { this.closing = true; clearTimeout(this.captureTimer); this.unsubscribe?.(); this.unsubscribe = null; return this.captureQueue; }
+ 
+   assetView(row) {
+     const current = row?.current_version_id ? this.db.get('SELECT * FROM asset_versions WHERE id=?', [row.current_version_id]) : null;
+diff --git a/apps/api/src/clean/execution-service.mjs b/apps/api/src/clean/execution-service.mjs
+index 228f4c3..d015a3c 100644
+--- a/apps/api/src/clean/execution-service.mjs
++++ b/apps/api/src/clean/execution-service.mjs
+@@ -1,8 +1,13 @@
+ import fs from 'node:fs';
++import { CandidateWorkspace } from './candidate-workspace.mjs';
++import { executeHostCommand, hostInvocation } from './runner-adapters.mjs';
+ import path from 'node:path';
+ import { createHash, createHmac } from 'node:crypto';
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
+ import { canonicalJson, opaqueId, sha256Hex } from './canonical.mjs';
+ import { PlatformError } from './platform-error.mjs';
++import { compileWorkflowToExecutionPlan } from './workflow-adapters.mjs';
+ import {
+   appendAggregate, createOperation, priorResponse, requestHash, requireIdempotency,
+   requirePrincipal, requireRevision, assertRevision, saveResponse, time
+@@ -14,6 +19,7 @@ const TERMINAL_EXECUTIONS = new Set(['completed', 'failed', 'cancelled']);
+ const TERMINAL_ATTEMPTS = new Set(['succeeded', 'failed', 'cancelled', 'expired', 'external_result_unknown']);
+ const TRANSIENT = new Set(['runner_unavailable', 'runner_spawn_failed', 'runner_timeout', 'runner_deadline_exceeded', 'transient_failure']);
+ const CHECK_IDS = new Set(['node_test', 'git_diff_check']);
++const execFileAsync = promisify(execFile);
+ 
+ export class CleanExecutionService {
+   constructor({ db, events, operations, authorization, runner, projectWorkflow, assist, clock, config = {}, sleep = null, retryDelays = [1000, 4000] } = {}) {
+@@ -22,6 +28,7 @@ export class CleanExecutionService {
+     this.projectWorkflow = projectWorkflow; this.assist = assist; this.clock = clock; this.config = config;
+     this.sleep = sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms))); this.retryDelays = retryDelays; this.active = new Map();
+     this.workspaceRoot = path.resolve(config.workspaceRoot || path.join(process.cwd(), '.ai-workspace', 'v3-clean', 'workspaces'));
++    this.candidates = new CandidateWorkspace({ db, root: this.workspaceRoot, repository: projectWorkflow });
+     this.taskRoot = path.join(this.workspaceRoot, '.p6-tasks'); this.replaySecret = String(config.cursorSecret || 'v3-clean-p6-replay');
+     fs.mkdirSync(this.taskRoot, { recursive: true, mode: 0o700 });
+   }
+@@ -51,8 +58,9 @@ export class CleanExecutionService {
+   async create(projectId, input = {}, principal) {
+     requirePrincipal(principal); const project = this.assertProject(principal, 'run', projectId);
+     const expected = requireRevision(input.expected_revision); assertRevision(project, expected); const key = requireIdempotency(input.idempotency_key);
+-    const pins = this.resolvePins(project, input, principal); const tasks = normalizePlan(input.tasks || input.plan?.tasks || this.tasksFromWorkflow(pins.workflowRevisionRow));
++    const pins = this.resolvePins(project, input, principal); const tasks = normalizePlanWithContracts(input.tasks || input.plan?.tasks || this.tasksFromWorkflow(pins.workflowRevisionRow));
+     const plan = { schema_version: 'aiws.execution-plan.v1', tasks, requires_approval: Boolean(input.requires_approval ?? input.plan?.requires_approval), check_ids: normalizeChecks(input.check_ids || input.plan?.check_ids || []) };
++    this.runner.cas?.policy?.assertSafe?.({ tasks: tasks.map(({ fixture: _fixture, ...task }) => task) });
+     const planJson = canonicalJson(plan); const id = opaqueId('execution'); const now = time(this.clock);
+     const hash = requestHash({ project_id: project.id, expected_revision: expected, pins: pins.hashes, plan });
+     return this.db.withTransaction((tx) => {
+@@ -119,8 +127,9 @@ export class CleanExecutionService {
+   async replan(id, input = {}, principal) {
+     const source = this.executionRow(id, principal, 'run'); const expected = requireRevision(input.expected_revision); assertRevision(source, expected);
+     if (!['paused', 'failed', 'completed'].includes(source.status)) throw stateConflict('execution cannot be replanned', source.status);
+-    const project = this.assertProject(principal, 'run', source.project_id); const key = requireIdempotency(input.idempotency_key); const tasks = normalizePlan(input.tasks || input.plan?.tasks || JSON.parse(source.plan_json).tasks);
++    const project = this.assertProject(principal, 'run', source.project_id); const key = requireIdempotency(input.idempotency_key); const tasks = normalizePlanWithContracts(input.tasks || input.plan?.tasks || JSON.parse(source.plan_json).tasks);
+     const plan = { ...JSON.parse(source.plan_json), ...input.plan, tasks }; delete plan.full_prompt;
++    this.runner.cas?.policy?.assertSafe?.({ tasks: tasks.map(({ fixture: _fixture, ...task }) => task) });
+     const planJson = canonicalJson(plan); const newId = opaqueId('execution'); const now = time(this.clock); const hash = requestHash({ execution_id: source.id, expected_revision: expected, plan });
+     return this.db.withTransaction((tx) => {
+       const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId: 'execution.replan', idempotencyKey: key, requestHash: hash, now }); if (prior) return prior;
+@@ -143,7 +152,7 @@ export class CleanExecutionService {
+     if (String(input.workspace_hash || '') !== checkpoint.workspace_sha256) throw new PlatformError('workspace_changed', 'replay workspace hash does not match the checkpoint', {}, 409);
+     if (String(input.pins_hash || '') !== checkpoint.pins_sha256) throw new PlatformError('execution_pins_changed', 'replay pins hash does not match the checkpoint', {}, 409);
+     if (!TERMINAL_EXECUTIONS.has(row.status) && !['paused', 'awaiting_approval'].includes(row.status)) throw stateConflict('execution must be stopped before replay', row.status);
+-    this.validatePins(row, principal); const workspaceHash = this.workspaceHash(row.repository_workspace_id); if (workspaceHash !== checkpoint.workspace_sha256) throw new PlatformError('workspace_changed', 'workspace no longer matches the checkpoint', { expected_hash: checkpoint.workspace_sha256, actual_hash: workspaceHash }, 409);
++    this.validatePins(row, principal); const workspaceHash = this.workspaceHash(row.repository_workspace_id, row); if (workspaceHash !== checkpoint.workspace_sha256) throw new PlatformError('workspace_changed', 'workspace no longer matches the checkpoint', { expected_hash: checkpoint.workspace_sha256, actual_hash: workspaceHash }, 409);
+     const active = this.db.get("SELECT count(*) AS count FROM task_attempts WHERE execution_id=? AND status IN ('leased','running')", [row.id]); if (Number(active.count)) throw new PlatformError('runner_busy', 'execution still has an active runner job', {}, 409);
+     const key = requireIdempotency(input.idempotency_key); const now = time(this.clock); const hash = requestHash({ execution_id: row.id, stage: target, generation, checkpoint_sha256: checkpoint.checkpoint_sha256, expected_revision: expected });
+     return this.db.withTransaction((tx) => {
+@@ -212,7 +221,7 @@ export class CleanExecutionService {
+       if (operation?.status === 'paused') await this.operations.start(operation.id, { expectedRevision: operation.revision, actorId: operation.actor_id, projectId: operation.project_id });
+       return { ...this.checkpointView(existing), operation_id: existing.operation_id };
+     }
+-    this.validatePins(execution, principal); const workspaceHash = this.workspaceHash(execution.repository_workspace_id); const now = time(this.clock);
++    this.validatePins(execution, principal); await this.prepareCandidate(execution); const workspaceHash = this.workspaceHash(execution.repository_workspace_id, execution); const now = time(this.clock);
+     return this.db.withTransaction((tx) => {
+       const current = tx.get('SELECT * FROM executions WHERE id=?', [execution.id]); const operation = createOperation(this.operations, tx, { actorId: principal.actorId, commandId: `execution.stage.${stage}`, resourceType: 'execution_stage', resourceId: `${current.id}:${current.generation}:${stage}`, projectId: current.project_id, requestHash: requestHash({ execution_id: current.id, generation: current.generation, stage, plan_sha256: current.plan_sha256, workspace_sha256: workspaceHash }), status: 'running', now, parentOperationId: topOperationId });
+       const prior = tx.get(`SELECT checkpoint_sha256 FROM execution_stage_checkpoints
+@@ -230,7 +239,8 @@ export class CleanExecutionService {
+   }
+ 
+   async completeStage(executionId, stage, stageOperationId, outcome, actorId) {
+-    const workspaceHash = this.workspaceHash(this.db.get('SELECT repository_workspace_id FROM executions WHERE id=?', [executionId]).repository_workspace_id);
++    const currentExecution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]);
++    const workspaceHash = this.workspaceHash(currentExecution.repository_workspace_id, currentExecution);
+     return this.db.withTransaction((tx) => {
+       const current = tx.get('SELECT * FROM executions WHERE id=?', [executionId]); const now = time(this.clock); const terminal = stage === 'deliver';
+       const updates = { status: terminal ? 'completed' : current.status === 'pause_requested' ? 'pause_requested' : 'running', current_stage: stage, ...(terminal ? { handoff_manifest_json: canonicalJson(outcome.handoff_manifest || {}), handoff_manifest_sha256: sha256Hex(canonicalJson(outcome.handoff_manifest || {})), completed_at: now } : {}) };
+@@ -244,18 +254,38 @@ export class CleanExecutionService {
+     if (stage === 'prepare') { const row = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); this.validatePins(row, principal); normalizePlan(JSON.parse(row.plan_json).tasks); return { pins_sha256: sha256Hex(canonicalJson(pinsPayload(row))) }; }
+     if (stage === 'context') { const row = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); const pack = this.db.get('SELECT status,pack_hash,payload_cas_hash FROM context_packs WHERE id=?', [row.context_pack_id]); if (!pack || pack.status !== 'sealed' || pack.pack_hash !== row.context_pack_hash) throw new PlatformError('context_inputs_changed', 'Context Pack pin is stale', {}, 409); return { context_pack_hash: pack.pack_hash, staging: 'bounded_cas' }; }
+     if (stage === 'run') return this.executePlan(executionId, principal);
+-    if (stage === 'check') { const failed = this.db.get("SELECT count(*) AS count FROM task_attempts WHERE execution_id=? AND generation=(SELECT generation FROM executions WHERE id=?) AND status!='succeeded' AND attempt_no=(SELECT max(a.attempt_no) FROM task_attempts a WHERE a.execution_id=task_attempts.execution_id AND a.generation=task_attempts.generation AND a.task_id=task_attempts.task_id)", [executionId, executionId]); if (Number(failed.count)) throw new PlatformError('check_failed', 'execution checks found an unsuccessful task', {}, 409); return { status: 'passed' }; }
++    if (stage === 'check') return this.runChecks(executionId, principal);
+     if (stage === 'review') return this.review(executionId, principal);
+-    if (stage === 'finalize') return this.finalize(executionId);
++    if (stage === 'finalize') return this.finalize(executionId, principal);
+     if (stage === 'deliver') return { handoff_manifest: this.handoff(executionId) };
+     throw new PlatformError('stage_invalid', 'execution stage is invalid', {}, 422);
+   }
+ 
++  async runChecks(executionId, principal) {
++    const execution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]);
++    const tasks = JSON.parse(execution.plan_json || '{}').tasks || [];
++    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]);
++    const root = this.candidates.directory(execution); const results = [];
++    for (const task of tasks) for (const checkId of task.check_ids || []) {
++      const attempt = this.effectiveAttempt(execution, task.id); const started = Date.now();
++      const command = checkId === 'git_diff_check' ? { command: 'git', args: ['diff', '--no-index', '--check', '--', this.workspaceDirectory(workspace), root] } : { command: process.execPath, args: ['--test'] };
++      let status = 'passed'; let exitCode = 0; let stdout = ''; let stderr = '';
++      try { const value = await executeHostCommand(command, { root, allowedExitCodes: checkId === 'git_diff_check' ? [0,1] : [0] }); stdout = String(value.stdout || ''); stderr = String(value.stderr || ''); exitCode = value.exit_code; status = value.status === 'succeeded' ? 'passed' : 'failed'; }
++      catch (error) { status = error?.killed ? 'error' : 'failed'; exitCode = typeof error?.code === 'number' ? error.code : 1; stdout = String(error?.stdout || ''); stderr = String(error?.stderr || error?.message || ''); }
++      const inputHash = sha256Hex(canonicalJson({ execution_id: execution.id, generation: execution.generation, task_id: task.id, check_id: checkId, workspace_hash: this.workspaceHash(execution.repository_workspace_id, execution), task_attempt_id: attempt?.id || null }));
++      const outputHash = sha256Hex(`${stdout}\n${stderr}`); const details = { command: [command.command, ...command.args], exit_code: exitCode, stdout_sha256: sha256Hex(stdout), stderr_sha256: sha256Hex(stderr), task_attempt_id: attempt?.id || null };
++      if (this.checkEvidence) await this.checkEvidence.recordCheckResult({ execution, attempt, checkId, status, commandHash: sha256Hex(canonicalJson({ command: checkId === 'node_test' ? 'node' : 'git', args: command.args })), inputHash, outputHash, durationMs: Date.now() - started, details: { ...details, command: checkId === 'node_test' ? ['node','--test'] : ['git','diff','--no-index','--check','--','<BASE>','<CANDIDATE>'] } }, principal);
++      results.push({ check_id: checkId, status, input_sha256: inputHash, output_sha256: outputHash });
++    }
++    if (results.some((item) => item.status !== 'passed')) throw new PlatformError('check_failed', 'independent checks failed', { checks: results.filter((item) => item.status !== 'passed').map((item) => item.check_id) }, 409);
++    return { status: 'passed', checks: results };
++  }
++
+   async executePlan(executionId, principal) {
+     const execution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); const tasks = JSON.parse(execution.plan_json).tasks; const completed = new Set(); const results = [];
+     for (const task of tasks) {
+       const latest = this.db.get('SELECT * FROM task_attempts WHERE execution_id=? AND generation=? AND task_id=? ORDER BY attempt_no DESC LIMIT 1', [execution.id, execution.generation, task.id]);
+-      if (latest?.status === 'succeeded') { completed.add(task.id); results.push(attemptView(latest)); }
++      if (latest?.status === 'succeeded') { if (!this.effectiveAttempt(execution, task.id)) throw new PlatformError('runner_output_mismatch', 'successful task output is stale', {}, 409); completed.add(task.id); results.push(attemptView(latest)); }
+       else if (latest?.status === 'external_result_unknown') throw new PlatformError('external_result_unknown', 'runner result could not be reconciled', { task_id: task.id }, 409);
+       else if (latest && TERMINAL_ATTEMPTS.has(latest.status) && (!TRANSIENT.has(latest.error_code) || Number(latest.attempt_no) >= 3)) throw new PlatformError(latest.error_code || 'runner_failed', 'runner task failed', { task_id: task.id }, 409);
+     }
+@@ -276,6 +306,7 @@ export class CleanExecutionService {
+       try {
+         result = await this.runner.runSignedJob(started.signed, started.profile, {
+           workspacePath: started.taskWorkspace,
++          task,
+           fixture: fixtureFor(task, attemptNo),
+           onSubmitted: async (job) => {
+             await this.leaseAttempt(started.attempt.id, job, principal.actorId);
+@@ -297,7 +328,7 @@ export class CleanExecutionService {
+   async startAttempt(executionId, task, attemptNo, principal) {
+     const execution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); const profile = this.db.get('SELECT * FROM runner_profiles WHERE id=?', [execution.runner_profile_id]);
+     if (!profile || profile.status !== 'ready' || Number(profile.revision) !== Number(execution.runner_profile_revision) || profileSnapshotHash(profile) !== execution.runner_profile_hash) throw new PlatformError('runner_profile_changed', 'runner profile pin changed', {}, 409);
+-    const workspaceHash = this.workspaceHash(execution.repository_workspace_id); const taskWorkspace = this.prepareTaskWorkspace(execution, task, attemptNo); const now = time(this.clock); const id = opaqueId('task_attempt');
++    const workspaceHash = this.workspaceHash(execution.repository_workspace_id, execution); const taskWorkspace = this.prepareTaskWorkspace(execution, task, attemptNo); const now = time(this.clock); const id = opaqueId('task_attempt');
+     return this.db.withTransaction((tx) => {
+       const operation = createOperation(this.operations, tx, { actorId: principal.actorId, commandId: 'execution.task.run', resourceType: 'task_attempt', resourceId: id, projectId: execution.project_id, requestHash: requestHash({ execution_id: execution.id, generation: execution.generation, task_id: task.id, attempt: attemptNo, workspace_hash: workspaceHash }), status: 'running', now });
+       tx.run(`INSERT INTO task_attempts(id,execution_id,generation,task_id,task_ordinal,attempt_no,execution_mode,operation_id,runner_profile_id,status,dependency_hash,workspace_hash,revision,created_at,updated_at,started_at)
+@@ -358,10 +389,11 @@ export class CleanExecutionService {
+     return { awaiting_approval: true };
+   }
+ 
+-  finalize(executionId) {
++  async finalize(executionId, principal) {
+     const execution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); const tasks = JSON.parse(execution.plan_json).tasks;
+     for (const task of tasks) { const attempt = this.effectiveAttempt(execution, task.id); if (!attempt || attempt.status !== 'succeeded' || !attempt.job_spec_id || !attempt.runner_receipt_id) throw new PlatformError('execution_incomplete', 'execution has an incomplete task receipt', { task_id: task.id }, 409); }
+     for (const stage of RUNNER_STAGES.slice(0, 6)) { const checkpoint = this.db.get('SELECT id FROM execution_stage_checkpoints WHERE execution_id=? AND generation<=? AND stage=? ORDER BY generation DESC LIMIT 1', [execution.id, execution.generation, stage]); if (!checkpoint) throw new PlatformError('execution_incomplete', 'execution stage checkpoints are incomplete', { stage }, 409); }
++    await this.candidates.publish(execution, this.workspaceDirectory(this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id])), principal);
+     return { status: 'verified', task_count: tasks.length };
+   }
+ 
+@@ -493,27 +525,37 @@ export class CleanExecutionService {
+     return this.operations.succeed(prior.id, { expectedRevision: running.revision, actorId: prior.actor_id || actorId, projectId: prior.project_id, result: { execution_id: executionId, status: 'resumed', continued_by_operation_id: currentOperationId } });
+   }
+ 
+-  async mergeWriteAttempt(started, task, principal) {
+-    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [started.execution.repository_workspace_id]); const base = this.workspaceDirectory(workspace); const currentHash = this.workspaceHash(workspace.id); if (currentHash !== started.attempt.workspace_hash) throw new PlatformError('workspace_changed', 'workspace changed during the runner attempt', {}, 409);
+-    const lease = await this.projectWorkflow.lockRepositoryWorkspace(workspace.id, { expected_revision: workspace.revision, idempotency_key: `p6-lease-${started.attempt.id}` }, principal); const token = String(lease.lock?.fencing_token || ''); if (!token) throw new PlatformError('workspace_lease_unavailable', 'Repository owner did not issue a fencing lease', {}, 503);
+-    try {
+-      let outputBytes = 0;
+-      for (const relative of task.output_paths) { const source = safeJoin(started.taskWorkspace, relative); if (!fs.existsSync(source)) continue; const stat = fs.lstatSync(source); outputBytes += stat.size; if (!stat.isFile() || outputBytes > 10 * 1024 * 1024) throw new PlatformError('runner_output_too_large', 'runner outputs exceed the allowed bounds', {}, 422); const active = this.db.get("SELECT fencing_token FROM repository_locks WHERE id=? AND status='active'", [lease.lock.id]); if (!active || active.fencing_token !== token) throw new PlatformError('workspace_lease_lost', 'Repository fencing lease changed', {}, 409); const target = safeJoin(base, relative); fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 }); const temp = `${target}.${started.attempt.id}.tmp`; fs.copyFileSync(source, temp); fs.renameSync(temp, target); }
+-      return { fencing_token_hash: sha256Hex(token) };
+-    } finally { const current = this.db.get('SELECT revision,status FROM repository_workspaces WHERE id=?', [workspace.id]); if (current?.status === 'locked') await this.projectWorkflow.releaseRepositoryWorkspace(workspace.id, { expected_revision: current.revision, idempotency_key: `p6-release-${started.attempt.id}` }, principal); }
++  async mergeWriteAttempt(started, task, _principal) {
++    const base = this.candidates.directory(started.execution);
++    if (this.workspaceHash(started.execution.repository_workspace_id, started.execution) !== started.attempt.workspace_hash) throw new PlatformError('workspace_changed', 'candidate changed during task', {}, 409);
++    for (const relative of task.output_paths) {
++      const source = safeJoin(started.taskWorkspace, relative);
++      if (!fs.existsSync(source)) { if (task.argv?.length) throw new PlatformError('runner_artifact_missing', 'output missing', {}, 409); continue; }
++      const target = safeJoin(base, relative); fs.mkdirSync(path.dirname(target), { recursive: true });
++      fs.copyFileSync(source, target);
++    }
++    return { candidate_hash: this.workspaceHash(started.execution.repository_workspace_id, started.execution) };
++  }
++
++  async prepareCandidate(execution) {
++    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]);
++    return this.candidates.prepare(execution, this.workspaceDirectory(workspace));
+   }
+ 
+   taskWorkspace(execution, task, attemptNo) { return path.join(this.taskRoot, execution.id, String(execution.generation), task.id, String(attemptNo)); }
+-  prepareTaskWorkspace(execution, task, attemptNo) { const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]); const source = this.workspaceDirectory(workspace); const target = this.taskWorkspace(execution, task, attemptNo); fs.rmSync(target, { recursive: true, force: true }); fs.mkdirSync(target, { recursive: true, mode: 0o700 }); if (fs.existsSync(source)) { assertTreeSafe(source); fs.cpSync(source, target, { recursive: true, force: false, filter: (entry) => !path.relative(source, entry).replaceAll('\\', '/').startsWith('.p6-tasks') }); } return target; }
++  prepareTaskWorkspace(execution, task, attemptNo) { const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]); const source = this.candidates.directory(execution); const target = this.taskWorkspace(execution, task, attemptNo); fs.rmSync(target, { recursive: true, force: true }); fs.mkdirSync(target, { recursive: true, mode: 0o700 }); if (fs.existsSync(source)) { assertTreeSafe(source); fs.cpSync(source, target, { recursive: true, force: false, filter: (entry) => !path.relative(source, entry).replaceAll('\\', '/').startsWith('.p6-tasks') }); } return target; }
+   workspaceDirectory(workspace) { return safeJoin(this.workspaceRoot, workspace.relative_path || `projects/${workspace.project_id}/workspace`); }
+-  workspaceHash(workspaceId) { const workspace = this.db.get('SELECT rw.*,rl.source_hash,rl.revision AS line_revision FROM repository_workspaces rw JOIN repository_lines rl ON rl.id=rw.line_id WHERE rw.id=?', [String(workspaceId)]); if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404); const root = this.workspaceDirectory(workspace); const hash = createHash('sha256'); hash.update(canonicalJson({ workspace_id: workspace.id, line_revision: Number(workspace.line_revision), source_hash: workspace.source_hash || '' })); if (!fs.existsSync(root)) return hash.digest('hex'); for (const file of walkFiles(root)) { const relative = path.relative(root, file).replaceAll('\\', '/'); hash.update(relative); hash.update(fs.readFileSync(file)); } return hash.digest('hex'); }
++  workspaceHash(workspaceId, execution = null) { const workspace = this.db.get('SELECT rw.*,rl.source_hash,rl.revision AS line_revision FROM repository_workspaces rw JOIN repository_lines rl ON rl.id=rw.line_id WHERE rw.id=?', [String(workspaceId)]); if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404); const root = execution ? this.candidates.directory(execution) : this.workspaceDirectory(workspace); const hash = createHash('sha256'); hash.update(canonicalJson({ workspace_id: workspace.id, line_revision: Number(workspace.line_revision), source_hash: workspace.source_hash || '' })); if (!fs.existsSync(root)) return hash.digest('hex'); for (const file of walkFiles(root)) { const relative = path.relative(root, file).replaceAll('\\', '/'); hash.update(relative); hash.update(fs.readFileSync(file)); } return hash.digest('hex'); }
+ 
+-  validateWorkspaceForResume(execution) { const completed = this.db.query("SELECT data_json FROM events WHERE aggregate_type='execution' AND aggregate_id=? AND type IN ('execution.stage_completed','execution.completed') ORDER BY sequence DESC", [execution.id]).map((item) => JSON.parse(item.data_json || '{}')).find((item) => Number(item.generation) === Number(execution.generation) && item.workspace_sha256); const checkpoint = this.db.get('SELECT * FROM execution_stage_checkpoints WHERE execution_id=? AND generation=? ORDER BY stage_ordinal DESC LIMIT 1', [execution.id, execution.generation]); const expected = completed?.workspace_sha256 || checkpoint?.workspace_sha256; if (expected && this.workspaceHash(execution.repository_workspace_id) !== expected) throw new PlatformError('workspace_changed', 'workspace changed since the last safe boundary', {}, 409); }
+-  validatePins(execution, principal) { const pins = this.resolvePins(this.assertProject(principal, 'run', execution.project_id), { workflow_id: execution.workflow_id, workflow_revision: execution.workflow_revision, repository_workspace_id: execution.repository_workspace_id, context_pack_id: execution.context_pack_id, runner_profile_id: execution.runner_profile_id }, principal); const expected = pinsPayload(execution); const actual = { workflow_revision: pins.workflowRevision, workflow_hash: pins.workflowHash, brief_revision: pins.briefRevision, brief_hash: pins.briefHash, repository_revision: pins.repositoryRevision, repository_hash: pins.repositoryHash, context_pack_hash: pins.contextPackHash, runner_profile_revision: Number(pins.profile.revision), runner_profile_hash: pins.runnerProfileHash }; if (canonicalJson(expected) !== canonicalJson(actual)) throw new PlatformError('execution_pins_changed', 'execution pins are stale', { expected_sha256: sha256Hex(canonicalJson(expected)), actual_sha256: sha256Hex(canonicalJson(actual)) }, 409); return true; }
++  validateWorkspaceForResume(execution) { const completed = this.db.query("SELECT data_json FROM events WHERE aggregate_type='execution' AND aggregate_id=? AND type IN ('execution.stage_completed','execution.completed') ORDER BY sequence DESC", [execution.id]).map((item) => JSON.parse(item.data_json || '{}')).find((item) => Number(item.generation) === Number(execution.generation) && item.workspace_sha256); const checkpoint = this.db.get('SELECT * FROM execution_stage_checkpoints WHERE execution_id=? AND generation=? ORDER BY stage_ordinal DESC LIMIT 1', [execution.id, execution.generation]); const expected = completed?.workspace_sha256 || checkpoint?.workspace_sha256; if (expected && this.workspaceHash(execution.repository_workspace_id, execution) !== expected) throw new PlatformError('workspace_changed', 'workspace changed since the last safe boundary', {}, 409); }
++  validatePins(execution, principal) { if (sha256Hex(execution.plan_json) !== execution.plan_sha256) throw new PlatformError('execution_pins_changed', 'plan hash changed', {}, 409); const pins = this.resolvePins(this.assertProject(principal, 'run', execution.project_id), { workflow_id: execution.workflow_id, workflow_revision: execution.workflow_revision, repository_workspace_id: execution.repository_workspace_id, context_pack_id: execution.context_pack_id, runner_profile_id: execution.runner_profile_id }, principal); const expected = pinsPayload(execution); const actual = { workflow_revision: pins.workflowRevision, workflow_hash: pins.workflowHash, brief_revision: pins.briefRevision, brief_hash: pins.briefHash, repository_revision: pins.repositoryRevision, repository_hash: pins.repositoryHash, context_pack_hash: pins.contextPackHash, runner_profile_revision: Number(pins.profile.revision), runner_profile_hash: pins.runnerProfileHash }; if (canonicalJson(expected) !== canonicalJson(actual)) throw new PlatformError('execution_pins_changed', 'execution pins are stale', { expected_sha256: sha256Hex(canonicalJson(expected)), actual_sha256: sha256Hex(canonicalJson(actual)) }, 409); return true; }
+ 
+   resolvePins(project, input, principal) { const workflow = this.db.get('SELECT * FROM workflows WHERE id=? AND project_id=?', [String(input.workflow_id || this.db.get('SELECT id FROM workflows WHERE project_id=?', [project.id])?.id || ''), project.id]); if (!workflow) throw new PlatformError('workflow_required', 'workflow is required', {}, 409); const workflowRevision = Number(input.workflow_revision || workflow.current_revision); const workflowRevisionRow = this.db.get('SELECT * FROM workflow_revisions WHERE workflow_id=? AND revision=?', [workflow.id, workflowRevision]); if (!workflowRevisionRow) throw new PlatformError('workflow_required', 'workflow revision is required', {}, 409); const brief = this.db.get('SELECT * FROM briefs WHERE project_id=?', [project.id]); if (!brief?.confirmed_revision || !brief.confirmed_hash) throw new PlatformError('brief_required', 'confirmed Brief is required', {}, 409); const workspace = input.repository_workspace_id ? this.db.get('SELECT * FROM repository_workspaces WHERE id=? AND project_id=?', [String(input.repository_workspace_id), project.id]) : this.db.get("SELECT * FROM repository_workspaces WHERE project_id=? AND status IN ('ready','released') ORDER BY updated_at DESC,id LIMIT 1", [project.id]); if (!workspace) throw new PlatformError('workspace_required', 'managed repository workspace is required', {}, 409); const line = this.db.get('SELECT * FROM repository_lines WHERE id=?', [workspace.line_id]); if (!line || line.status !== 'ready') throw new PlatformError('workspace_changed', 'repository source is not ready', {}, 409); const pack = input.context_pack_id ? this.db.get('SELECT * FROM context_packs WHERE id=? AND project_id=?', [String(input.context_pack_id), project.id]) : this.db.get("SELECT * FROM context_packs WHERE project_id=? AND status='sealed' ORDER BY created_at DESC,id LIMIT 1", [project.id]); if (!pack || pack.status !== 'sealed') throw new PlatformError('context_pack_required', 'sealed Context Pack is required', {}, 409); const profile = this.runner.profileForExecution(input.runner_profile_id, principal, project.id); const runnerProfileHash = profileSnapshotHash(profile); return { workflow, workflowRevision, workflowRevisionRow, workflowHash: workflowRevisionRow.graph_sha256, briefRevision: Number(brief.confirmed_revision), briefHash: brief.confirmed_hash, workspace, repositoryRevision: Number(line.revision), repositoryHash: line.source_hash || sha256Hex(canonicalJson({ line_id: line.id, revision: line.revision })), pack, contextPackHash: pack.pack_hash, profile, runnerProfileHash, hashes: { workflow_hash: workflowRevisionRow.graph_sha256, brief_hash: brief.confirmed_hash, repository_hash: line.source_hash, context_pack_hash: pack.pack_hash, runner_profile_hash: runnerProfileHash } }; }
+ 
+-  tasksFromWorkflow(revision) { const graph = JSON.parse(revision.graph_json || '{}'); return Array.isArray(graph.nodes) ? graph.nodes.filter((node) => (node.kind || node.node_kind || 'task') !== 'workstream').map((node, index) => ({ id: String(node.id || node.node_key || `task_${index + 1}`), title: String(node.title || node.name || node.id || 'Task'), mode: node.mode === 'write' ? 'write' : 'read', depends_on: node.depends_on || node.dependencies || [], input_paths: node.input_paths || [], output_paths: node.output_paths || [], check_ids: node.check_ids || [], resource_profile: node.resource_profile || 'light' })) : []; }
++  tasksFromWorkflow(revision) {
++    const graph = JSON.parse(revision.graph_json || '{}');
++    return compileWorkflowToExecutionPlan(graph, {}, this.projectWorkflow?.policy).tasks;
++  }
+   insertInputs(tx, executionId, pins, extra, actorId, now) { const values = [{ input_type: 'brief', ref_id: `brief_${pins.workflow.project_id}`, ref_revision: pins.briefRevision, ref_hash: pins.briefHash }, { input_type: 'workflow', ref_id: pins.workflow.id, ref_revision: pins.workflowRevision, ref_hash: pins.workflowHash }, { input_type: 'repository', ref_id: pins.workspace.id, ref_revision: pins.repositoryRevision, ref_hash: pins.repositoryHash }, { input_type: 'context_pack', ref_id: pins.pack.id, ref_revision: Number(pins.pack.revision), ref_hash: pins.contextPackHash }, ...extra].slice(0, 256); values.forEach((item, index) => { const metadataJson = canonicalJson(item.metadata || {}); tx.run('INSERT INTO execution_inputs(id,execution_id,ordinal,input_type,ref_id,ref_revision,ref_hash,metadata_json,metadata_sha256,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)', [opaqueId('execution_input'), executionId, index + 1, item.input_type || item.type, String(item.ref_id || item.ref), Number(item.ref_revision ?? item.revision ?? 0), String(item.ref_hash || item.hash), metadataJson, sha256Hex(metadataJson), now, actorId]); }); }
+ 
+   updateExecution(tx, row, changes, now, actorId) { const nextRevision = Number(row.revision) + 1; const fields = { status: row.status, current_stage: row.current_stage, generation: Number(row.generation), handoff_manifest_json: row.handoff_manifest_json, handoff_manifest_sha256: row.handoff_manifest_sha256, error_code: row.error_code, started_at: row.started_at, completed_at: row.completed_at, ...changes }; if (fields.status === 'running' && !fields.started_at) fields.started_at = now; tx.run('UPDATE executions SET status=?,current_stage=?,generation=?,handoff_manifest_json=?,handoff_manifest_sha256=?,error_code=?,revision=?,updated_at=?,started_at=?,completed_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [fields.status, fields.current_stage, fields.generation, fields.handoff_manifest_json, fields.handoff_manifest_sha256, fields.error_code, nextRevision, now, fields.started_at || null, fields.completed_at || null, actorId, row.id, row.revision], 1); return tx.get('SELECT * FROM executions WHERE id=?', [row.id]); }
+@@ -523,12 +565,39 @@ export class CleanExecutionService {
+   resumeStageIndex(executionId, generation) { const completed = this.db.query("SELECT data_json FROM events WHERE aggregate_type='execution' AND aggregate_id=? AND type IN ('execution.stage_completed','execution.completed') ORDER BY sequence", [executionId]).map((item) => JSON.parse(item.data_json || '{}')).filter((item) => Number(item.generation) === Number(generation)); if (!completed.length) { const current = this.db.get('SELECT current_stage FROM executions WHERE id=?', [executionId]); return Math.max(0, RUNNER_STAGES.indexOf(current?.current_stage || '')); } return Math.min(RUNNER_STAGES.length - 1, RUNNER_STAGES.indexOf(completed.at(-1).stage) + 1); }
+   assertReviewApproved(row) { const approval = this.db.query("SELECT * FROM runtime_approvals WHERE project_id=? AND action='execution.review' ORDER BY created_at DESC,id", [row.project_id]).find((item) => { const value = JSON.parse(item.request_json || '{}'); return value.execution_id === row.id && Number(value.generation) === Number(row.generation); }); if (!approval || approval.status !== 'approved') throw new PlatformError('approval_required', 'execution review approval is pending', {}, 409); }
+   latestExecutionOperation(id) { return this.db.get("SELECT o.* FROM operations o JOIN operation_links l ON l.operation_id=o.id WHERE l.aggregate_type='execution' AND l.aggregate_id=? AND o.command_id IN ('execution.start','execution.resume','execution.stage.replay') ORDER BY o.created_at DESC,o.id DESC LIMIT 1", [id]); }
+-  effectiveAttempt(execution, taskId) { return this.db.get("SELECT * FROM task_attempts WHERE execution_id=? AND generation<=? AND task_id=? AND status='succeeded' ORDER BY generation DESC,attempt_no DESC LIMIT 1", [execution.id, execution.generation, String(taskId)]); }
++  effectiveAttempt(execution, taskId) {
++    const attempt = this.db.get('SELECT * FROM task_attempts WHERE execution_id=? AND generation<=? AND task_id=? ORDER BY generation DESC,attempt_no DESC LIMIT 1', [execution.id,execution.generation,String(taskId)]);
++    if (!attempt || attempt.status !== 'succeeded') return null;
++    const signed = this.db.get('SELECT * FROM job_specs WHERE id=?',[attempt.job_spec_id]);
++    const spec = signed ? JSON.parse(signed.spec_json) : null;
++    const ref = spec?.input_refs.find((item) => item.type === 'task_contract');
++    if (!ref) return attempt;
++    const task = JSON.parse(execution.plan_json).tasks.find((item) => item.id === taskId);
++    if (!task || task.task_contract_sha256 !== ref.hash || spec.runner_profile_hash !== execution.runner_profile_hash || spec.runner_profile_revision !== Number(execution.runner_profile_revision)) return null;
++    try {
++      const manifest = JSON.parse(this.runner.cas.read(attempt.output_sha256).toString('utf8'));
++      const root = this.candidates.directory(execution);
++      for (const entry of manifest.entries) if (sha256Hex(fs.readFileSync(safeJoin(root,entry.path))) !== entry.sha256) return null;
++    } catch { return null; }
++    return attempt;
++  }
+   executionRow(id, principal, action) { requirePrincipal(principal); const row = this.db.get('SELECT * FROM executions WHERE id=?', [String(id)]); if (!row) throw new PlatformError('not_found', 'execution not found', {}, 404); this.assertProject(principal, action, row.project_id); return row; }
+   assertProject(principal, action, projectId) { requirePrincipal(principal); const project = this.db.get('SELECT * FROM projects WHERE id=?', [String(projectId)]); if (!project) throw new PlatformError('not_found', 'project not found', {}, 404); this.authorization.assert(principal, action, project.id, { execution: true }); return project; }
+ }
+ 
+ function normalizePlan(input) { if (!Array.isArray(input) || input.length > 100) throw new PlatformError('execution_task_limit', 'execution plan must contain at most 100 tasks', {}, 422); const ids = new Set(); const tasks = input.map((value, index) => { const id = String(value?.id || value?.task_id || `task_${index + 1}`); if (!/^[A-Za-z][A-Za-z0-9_.-]{0,159}$/.test(id) || ids.has(id)) throw new PlatformError('execution_task_invalid', 'execution task id is invalid or duplicated', { task_id: id }, 422); ids.add(id); const mode = value?.mode === 'write' ? 'write' : 'read'; const dependencies = [...new Set((value?.depends_on || value?.dependencies || []).map(String))].sort(); return { id, ordinal: index + 1, title: String(value?.title || id).slice(0, 200), mode, depends_on: dependencies, input_paths: normalizePaths(value?.input_paths || []), output_paths: normalizePaths(value?.output_paths || []), check_ids: normalizeChecks(value?.check_ids || []), resource_profile: value?.resource_profile === 'standard' ? 'standard' : 'light', ...(value?.fixture && typeof value.fixture === 'object' ? { fixture: JSON.parse(canonicalJson(value.fixture)) } : {}) }; }); const edges = edgeCount(tasks); if (edges > 500) throw new PlatformError('execution_edge_limit', 'execution dependency edge limit exceeded', {}, 422); for (const task of tasks) for (const dependency of task.depends_on) if (!ids.has(dependency) || dependency === task.id) throw new PlatformError('execution_dependency_invalid', 'execution dependency is missing or self-referential', { task_id: task.id, dependency }, 422); const pending = new Set(ids); const complete = new Set(); while (pending.size) { const ready = tasks.filter((task) => pending.has(task.id) && task.depends_on.every((item) => complete.has(item))).sort(taskOrder); if (!ready.length) throw new PlatformError('execution_dag_cycle', 'execution task graph has a cycle', {}, 422); for (const task of ready) { pending.delete(task.id); complete.add(task.id); } } return tasks; }
++function normalizePlanWithContracts(input) {
++  const tasks = normalizePlan(input);
++  return tasks.map((task, index) => {
++    const source = Array.isArray(input) ? input[index] || {} : {};
++    const argv = Array.isArray(source.argv) ? source.argv.map(String) : [];
++    if (argv.length && !['node', 'pnpm', 'npm', 'git', 'codex'].includes(argv[0])) throw new PlatformError('runner_command_not_allowed', 'task command is not registered', { task_id: task.id }, 422);
++    const next = { ...task, argv, cwd_role: String(source.cwd_role || 'task'), deadline_seconds: Math.max(1, Number(source.deadline_seconds || 900)), runner_profile_ref: String(source.runner_profile_ref || ''), capabilities: Array.isArray(source.capabilities) ? source.capabilities.map(String) : ['network:none'] };
++    next.task_contract = { argv: next.argv, cwd_role: next.cwd_role, mode: next.mode, input_paths: next.input_paths, output_paths: next.output_paths, runner_profile_ref: next.runner_profile_ref, resource_profile: next.resource_profile, deadline_seconds: next.deadline_seconds, check_ids: next.check_ids, capabilities: next.capabilities };
++    next.task_contract_sha256 = sha256Hex(canonicalJson(next.task_contract));
++    return next;
++  });
++}
+ function normalizePaths(value) { if (!Array.isArray(value) || value.length > 64) throw new PlatformError('runner_path_invalid', 'task path list is invalid', {}, 422); const paths = value.map((item) => { const text = String(item || ''); if (!text || text.length > 512 || text.includes('\\') || text.startsWith('/') || /^[A-Za-z]:/.test(text) || text.split('/').some((segment) => !segment || segment === '.' || segment === '..')) throw new PlatformError('runner_path_invalid', 'task path is invalid', {}, 422); return text; }); if (new Set(paths).size !== paths.length) throw new PlatformError('runner_path_invalid', 'task path is duplicated', {}, 422); return paths; }
+ function normalizeChecks(value) { if (!Array.isArray(value) || value.length > 16) throw new PlatformError('check_invalid', 'check list is invalid', {}, 422); const checks = [...new Set(value.map(String))].sort(); if (checks.some((item) => !CHECK_IDS.has(item))) throw new PlatformError('check_invalid', 'check id is outside the allowlist', {}, 422); return checks; }
+ function edgeCount(tasks) { return tasks.reduce((total, task) => total + task.depends_on.length, 0); }
+diff --git a/apps/api/src/clean/identity.mjs b/apps/api/src/clean/identity.mjs
+index 1040fa1..5fb2283 100644
+--- a/apps/api/src/clean/identity.mjs
++++ b/apps/api/src/clean/identity.mjs
+@@ -713,6 +713,18 @@ class IdentityCoreService {
+     return this.db.query('SELECT * FROM provider_profiles WHERE owner_actor_id=? ORDER BY created_at,id', [principal.actorId]).map(profileView);
+   }
+ 
++  leaseProviderCredential(profileId, principal) {
++    requirePrincipal(principal);
++    const row = this.db.get("SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?", [String(profileId), principal.actorId]);
++    if (!row) throw notFound('profile');
++    if (row.provider !== 'codex' || row.lifecycle_status === 'disabled' || row.status !== 'available') throw new PlatformError('provider_rebind_required', 'provider profile is not active', { profile_id: row.id, status: row.status }, 409);
++    const credential = row.credential_ref_id ? this.db.get("SELECT * FROM credential_refs WHERE id=? AND owner_actor_id=?", [row.credential_ref_id, principal.actorId]) : null;
++    if (!credential || credential.status !== 'active' || !String(credential.external_ref || '').startsWith('vault:') || !this.vault) throw new PlatformError('provider_rebind_required', 'provider credential lease is unavailable', {}, 409);
++    if (credential.provider !== row.provider) throw new PlatformError('provider_rebind_required', 'provider credential binding differs', {}, 409);
++    const value = this.vault.read(credential.external_ref);
++    return { credential: value, profile_id: row.id, profile_revision: Number(row.revision), profile_hash: sha256Hex(canonicalJson({ id: row.id, revision: row.revision, config_sha256: row.config_sha256, credential_revision: credential.revision })), provider_config: parseCanonicalJson(row.config_json, {}) };
++  }
++
+   async recoverPending() {
+     const rows = this.db.query(`SELECT id,status,revision,command_id,resource_type,resource_id FROM operations
+       WHERE command_id IN ('credential.rebind','credential.rotate','profile.probe') AND status IN ('accepted','queued','running') ORDER BY created_at,id`);
+@@ -1231,6 +1243,8 @@ export class IdentityService {
+   rotateCredential(...args) { return this.credentialProfileService.rotate(...args); }
+   revokeCredential(...args) { return this.credentialProfileService.revoke(...args); }
+   probeProfile(...args) { return this.credentialProfileService.probeProfile(...args); }
++  leaseProviderCredential(...args) { return this.core.leaseProviderCredential(...args); }
++  providerProfileSnapshot(...args) { const lease = this.core.leaseProviderCredential(...args); try { return { profile_id: lease.profile_id, profile_revision: lease.profile_revision, profile_hash: lease.profile_hash }; } finally { lease.credential.fill(0); } }
+ }
+ 
+ export const IdentityDomainService = IdentityService;
+diff --git a/apps/api/src/clean/p8/repository.mjs b/apps/api/src/clean/p8/repository.mjs
+index d707284..710a8ce 100644
+--- a/apps/api/src/clean/p8/repository.mjs
++++ b/apps/api/src/clean/p8/repository.mjs
+@@ -669,8 +669,26 @@ export class CleanP8Service {
+ 
+   #protectedCasReferences() {
+     const values = new Set();
+-    for (const sql of ['SELECT cas_sha256 AS sha FROM asset_blobs', 'SELECT cas_sha256 AS sha FROM receipt_manifests WHERE cas_sha256 IS NOT NULL', 'SELECT patch_cas_sha256 AS sha FROM pull_request_intents']) for (const row of this.db.query(sql)) if (isHash(row.sha)) values.add(row.sha);
++    const references = [
++      'SELECT cas_sha256 AS sha FROM asset_blobs',
++      'SELECT cas_sha256 AS sha FROM receipt_manifests WHERE cas_sha256 IS NOT NULL',
++      'SELECT payload_cas_hash AS sha FROM context_packs',
++      'SELECT content_cas_hash AS sha FROM assist_messages',
++      'SELECT content_cas_hash AS sha FROM attachments',
++      'SELECT preview_cas_hash AS sha FROM attachments WHERE preview_cas_hash IS NOT NULL',
++      'SELECT patch_cas_hash AS sha FROM file_change_batches',
++      'SELECT before_cas_hash AS sha FROM file_change_items WHERE before_cas_hash IS NOT NULL',
++      'SELECT after_cas_hash AS sha FROM file_change_items WHERE after_cas_hash IS NOT NULL',
++      'SELECT undo_payload_cas_hash AS sha FROM semantic_proposals WHERE undo_payload_cas_hash IS NOT NULL',
++      'SELECT chunk_cas_hash AS sha FROM terminal_events WHERE chunk_cas_hash IS NOT NULL',
++      'SELECT ref_hash AS sha FROM execution_inputs',
++      'SELECT patch_cas_sha256 AS sha FROM pull_request_intents'
++    ];
++    for (const sql of references) {
++      try { for (const row of this.db.query(sql)) if (isHash(row.sha)) values.add(String(row.sha).toLowerCase()); } catch { /* older clean fixtures may omit a later phase table */ }
++    }
+     for (const row of this.db.query('SELECT components_json FROM backup_manifests')) collectHashes(parseJson(row.components_json, {}), values);
++    for (const row of this.db.query('SELECT volume_manifest_json FROM deployment_candidates')) collectHashes(parseJson(row.volume_manifest_json, {}), values);
+     return values;
+   }
+ 
+diff --git a/apps/api/src/clean/project-workflow.mjs b/apps/api/src/clean/project-workflow.mjs
+index 05419ff..ea9221b 100644
+--- a/apps/api/src/clean/project-workflow.mjs
++++ b/apps/api/src/clean/project-workflow.mjs
+@@ -1,3 +1,6 @@
++import fs from 'node:fs';
++import path from 'node:path';
++import { treeManifest } from './runner-input-provider.mjs';
+ import { canonicalJson, opaqueId, parseCanonicalJson, sha256Hex, utcNow } from './canonical.mjs';
+ import { PlatformError } from './platform-error.mjs';
+ import { projectCommandOwner } from './project-domain-helpers.mjs';
+@@ -24,7 +27,7 @@ class ProjectWorkflowCore {
+     clock = utcNow,
+     repositoryAdapter = null,
+     generator = null,
+-    critic = null
++    critic = null, identity = null, cas = null, config = {}
+   } = {}) {
+     if (!db || !events || !operations) throw new TypeError('project_workflow_dependencies_required');
+     this.db = db;
+@@ -33,6 +36,7 @@ class ProjectWorkflowCore {
+     this.policy = policy;
+     this.authorization = authorization;
+     this.clock = clock;
++    this.identity = identity; this.cas = cas; this.config = config;
+     this.repositoryAdapter = repositoryAdapter || deterministicRepositoryAdapter();
+     this.generator = generator || deterministicGenerator;
+     this.critic = critic || deterministicCritic;
+@@ -291,7 +295,7 @@ class ProjectWorkflowCore {
+     const expected = positiveRevision(input.expected_revision);
+     const key = requireKey(input.idempotency_key);
+     const mode = input.mode === 'existing' ? 'existing' : 'brainstorm';
+-    const source = sanitizeSource(input.source || {});
++    const source = sanitizeSource(this.repositoryAdapter.bindSource?.(input.source || {}) || input.source || {});
+     const hash = requestHash({ project_id: project.id, mode, source, expected_revision: expected });
+     const now = this.#time();
+     return this.db.withTransaction((tx) => {
+@@ -695,17 +699,16 @@ class ProjectWorkflowCore {
+       .map((row) => this.#connectionView(row));
+   }
+ 
+-  createRepositoryConnection(projectId, input = {}, principal) {
++  async createRepositoryConnection(projectId, input = {}, principal) {
+     const project = this.#projectRow(projectId);
+     this.#assertProject(principal, 'write', project.id);
+     const key = requireKey(input.idempotency_key);
+     const now = this.#time();
+-    const source = sanitizeSource({
+-      kind: input.source_kind,
+-      locator: input.source_locator,
+-      revision: input.source_revision,
+-      hash: input.source_hash
+-    });
++    const requested = { kind: input.source_kind, locator: input.source_locator, revision: input.source_revision, hash: input.source_hash };
++    const bound = this.repositoryAdapter.bindSource?.(requested) || requested;
++    const source = sanitizeSource(bound);
++    const observed = source.kind === 'local' ? await this.repositoryAdapter.probe(source) : null;
++    if (observed) { source.revision = observed.revision; source.hash = observed.hash; }
+     const provider = boundedString(input.provider || 'fixture', 40);
+     const hash = requestHash({ project_id: project.id, provider, source, read_only: input.read_only !== false });
+     return this.db.withTransaction((tx) => {
+@@ -723,7 +726,7 @@ class ProjectWorkflowCore {
+         requestHash: hash,
+         now
+       });
+-      const metadataJson = canonicalJson({ provider });
++      const metadataJson = canonicalJson({ provider, ...(observed ? { manifest: observed } : {}) });
+       tx.run(
+         `INSERT INTO repository_connections(id,project_id,provider,credential_ref_id,status,source_kind,source_locator,source_revision,source_hash,read_only,metadata_json,metadata_sha256,created_at,updated_at,created_by_actor_id,updated_by_actor_id)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+@@ -1108,6 +1111,8 @@ class ProjectWorkflowCore {
+       project.id
+     ]);
+     if (!line) throw notFound('repository line');
++    const connection = this.db.get('SELECT c.* FROM repository_connections c JOIN repository_targets t ON t.connection_id=c.id WHERE t.id=?', [line.target_id]);
++    if (connection?.source_kind === 'local') return this.createLocalWorkspace(project, line, connection, input, principal);
+     const key = requireKey(input.idempotency_key);
+     const relative = safeRelative(input.relative_path || `projects/${project.id}/workspace`);
+     const now = this.#time();
+@@ -1150,6 +1155,49 @@ class ProjectWorkflowCore {
+     });
+   }
+ 
++  async createLocalWorkspace(project, line, connection, input, principal) {
++    const key = requireKey(input.idempotency_key), now = this.#time();
++    const relative = safeRelative(input.relative_path || `projects/${project.id}/workspace`);
++    const hash = requestHash({ project_id: project.id, line_id: line.id, relative });
++    const pending = await this.db.withTransaction((tx) => {
++      const replay = getIdempotency(tx, principal.actorId, 'repository.workspace.create', key, hash, now);
++      if (replay) return { replay: JSON.parse(replay.response_json) };
++      const id = opaqueId('repository_workspace');
++      const op = this.operations.createInTransaction(tx, { actorId: principal.actorId, commandId: 'repository.workspace.create', resourceType: 'repository_workspace', resourceId: id, projectId: project.id, requestHash: hash, idempotencyKey: `op-${key}`, status: 'running' }, now);
++      tx.run("INSERT INTO repository_workspaces(id,project_id,line_id,status,relative_path,owner_operation_id,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,'requested',?,?,?,?,?,?)", [id,project.id,line.id,relative,op.operation_id,now,now,principal.actorId,principal.actorId]);
++      appendAggregate(tx,this.events,{ aggregateType:'repository_workspace', aggregateId:id, revision:1, operationId:op.operation_id,actorId:principal.actorId,projectId:project.id,type:'workspace.created',data:{workspace_id:id,status:'requested'},payload:{id,status:'requested',revision:1},now });
++      return { id, operation:op };
++    });
++    if (pending.replay) return pending.replay;
++    const transition = (status, revision) => this.db.withTransaction((tx) => {
++      tx.run('UPDATE repository_workspaces SET status=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?',[status,this.#time(),pending.id,revision],1);
++      appendAggregate(tx,this.events,{aggregateType:'repository_workspace',aggregateId:pending.id,revision:revision+1,operationId:pending.operation.operation_id,actorId:principal.actorId,projectId:project.id,type:'workspace.refreshed',data:{workspace_id:pending.id,status},payload:{id:pending.id,status,revision:revision+1},now:this.#time()});
++    });
++    try {
++      await transition('provisioning',1);
++      const root = path.resolve(this.config.workspaceRoot), destination = path.resolve(root,relative);
++      if (!destination.startsWith(root + path.sep)) throw new PlatformError('runner_path_invalid','managed workspace path is invalid',{},422);
++      const source = { kind:'local',locator:connection.source_locator,revision:line.source_revision,hash:line.source_hash };
++      const observed = await this.repositoryAdapter.materialize(source,destination,source);
++      await this.db.withTransaction((tx) => {
++        const payload = canonicalJson({ workspace_id:pending.id,commit_sha:observed.commit_sha,tree_sha:observed.tree_sha,workspace_hash:observed.workspace_hash,manifest_hash:observed.manifest_hash });
++        tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,created_at) VALUES(?,'repository.materialization','verified',?,?,?)",[opaqueId('receipt'),payload,sha256Hex(payload),this.#time()]);
++      });
++      await transition('ready',2);
++      return await this.db.withTransaction((tx) => {
++        const operation = this.operations.transitionInTransaction(tx,pending.operation.operation_id,'succeeded',{actorId:principal.actorId,expectedRevision:pending.operation.revision,result:{workspace_id:pending.id,workspace_hash:observed.workspace_hash}},this.#time());
++        const response = {workspace:this.#workspaceView(tx.get('SELECT * FROM repository_workspaces WHERE id=?',[pending.id])),operation};
++        saveIdempotency(tx,principal.actorId,'repository.workspace.create',key,hash,response,pending.operation.operation_id,this.#time()); return response;
++      });
++    } catch (error) {
++      // v9 has no faulted workspace state. Orphaned plus a failed Operation is the existing contract.
++      const current = this.db.get('SELECT * FROM repository_workspaces WHERE id=?',[pending.id]);
++      await transition('orphaned',Number(current.revision));
++      await this.operations.fail(pending.operation.operation_id,{actorId:principal.actorId,expectedRevision:pending.operation.revision,errorCode:error.code || 'repository_materialization_failed'});
++      throw error;
++    }
++  }
++
+   refreshRepositoryWorkspace(workspaceId, input = {}, principal) {
+     const row = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [String(workspaceId)]);
+     if (!row) throw notFound('repository workspace');
+@@ -1427,6 +1475,11 @@ class ProjectWorkflowCore {
+     const expected = positiveRevision(input.expected_revision);
+     const key = requireKey(input.idempotency_key);
+     const source = this.#sourceSnapshot(project.id);
++    if (this.generator.requiresCredentialLease && !input.provider_profile_id) throw new PlatformError('provider_profile_required', 'Codex profile selection is required', {}, 422);
++    const profilePin = input.provider_profile_id ? this.identity.providerProfileSnapshot(input.provider_profile_id, principal) : null;
++    const contextPack = this.generator.requiresCredentialLease ? this.db.get("SELECT * FROM context_packs WHERE project_id=? AND status='sealed' ORDER BY created_at DESC,id DESC LIMIT 1", [project.id]) : null;
++    if (this.generator.requiresCredentialLease && !contextPack) throw new PlatformError('context_pack_required', 'a sealed Context Pack is required', {}, 409);
++
+     const candidateInput = input.candidate && typeof input.candidate === 'object' ? input.candidate : {};
+     const snapshot = {
+       brief_revision: sourceBriefRevision,
+@@ -1434,6 +1487,13 @@ class ProjectWorkflowCore {
+       workflow_revision: Number(workflow.current_revision),
+       repository_revision: source.revision,
+       repository_hash: source.hash,
++      provider_profile_id: input.provider_profile_id || null,
++      principal_actor_id: principal.actorId,
++      provider_pin: profilePin,
++      brief: parseCanonicalJson(this.db.get('SELECT content_json FROM brief_revisions WHERE project_id=? AND revision=?', [project.id, sourceBriefRevision])?.content_json, {}),
++      context_pack: contextPack ? { id: contextPack.id, revision: Number(contextPack.revision), hash: contextPack.pack_hash, content: JSON.parse(this.cas.read(contextPack.payload_cas_hash).toString('utf8')) } : {},
++      repository_snapshot: source,
++      policy_revision: 1,
+       candidate: candidateInput,
+       attempt: Number(input.attempt || 1),
+       retry_of_generation_id: input.retry_of_generation_id || null
+@@ -1526,7 +1586,8 @@ class ProjectWorkflowCore {
+         expected_revision: projectRevision,
+         candidate: input.candidate || parseCanonicalJson(row.candidate_json, {}),
+         attempt: Number(row.attempt) + 1,
+-        retry_of_generation_id: row.id
++        retry_of_generation_id: row.id,
++        provider_profile_id: input.provider_profile_id || parseCanonicalJson(row.input_json, {}).provider_profile_id
+       },
+       principal,
+       'generation.retry'
+@@ -1588,20 +1649,36 @@ class ProjectWorkflowCore {
+     return response;
+   }
+ 
+-  evaluateCritic(generationId, input = {}, principal) {
++  async evaluateCritic(generationId, input = {}, principal) {
+     const generation = this.db.get('SELECT * FROM workflow_generations WHERE id=?', [String(generationId)]);
+     if (!generation) throw notFound('workflow generation');
+     this.#assertProject(principal, 'approve', generation.project_id);
+     const expected = positiveRevision(input.expected_revision);
+     const key = requireKey(input.idempotency_key);
+-    const candidate =
+-      input.candidate && typeof input.candidate === 'object'
+-        ? input.candidate
+-        : parseCanonicalJson(generation.candidate_json, {});
+-    const status = input.status || this.critic(candidate).status;
+-    const issues = Array.isArray(input.issues) ? input.issues : this.critic(candidate).issues;
++    const candidate = this.critic.requiresCredentialLease ? parseCanonicalJson(generation.candidate_json, {}) : (input.candidate && typeof input.candidate === 'object' ? input.candidate : parseCanonicalJson(generation.candidate_json, {}));
++    const hash = requestHash({ generation_id: generation.id, candidate, requested_status: input.status || null, expected_revision: expected });
+     const now = this.#time();
+-    const hash = requestHash({ generation_id: generation.id, candidate, status, issues, expected_revision: expected });
++    const prior = await this.db.withTransaction((tx) => getIdempotency(tx, principal.actorId, 'critic.evaluate', key, hash, now));
++    if (prior) return { ...JSON.parse(prior.response_json), replayed: true };
++    assertRevision(generation, expected);
++    if (generation.phase !== 'critic_pending') throw stateConflict('generation is not awaiting critic');
++    let assessed;
++    try {
++      const controlled = parseCanonicalJson(generation.input_json, {});
++      assessed = typeof this.critic === 'function' ? await this.critic(candidate) : await this.critic.evaluate({ ...controlled, candidate, generation_id: generation.id });
++      if (controlled.provider_pin && canonicalJson(this.identity.providerProfileSnapshot(controlled.provider_profile_id, principal)) !== canonicalJson(controlled.provider_pin)) throw new PlatformError('provider_rebind_required', 'provider profile changed during review', {}, 409);
++    } catch (error) {
++      await this.db.withTransaction((tx) => {
++        const current = tx.get('SELECT * FROM workflow_generations WHERE id=?', [generation.id]); assertRevision(current, expected);
++        const op = this.operations.createInTransaction(tx, { actorId: principal.actorId, commandId: 'critic.evaluate', resourceType: 'workflow_generation', resourceId: generation.id, projectId: generation.project_id, requestHash: hash, idempotencyKey: key, status: 'running' }, now);
++        this.operations.transitionInTransaction(tx, op.operation_id, 'failed', { actorId: principal.actorId, expectedRevision: op.revision, errorCode: error.code || 'critic_failed' }, now);
++        tx.run("UPDATE workflow_generations SET phase='failed',error_code=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?", [error.code || 'critic_failed',now,generation.id,expected],1);
++        appendAggregate(tx, this.events, { aggregateType: 'workflow_generation', aggregateId: generation.id, revision: expected + 1, operationId: op.operation_id, actorId: principal.actorId, projectId: generation.project_id, type: 'generation.failed', data: { generation_id: generation.id, error_code: error.code || 'critic_failed' }, payload: { id: generation.id, phase: 'failed', revision: expected + 1 }, now });
++      });
++      throw error;
++    }
++    const status = assessed.status === 'passed' && !(typeof this.critic === 'function' && input.status === 'rejected') ? 'passed' : 'rejected';
++    const issues = assessed.issues || [];
+     return this.db.withTransaction((tx) => {
+       const prior = getIdempotency(tx, principal.actorId, 'critic.evaluate', key, hash, now);
+       if (prior) return { ...JSON.parse(prior.response_json), replayed: true };
+@@ -1622,6 +1699,11 @@ class ProjectWorkflowCore {
+       const inputJson = row.input_json;
+       const issuesJson = canonicalJson(issues);
+       const criticId = opaqueId('critic');
++      if (assessed.coverage && this.cas) {
++        const payload = { critic_id: criticId, candidate_sha256: sha256Hex(candidateJson), input_sha256: row.input_sha256, coverage: assessed.coverage, coverage_sha256: sha256Hex(canonicalJson(assessed.coverage)), provider_receipt: assessed.provider_receipt || null };
++        const object = this.cas.putCanonical(payload);
++        tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'workflow.critic','verified',?,?,?,?)", [criticId,canonicalJson(payload),sha256Hex(canonicalJson(payload)),object.hash,now]);
++      }
+       tx.run(
+         `INSERT INTO workflow_critic_receipts(id,generation_id,project_id,status,candidate_sha256,input_sha256,issues_json,issues_sha256,policy_revision,provider,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+         [
+@@ -1634,7 +1716,7 @@ class ProjectWorkflowCore {
+           issuesJson,
+           sha256Hex(issuesJson),
+           1,
+-          'fake-critic',
++          String(assessed.provider || (this.critic === deterministicCritic ? 'deterministic-critic' : 'workflow-critic')),
+           now,
+           principal.actorId
+         ]
+@@ -1793,7 +1875,14 @@ class ProjectWorkflowCore {
+       const briefHead = tx.get('SELECT current_revision FROM briefs WHERE project_id=?', [p.project_id]);
+       const workflowDrift = Number(workflow.current_revision) !== Number(p.base_workflow_revision);
+       const briefDrift = Number(briefHead?.current_revision || 0) !== Number(generationBefore.source_brief_revision);
+-      if (workflowDrift || briefDrift) {
++      const pinnedInput = parseCanonicalJson(generationBefore.input_json, {});
++      const sourceNow = this.#sourceSnapshot(p.project_id);
++      const repositoryDrift = Number(sourceNow.revision) !== Number(generationBefore.source_repository_revision) || sourceNow.hash !== generationBefore.source_repository_hash || (pinnedInput.repository_snapshot?.workspace_hash && sourceNow.workspace_hash !== pinnedInput.repository_snapshot.workspace_hash);
++      const packNow = pinnedInput.context_pack?.id ? tx.get('SELECT * FROM context_packs WHERE id=?', [pinnedInput.context_pack.id]) : null;
++      const contextDrift = pinnedInput.context_pack?.id && (!packNow || packNow.status !== 'sealed' || packNow.pack_hash !== pinnedInput.context_pack.hash || Number(packNow.revision) !== pinnedInput.context_pack.revision);
++      let providerDrift = false;
++      if (pinnedInput.provider_pin) { try { providerDrift = canonicalJson(this.identity.providerProfileSnapshot(pinnedInput.provider_profile_id, principal)) !== canonicalJson(pinnedInput.provider_pin); } catch { providerDrift = true; } }
++      if (workflowDrift || briefDrift || repositoryDrift || contextDrift || providerDrift) {
+         const staleOperation = this.operations.createInTransaction(
+           tx,
+           {
+@@ -2270,7 +2359,16 @@ class ProjectWorkflowCore {
+       });
+       const latest = this.db.get('SELECT * FROM workflow_generations WHERE id=?', [generationId]);
+       const input = parseCanonicalJson(latest.input_json, {});
+-      const candidate = await this.generator(input);
++      const candidateResult = typeof this.generator === 'function'
++        ? await this.generator(input)
++        : await this.generator.generate(input);
++      const candidate = candidateResult?.candidate || candidateResult;
++      if (input.provider_pin && canonicalJson(this.identity.providerProfileSnapshot(input.provider_profile_id, { actorId: latest.created_by_actor_id })) !== canonicalJson(input.provider_pin)) throw new PlatformError('provider_rebind_required', 'provider profile changed during generation', {}, 409);
++      this.#safe(candidate);
++      if (candidateResult?.provider_receipt && this.cas) {
++        const payload = canonicalJson({ generation_id: generationId, ...candidateResult.provider_receipt }); const object = this.cas.put(payload);
++        await this.db.withTransaction((tx) => tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'workflow.provider','verified',?,?,?,?)", [opaqueId('receipt'),payload,sha256Hex(payload),object.hash,this.#time()]));
++      }
+       ctx.ensureActive();
+       const candidateJson = canonicalJson(candidate);
+       await this.db.withTransaction((tx) => {
+@@ -2631,7 +2729,12 @@ class ProjectWorkflowCore {
+       "SELECT revision,source_hash FROM repository_lines WHERE project_id=? AND status<>'removed' ORDER BY created_at LIMIT 1",
+       [projectId]
+     );
+-    return { revision: Number(row?.revision || 0), hash: row?.source_hash || '' };
++    const connection = this.db.get('SELECT * FROM repository_connections WHERE project_id=?',[projectId]);
++    const manifest = parseCanonicalJson(connection?.metadata_json,{}).manifest;
++    const workspace = this.db.get("SELECT * FROM repository_workspaces WHERE project_id=? AND status IN ('ready','released') ORDER BY updated_at DESC LIMIT 1",[projectId]);
++    const directory = workspace && this.config.workspaceRoot ? path.resolve(this.config.workspaceRoot, workspace.relative_path) : null;
++    const workspaceHash = directory && fs.existsSync(directory) ? sha256Hex(canonicalJson(treeManifest(directory))) : '';
++    return { revision: Number(row?.revision || 0), hash: row?.source_hash || '', commit_sha:manifest?.commit_sha || '',tree_sha:manifest?.tree_sha || '',workspace_hash:workspaceHash,manifest:manifest?.entries || [] };
+   }
+   #workflowHash(projectId, revision) {
+     const row = this.db.get('SELECT graph_sha256 FROM workflow_revisions WHERE project_id=? AND revision=?', [
+@@ -3213,6 +3316,7 @@ function normalizeGraph(value) {
+           kind: node.kind === 'workstream' ? 'workstream' : 'task',
+           title: String(node.title || node.name || node.id || 'Task').slice(0, 200),
+           parent_id: node.parent_id == null ? null : String(node.parent_id),
++          depends_on: Array.isArray(node.depends_on || node.dependencies) ? (node.depends_on || node.dependencies).map(String) : [],
+           config: node.config && typeof node.config === 'object' ? node.config : {},
+           contract: node.contract && typeof node.contract === 'object' ? node.contract : {}
+         }))
+@@ -3252,7 +3356,7 @@ async function deterministicGenerator(input) {
+               kind: 'task',
+               title: 'Deliver',
+               parent_id: 'inspect',
+-              config: {},
++              config: { execution: { argv: ['node', '--version'], cwd_role: 'task', mode: 'read', input_paths: [], output_paths: [], check_ids: [], resource_profile: 'light', deadline_seconds: 60, capabilities: ['network:none'] } },
+               contract: { inputs: ['analysis'], outputs: ['result'] }
+             }
+           ]
+diff --git a/apps/api/src/clean/runner-adapters.mjs b/apps/api/src/clean/runner-adapters.mjs
+index 5bd4331..67a8f08 100644
+--- a/apps/api/src/clean/runner-adapters.mjs
++++ b/apps/api/src/clean/runner-adapters.mjs
+@@ -8,6 +8,7 @@ import {
+ } from 'node:crypto';
+ import { canonicalJson, opaqueId, sha256Hex } from './canonical.mjs';
+ import { PlatformError } from './platform-error.mjs';
++import { containedPath, taskContract, treeManifest, outputManifest } from './runner-input-provider.mjs';
+ import { RUNNER_RESOURCE_PROFILES, signRunnerReceipt } from './runner-protocol.mjs';
+ 
+ const execFileAsync = promisify(execFile);
+@@ -70,7 +71,7 @@ export class HostRunnerAdapter extends DeterministicRunnerAdapter {
+   constructor({ homeRoot = null, clock, spawnImpl = spawn, identity = null } = {}) {
+     super({ type: 'host', clock, identity });
+     this.homeRoot = path.resolve(homeRoot || path.join(os.tmpdir(), 'aiws-host-runner-homes'));
+-    this.spawnImpl = spawnImpl; this.children = new Map();
++    this.spawnImpl = spawnImpl; this.children = new Map(); this.requiresTaskContract = true;
+     fs.mkdirSync(this.homeRoot, { recursive: true, mode: 0o700 });
+   }
+ 
+@@ -84,42 +85,53 @@ export class HostRunnerAdapter extends DeterministicRunnerAdapter {
+     job.status = 'running'; job.started_at = iso(this.clock);
+     const home = path.join(this.homeRoot, job.job_id);
+     fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+-    const script = [
+-      "const crypto=require('node:crypto')",
+-      "const value=JSON.parse(process.env.AIWS_RUNNER_TASK || '{}')",
+-      "process.stdout.write(JSON.stringify({status:'succeeded',task_ref:value.task_ref||'',output_paths:value.output_paths||[]})+'\\n')"
+-    ].join(';');
+-    const output = []; const errors = [];
++    let result;
+     try {
+-      const child = this.spawnImpl(process.execPath, ['-e', script], {
+-        cwd: job.context.workspacePath || process.cwd(),
+-        env: { PATH: process.env.PATH || '', SystemRoot: process.env.SystemRoot || '', CODEX_HOME: home, AIWS_RUNNER_TASK: JSON.stringify({ task_ref: job.spec.task_ref, output_paths: job.spec.output_paths }) },
+-        stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, detached: process.platform !== 'win32'
+-      });
+-      this.children.set(job.job_id, child);
+-      const deadline = Math.max(1, Date.parse(job.spec.deadline_at) - Date.now());
+-      const timer = setTimeout(() => { job.timed_out = true; terminateTree(child); }, deadline); timer.unref?.();
+-      child.stdout.on('data', (chunk) => output.push(Buffer.from(chunk)));
+-      child.stderr.on('data', (chunk) => errors.push(Buffer.from(chunk)));
+-      const result = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', (code, signal) => resolve({ code, signal })); });
+-      clearTimeout(timer); this.children.delete(job.job_id);
+-      const { stdout, stderr } = boundedStreams(output, errors);
+-      const status = job.status === 'cancelled' ? 'cancelled' : job.timed_out ? 'expired' : result.code === 0 ? 'succeeded' : 'failed';
+-      const signed = signRunnerReceipt(receiptValue(job, { status, exit_code: result.code, error_code: status === 'expired' ? 'runner_deadline_exceeded' : status === 'failed' ? 'runner_failed' : status === 'cancelled' ? 'cancelled' : '', stdout, stderr }, iso(this.clock)), this.identity.privateKey, { expectedJobSpecId: job.spec.job_spec_id, expectedJobSpecHash: job.context.specHash });
+-      job.status = signed.receipt.status; job.receipt = signed.receipt; job.signature = signed.signature; job.finished_at = signed.receipt.finished_at;
++      const contract = taskContract(job.context.contract);
++      const ref = job.spec.input_refs.find((item) => item.type === 'task_contract');
++      if (!ref || sha256Hex(canonicalJson(contract)) !== ref.hash) throw new PlatformError('runner_input_mismatch', 'signed task contract differs', {}, 409);
++      const root = path.resolve(job.context.workspacePath);
++      const before = treeManifest(root);
++      const invocation = hostInvocation(contract.argv, root);
++      result = await executeHostCommand(invocation, { root, home, spawnImpl: this.spawnImpl, deadline: Date.parse(job.spec.deadline_at), onChild: (child) => this.children.set(job.job_id, child), cancelled: () => job.cancelRequested === true });
++      if (result.status === 'succeeded') {
++        const after = treeManifest(root); const beforeMap = new Map(before.map((entry) => [entry.path, entry.sha256]));
++        const afterMap = new Map(after.map((entry) => [entry.path, entry.sha256]));
++        const changed = new Set([...beforeMap.keys(), ...afterMap.keys()].filter((relative) => beforeMap.get(relative) !== afterMap.get(relative)));
++        if (changed.size && (contract.mode !== 'write' || [...changed].some((relative) => !contract.output_paths.includes(relative)))) throw new PlatformError('runner_output_mismatch', 'task changed undeclared files', {}, 409);
++        const manifest = outputManifest(root, contract.output_paths);
++        if (!job.context.cas) throw new PlatformError('runner_input_missing', 'output CAS is required', {}, 409);
++        const stored = job.context.cas.putCanonical(manifest);
++        result = { ...result, output_sha256: stored.hash, output_bytes: manifest.entries.reduce((total, item) => total + item.byte_length, 0), output_paths: manifest.entries.map((item) => item.path) };
++      }
+     } catch (error) {
+-      const status = job.status === 'cancelled' ? 'cancelled' : 'failed'; const signed = signRunnerReceipt(receiptValue(job, { status, exit_code: status === 'cancelled' ? null : 1, error_code: status === 'cancelled' ? 'cancelled' : String(error?.code || 'runner_spawn_failed') }, iso(this.clock)), this.identity.privateKey, { expectedJobSpecId: job.spec.job_spec_id, expectedJobSpecHash: job.context.specHash });
+-      job.status = status; job.receipt = signed.receipt; job.signature = signed.signature;
++      result = { ...(result || {}), status: job.status === 'cancelled' ? 'cancelled' : 'failed', exit_code: result?.exit_code ?? null, error_code: job.status === 'cancelled' ? 'runner_cancelled' : String(error?.code || 'runner_spawn_failed'), output_paths: [], output_sha256: '' };
+     } finally {
+       this.children.delete(job.job_id);
+-      if (Buffer.isBuffer(job.context?.credential)) job.context.credential.fill(0);
++      job.context.credential?.fill(0);
+       fs.rmSync(home, { recursive: true, force: true });
+     }
++    const signed = signRunnerReceipt(receiptValue(job, result, iso(this.clock)), this.identity.privateKey, { expectedJobSpecId: job.spec.job_spec_id, expectedJobSpecHash: job.context.specHash });
++    job.status = signed.receipt.status; job.receipt = signed.receipt; job.signature = signed.signature; job.finished_at = signed.receipt.finished_at;
++    const durable = { job_id: job.job_id, status: job.status, receipt: job.receipt, signature: job.signature, signer_public_key: this.publicIdentity() };
++    const target = path.join(this.homeRoot, job.job_id + '.receipt.json');
++    fs.writeFileSync(target, canonicalJson(durable), { mode: 0o600, flag: 'wx' });
++  }
++
++  async status(jobId) {
++    if (this.jobs.has(String(jobId))) return super.status(jobId);
++    if (!/^runner_job_[a-f0-9]+$/.test(String(jobId))) return { job_id: String(jobId), status: 'unknown' };
++    const file = path.join(this.homeRoot, String(jobId) + '.receipt.json');
++    if (!fs.existsSync(file)) return { job_id: String(jobId), status: 'unknown' };
++    return JSON.parse(fs.readFileSync(file, 'utf8'));
+   }
+ 
+   async cancel(jobId) {
++    const job = this.jobs.get(String(jobId));
++    if (!job || TERMINAL.has(job.status)) return this.status(jobId);
++    job.cancelRequested = true;
+     const child = this.children.get(String(jobId)); if (child) terminateTree(child);
+-    return super.cancel(jobId);
++    return { job_id: String(jobId), status: 'running' };
+   }
+ }
+ 
+@@ -201,3 +213,33 @@ function hash(value) { return createHash('sha256').update(value).digest('hex');
+ function iso(clock) { const value = typeof clock === 'function' ? clock() : new Date(); return typeof value === 'string' ? value : new Date(value).toISOString(); }
+ function boundedStreams(output, errors) { const stdout = Buffer.concat(output).subarray(0, 2 * 1024 * 1024); const remaining = Math.max(0, 2 * 1024 * 1024 - stdout.length); return { stdout, stderr: Buffer.concat(errors).subarray(0, remaining) }; }
+ function terminateTree(child) { if (!child || child.exitCode != null) return; try { if (process.platform === 'win32') spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); else process.kill(-child.pid, 'SIGTERM'); } catch { try { child.kill('SIGKILL'); } catch { /* process already exited */ } } }
++export function hostInvocation(argv, root) {
++  const [command, ...args] = argv;
++  if (command === 'node') return { command: process.execPath, args: ['--permission', '--allow-fs-read=' + root, '--allow-fs-write=' + root, ...args] };
++  if (process.platform !== 'win32' || command === 'git') return { command, args };
++  const nodeRoot = path.dirname(process.execPath);
++  const script = command === 'npm' ? path.join(nodeRoot, 'node_modules/npm/bin/npm-cli.js') : command === 'pnpm' ? path.join(nodeRoot, 'node_modules/corepack/dist/corepack.js') : null;
++  if (script && fs.existsSync(script)) return { command: process.execPath, args: [script, ...(command === 'pnpm' ? ['pnpm'] : []), ...args] };
++  if (command === 'codex') {
++    const located = requireExecutable('codex.exe');
++    if (located) return { command: located, args };
++  }
++  throw new PlatformError('runner_command_not_allowed', 'registered executable is unavailable without a shell', {}, 422);
++}
++function requireExecutable(name) { return String(process.env.PATH || '').split(path.delimiter).map((entry) => path.join(entry, name)).find((file) => fs.existsSync(file) && fs.lstatSync(file).isFile()); }
++export async function executeHostCommand(invocation, { root, home = root, spawnImpl = spawn, deadline = Date.now() + 120000, onChild = () => {}, cancelled = () => false, allowedExitCodes = [0] } = {}) {
++  const env = {};
++  for (const key of ['PATH','Path','SystemRoot','WINDIR','COMSPEC','PATHEXT','TEMP','TMP']) if (process.env[key]) env[key] = process.env[key];
++  Object.assign(env, { HOME: home, USERPROFILE: home, CODEX_HOME: home, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(home, 'gitconfig') });
++  const child = spawnImpl(invocation.command, invocation.args, { cwd: root, env, stdio: ['ignore','pipe','pipe'], shell: false, windowsHide: true, detached: process.platform !== 'win32' });
++  onChild(child);
++  const stdout = [], stderr = []; let size = 0, timedOut = false, tooLarge = false, spawnError = null;
++  const capture = (chunks) => (value) => { size += value.length; if (size > 2 * 1024 * 1024) { tooLarge = true; terminateTree(child); } else chunks.push(Buffer.from(value)); };
++  child.stdout?.on('data', capture(stdout)); child.stderr?.on('data', capture(stderr));
++  const timer = setTimeout(() => { timedOut = true; terminateTree(child); }, Math.max(1, deadline - Date.now()));
++  const completion = await new Promise((resolve) => { child.once('error', (error) => { spawnError = error; }); child.once('close', (code, signal) => resolve({ code, signal })); });
++  clearTimeout(timer);
++  const output = Buffer.concat(stdout), errors = Buffer.concat(stderr);
++  const errorCode = cancelled() ? 'runner_cancelled' : timedOut ? 'runner_timeout' : tooLarge ? 'runner_output_too_large' : spawnError ? 'runner_spawn_failed' : completion.code != null && !allowedExitCodes.includes(completion.code) ? (errors.includes('ERR_ACCESS_DENIED') ? 'runner_path_invalid' : 'runner_failed') : '';
++  return { status: cancelled() ? 'cancelled' : errorCode ? 'failed' : 'succeeded', exit_code: completion.code, signal: completion.signal, timeout: timedOut, cancellation: cancelled(), error_code: errorCode, stdout: output, stderr: errors };
++}
+diff --git a/apps/api/src/clean/runner-protocol.mjs b/apps/api/src/clean/runner-protocol.mjs
+index ab8f823..4602780 100644
+--- a/apps/api/src/clean/runner-protocol.mjs
++++ b/apps/api/src/clean/runner-protocol.mjs
+@@ -60,7 +60,10 @@ export function validateRunnerJobSpec(value, { now = Date.now(), expectedImageDi
+   const normalizedRefs = inputRefs.map((item) => {
+     assertRecord(item, 'runner_job_spec_invalid');
+     rejectUnknown(item, new Set(['type', 'ref', 'revision', 'hash']), 'runner_job_spec_invalid');
+-    assertOpaque(item.type, 'input_ref.type'); assertOpaque(item.ref, 'input_ref.ref');
++    assertOpaque(item.type, 'input_ref.type');
++    if (item.type === 'task_contract') {
++      if (!/^task-contract:[A-Za-z][A-Za-z0-9_.~-]{0,159}:[A-Za-z][A-Za-z0-9_.~-]{0,159}:[1-3]$/.test(String(item.ref || ''))) fail('runner_job_spec_invalid', 'task contract reference is invalid');
++    } else assertOpaque(item.ref, 'input_ref.ref');
+     assertInteger(item.revision, 0, Number.MAX_SAFE_INTEGER, 'input_ref.revision'); assertHash(item.hash, 'input_ref.hash');
+     return { type: String(item.type), ref: String(item.ref), revision: Number(item.revision), hash: String(item.hash) };
+   });
+diff --git a/apps/api/src/clean/runner-service.mjs b/apps/api/src/clean/runner-service.mjs
+index 4d2d6b3..0e8ebb5 100644
+--- a/apps/api/src/clean/runner-service.mjs
++++ b/apps/api/src/clean/runner-service.mjs
+@@ -2,6 +2,7 @@ import {
+   createPrivateKey, createPublicKey, generateKeyPairSync
+ } from 'node:crypto';
+ import { canonicalJson, opaqueId, sha256Hex } from './canonical.mjs';
++import { RunnerInputProvider, taskContract, outputManifest } from './runner-input-provider.mjs';
+ import { PlatformError } from './platform-error.mjs';
+ import {
+   appendAggregate, createOperation, priorResponse, requestHash, requireIdempotency,
+@@ -20,9 +21,10 @@ const DEFAULT_CAPABILITIES = Object.freeze({
+ });
+ 
+ export class CleanRunnerService {
+-  constructor({ db, events, operations, authorization, vault, adapters = {}, clock, pollIntervalMs = 10, config = {} } = {}) {
++  constructor({ db, events, operations, authorization, vault, cas = null, adapters = {}, clock, pollIntervalMs = 10, config = {} } = {}) {
+     if (!db || !events || !operations || !authorization || !vault) throw new TypeError('runner_service_dependencies_required');
+     this.db = db; this.events = events; this.operations = operations; this.authorization = authorization; this.vault = vault;
++    this.cas = cas; this.inputs = cas ? new RunnerInputProvider({ db, cas }) : null;
+     this.adapters = { ...adapters }; this.clock = clock; this.pollIntervalMs = Math.max(1, Number(pollIntervalMs || 10)); this.config = config;
+     const identity = serviceIdentity(vault);
+     this.servicePrivateKey = identity.privateKey; this.servicePublicKey = identity.publicKey; this.serviceKeyId = identity.keyId;
+@@ -143,6 +145,16 @@ export class CleanRunnerService {
+   }
+ 
+   createJobSpecInTransaction(tx, { execution, attempt, task, profile, inputRefs = [], workspaceHash, contextPackHash, now, actorId }) {
++    const contractRefs = [];
++    if (task.argv?.length) {
++      if (!this.cas) throw new PlatformError('runner_input_missing', 'shared CAS is required', {}, 409);
++      const contract = taskContract(task);
++      if (task.task_contract_sha256 && task.task_contract_sha256 !== sha256Hex(canonicalJson(contract))) throw new PlatformError('runner_input_mismatch', 'task contract hash changed', {}, 409);
++      const object = this.cas.putCanonical(contract);
++      const payload = canonicalJson({ contract_sha256: object.hash });
++      tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'runner.task-contract','verified',?,?,?,?)", [opaqueId('receipt'), payload, sha256Hex(payload), object.hash, now]);
++      contractRefs.push({ type: 'task_contract', ref: `task-contract:${execution.id}:${task.id}:${Number(attempt.attempt_no)}`, revision: Number(attempt.revision), hash: object.hash });
++    }
+     const id = opaqueId('job_spec'); const deadlineAt = new Date(Math.min(Date.parse(now) + 15 * 60 * 1000, Date.parse(now) + Math.max(1, Number(task.deadline_seconds || 900)) * 1000)).toISOString();
+     const profileHash = profileSnapshotHash(profile); const checkIds = Array.isArray(task.check_ids) ? task.check_ids : [];
+     const capabilities = [...new Set(['workspace:read', task.mode === 'write' ? 'workspace:write' : null, 'network:none', ...checkIds.map((check) => `check:${check}`)].filter(Boolean))].sort();
+@@ -150,7 +162,7 @@ export class CleanRunnerService {
+       schema_version: 'runner.job-spec.v2', job_spec_id: id, execution_ref: execution.id, generation: Number(execution.generation), task_ref: String(task.id), attempt: Number(attempt.attempt_no),
+       runner_profile_ref: profile.id, runner_profile_revision: Number(profile.revision), runner_profile_hash: profileHash,
+       image_digest: profile.image_digest || '', deadline_at: deadlineAt, capabilities, resource_profile: task.resource_profile || 'light', execution_mode: task.mode || 'read',
+-      input_refs: inputRefs.map((item) => ({ type: item.input_type || item.type, ref: item.ref_id || item.ref, revision: Number(item.ref_revision ?? item.revision ?? 0), hash: item.ref_hash || item.hash })),
++      input_refs: [...inputRefs.map((item) => ({ type: item.input_type || item.type, ref: item.ref_id || item.ref, revision: Number(item.ref_revision ?? item.revision ?? 0), hash: item.ref_hash || item.hash })), ...contractRefs],
+       input_paths: Array.isArray(task.input_paths) ? task.input_paths : [], output_paths: Array.isArray(task.output_paths) ? task.output_paths : [], check_ids: checkIds,
+       workspace_ref: execution.repository_workspace_id, workspace_hash: workspaceHash, context_pack_ref: execution.context_pack_id, context_pack_hash: contextPackHash,
+       service_key_id: this.serviceKeyId, created_at: now
+@@ -162,7 +174,11 @@ export class CleanRunnerService {
+   }
+ 
+   async runSignedJob(signed, profile, context = {}) {
+-    const adapter = this.adapterFor(profile); const submitted = await adapter.submit(signed.spec, { ...context, profile: profileView(profile), specHash: signed.spec_sha256, specSignature: signed.signature, servicePublicKey: this.servicePublicKey });
++    const adapter = this.adapterFor(profile);
++    let materialized = {};
++    if (signed.spec.input_refs.some((ref) => ref.type === 'task_contract')) materialized = this.inputs.materialize(signed.spec, context.workspacePath);
++    else if (adapter.requiresTaskContract) throw new PlatformError('execution_config_missing', 'Host task requires a signed CAS contract', {}, 422);
++    const submitted = await adapter.submit(signed.spec, { ...context, ...materialized, cas: this.cas, profile: profileView(profile), specHash: signed.spec_sha256, specSignature: signed.signature, servicePublicKey: this.servicePublicKey });
+     const jobId = String(submitted?.job_id || ''); if (!jobId) throw new PlatformError('runner_submit_invalid', 'runner did not return a job reference', {}, 503);
+     await context.onSubmitted?.({ job_id: jobId, status: String(submitted.status || 'queued') });
+     let current = submitted; let priorStatus = String(current.status || '');
+@@ -189,12 +205,20 @@ export class CleanRunnerService {
+     if (current.status === 'external_result_unknown' || current.status === 'unknown' || !current.receipt) return { job_id: jobId, status: 'external_result_unknown' };
+     const signer = String(current.signer_public_key || ''); if (!signer || signer.trim() !== String(profile.identity_public_key || '').trim()) throw new PlatformError('runner_identity_mismatch', 'runner receipt identity differs from the probed profile', {}, 409);
+     const verified = verifyRunnerReceipt(current.receipt, current.signature, signer, { expectedJobSpecId: signed.spec.job_spec_id, expectedJobSpecHash: signed.spec_sha256 });
++    if (verified.receipt.status === 'succeeded' && signed.spec.input_refs.some((ref) => ref.type === 'task_contract')) {
++      const manifest = JSON.parse(this.cas.read(verified.receipt.output_sha256).toString('utf8'));
++      if (manifest.schema_version !== 'runner.output-manifest.v1' || canonicalJson(manifest.entries.map((entry) => entry.path).sort()) !== canonicalJson([...signed.spec.output_paths].sort())) throw new PlatformError('runner_output_mismatch', 'output manifest paths differ', {}, 409);
++    }
+     return { job_id: jobId, status: verified.receipt.status, ...verified, signature: current.signature, signer_public_key: signer };
+   }
+ 
+   persistReceiptInTransaction(tx, { attempt, profile, result, now }) {
+     if (result.status === 'external_result_unknown') return null;
+     const id = result.receipt.receipt_id;
++    if (result.receipt.output_sha256 && this.cas?.has(result.receipt.output_sha256)) {
++      const payload = canonicalJson({ execution_id: attempt.execution_id, generation: attempt.generation, task_id: attempt.task_id, task_attempt_id: attempt.id, output_sha256: result.receipt.output_sha256 });
++      tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'runner.output-manifest','verified',?,?,?,?)", [opaqueId('receipt'), payload, sha256Hex(payload), result.receipt.output_sha256, now]);
++    }
+     tx.run(`INSERT INTO runner_receipts(id,job_spec_id,task_attempt_id,runner_profile_id,schema_version,receipt_json,receipt_sha256,signer_public_key,signature,status,exit_code,stdout_sha256,stderr_sha256,output_sha256,stdout_bytes,stderr_bytes,output_bytes,started_at,finished_at,created_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [id, result.receipt.job_spec_id, attempt.id, profile.id, result.receipt.schema_version, result.receipt_json, result.receipt_sha256, result.signer_public_key, result.signature, result.receipt.status, result.receipt.exit_code, result.receipt.stdout_sha256, result.receipt.stderr_sha256, result.receipt.output_sha256, result.receipt.stdout_bytes, result.receipt.stderr_bytes, result.receipt.output_bytes, result.receipt.started_at, result.receipt.finished_at, now]);
+     return id;
+diff --git a/apps/api/src/clean/runtime.mjs b/apps/api/src/clean/runtime.mjs
+index 7ccf185..3ab2ac6 100644
+--- a/apps/api/src/clean/runtime.mjs
++++ b/apps/api/src/clean/runtime.mjs
+@@ -1,3 +1,4 @@
++import { createPrivateKey, createPublicKey, generateKeyPairSync } from 'node:crypto';
+ import { loadCleanConfig } from './config.mjs';
+ import { initializeCleanDatabase, CleanNotReadyError } from './database.mjs';
+ import { RedactionPolicy } from './redaction.mjs';
+@@ -7,7 +8,7 @@ import { OperationService } from './operations.mjs';
+ import { CleanPlatform } from './platform.mjs';
+ import { createCleanCommandRegistry } from './registry.mjs';
+ import { ReceiptService } from './receipts.mjs';
+-import { canonicalJson } from './canonical.mjs';
++import { canonicalJson, sha256Hex } from './canonical.mjs';
+ import { validateCleanOwnership } from './ownership.mjs';
+ import { AuthorizationService } from './authorization.mjs';
+ import { IdentityService } from './identity.mjs';
+@@ -25,7 +26,7 @@ import { CleanBridgeService } from './bridge-service.mjs';
+ import { DeterministicAppServerAdapter, ProcessAppServerAdapter } from './app-server-adapter.mjs';
+ import { CleanRunnerService } from './runner-service.mjs';
+ import { CleanExecutionService } from './execution-service.mjs';
+-import { BrokerRunnerAdapter, BridgeJobAdapter, HostRunnerAdapter } from './runner-adapters.mjs';
++import { BrokerRunnerAdapter, BridgeJobAdapter, DeterministicRunnerAdapter, HostRunnerAdapter } from './runner-adapters.mjs';
+ import { CleanEvidenceService } from './evidence-service.mjs';
+ import { CleanParserService } from './parser-service.mjs';
+ import { CleanQualityService, DeterministicQualityAdviceAdapter, ProcessQualityAdviceAdapter } from './quality-service.mjs';
+@@ -37,6 +38,7 @@ import { CleanP8Service } from './p8-service.mjs';
+ import { CleanP10Service } from './p10-service.mjs';
+ import { CleanLocalSetupService } from './local-setup-service.mjs';
+ import { CleanGithubSetupService } from './github-setup-service.mjs';
++import { ProcessWorkflowGenerator, ProcessWorkflowCritic, LocalGitRepositoryAdapter } from './workflow-adapters.mjs';
+ 
+ export function createCleanRuntime(options = {}) {
+   const config = options.config || loadCleanConfig(options.env || process.env);
+@@ -73,7 +75,10 @@ export function createCleanRuntime(options = {}) {
+     ? createRealProviderAdapters({ config, fetchImpl: options.fetchImpl })
+     : createFakeProviderAdapters());
+   const identity = new IdentityService({ db, events, operations, policy, bootstrapActorId: initialized.metadata.bootstrap_actor_id, sessionSecret: options.sessionSecret || config.sessionSecret, authorization, vault, clock: options.now || undefined, projectScopeResolver, providerAdapters });
+-  const projectWorkflow = targetVersion >= 3 ? new ProjectWorkflowService({ db, events, operations, policy, authorization, clock: options.now || undefined, repositoryAdapter: options.repositoryAdapter, generator: options.generator, critic: options.critic }) : null;
++  const workflowGenerator = options.generator || (targetVersion >= 9 && config.providerMode !== 'deterministic' ? new ProcessWorkflowGenerator({ config, credentialResolver: (input) => input.provider_profile_id && input.principal_actor_id ? identity.leaseProviderCredential(input.provider_profile_id, { actorId: input.principal_actor_id }) : null }) : null);
++  const workflowCritic = options.critic || (targetVersion >= 9 && config.providerMode !== 'deterministic' ? new ProcessWorkflowCritic({ generator: workflowGenerator }) : null);
++  const repositoryAdapter = options.repositoryAdapter || (targetVersion >= 9 && config.providerMode !== 'deterministic' ? new LocalGitRepositoryAdapter({ vault }) : null);
++  const projectWorkflow = targetVersion >= 3 ? new ProjectWorkflowService({ db, events, operations, policy, authorization, clock: options.now || undefined, repositoryAdapter, identity, cas, config, generator: workflowGenerator, critic: workflowCritic }) : null;
+   const registry = createCleanCommandRegistry({ targetVersion, runtimePhase });
+   const context = targetVersion >= 4 ? new CleanContextService({ db, cas, events, operations, authorization, policy, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+   const mcp = targetVersion >= 4 ? new CleanMcpExchangeService({ db, context, operations, authorization, registry, policy, clock: options.now || undefined, pepper: options.mcpPepper || config.mcpPepper, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+@@ -86,8 +91,8 @@ export function createCleanRuntime(options = {}) {
+   const terminal = targetVersion >= 5 ? new CleanTerminalService({ db, cas, events, operations, authorization, projectWorkflow, clock: options.now || undefined, config, pty: options.pty }) : null;
+   const bridge = targetVersion >= 5 ? new CleanBridgeService({ db, events, operations, authorization, vault, clock: options.now || undefined, adapter: options.bridgeAdapter, config }) : null;
+   const runnerAdapters = targetVersion >= 6 ? createRunnerAdapters({ options, config, bridge, db, vault }) : null;
+-  const runner = targetVersion >= 6 ? new CleanRunnerService({ db, events, operations, authorization, vault, adapters: runnerAdapters, clock: options.now || undefined, pollIntervalMs: options.runnerPollIntervalMs || config.runnerPollIntervalMs, config }) : null;
+-  const execution = targetVersion >= 6 ? new CleanExecutionService({ db, events, operations, authorization, runner, projectWorkflow, assist, clock: options.now || undefined, config, sleep: options.runnerSleep, retryDelays: options.runnerRetryDelays }) : null;
++  const runner = targetVersion >= 6 ? new CleanRunnerService({ db, events, operations, authorization, vault, cas, adapters: runnerAdapters, clock: options.now || undefined, pollIntervalMs: options.runnerPollIntervalMs || config.runnerPollIntervalMs, config }) : null;
++  const execution = targetVersion >= 6 ? new CleanExecutionService({ db, events, operations, authorization, runner, projectWorkflow, assist, cas, clock: options.now || undefined, config, sleep: options.runnerSleep, retryDelays: options.runnerRetryDelays }) : null;
+   const evidence = targetVersion >= 7 ? new CleanEvidenceService({ db, cas, events, operations, authorization, files, clock: options.now || undefined, config, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+   const parserAdapter = targetVersion >= 7 ? createParserAdapter(options, config, targetVersion) : null;
+   const parser = targetVersion >= 7 ? new CleanParserService({ db, cas, events, operations, authorization, evidence, adapter: parserAdapter, clock: options.now || undefined, pollIntervalMs: options.parserPollIntervalMs || config.parserPollIntervalMs, sleep: options.parserSleep, retryDelays: options.parserRetryDelays, serviceIdentity: options.parserServiceIdentity, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+@@ -96,6 +101,7 @@ export function createCleanRuntime(options = {}) {
+     : null;
+   const quality = targetVersion >= 7 ? new CleanQualityService({ db, cas, events, operations, authorization, evidence, vault, adviceAdapter: qualityAdviceAdapter, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+   const outcomeEvaluation = targetVersion >= 7 ? new CleanOutcomeEvaluationService({ db, events, operations, authorization, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
++  if (execution && evidence) execution.checkEvidence = evidence;
+   const p8Service = targetVersion >= 8 ? new CleanP8Service({ db, cas, events, operations, authorization, vault, projectWorkflow, githubAdapter: options.githubAdapter, operationsAdapter: options.operationsAdapter, config, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+   const p10Service = targetVersion >= 9 ? new CleanP10Service({ db, cas, events, operations, authorization, vault, assist, githubAdapter: p8Service?.github || options.githubAdapter, repositoryDeletionAdapter: options.repositoryDeletionAdapter, clock: options.now || undefined }) : null;
+   const localSetup = targetVersion >= 9 ? new CleanLocalSetupService({ config, db, identity, operations, clock: options.now || undefined, deviceLoginRunner: options.deviceLoginRunner, spawnImpl: options.deviceLoginSpawn }) : null;
+@@ -224,6 +230,8 @@ export function createCleanRuntime(options = {}) {
+   return runtime;
+ }
+ 
++
++
+ function createAssistProvider(options, config) {
+   const mode = String(options.providerMode || config.providerMode || 'process').toLowerCase();
+   if (mode === 'deterministic') return new DeterministicAppServerAdapter(options.providerOptions || {});
+@@ -333,7 +341,7 @@ function createRunnerAdapters({ options, config, bridge, db, vault }) {
+     }
+   }) : null;
+   return {
+-    host: options.hostRunnerAdapter || new HostRunnerAdapter({ homeRoot: config.runnerHomeRoot, clock: options.now || undefined }),
++    host: options.hostRunnerAdapter || (config.providerMode === 'deterministic' ? new DeterministicRunnerAdapter({ type: 'host', clock: options.now || undefined }) : new HostRunnerAdapter({ homeRoot: config.runnerHomeRoot, clock: options.now || undefined, identity: hostIdentity(vault) })),
+     docker: options.dockerRunnerAdapter || new BrokerRunnerAdapter({ baseUrl: config.runnerBrokerUrl, secret: config.runnerBrokerSecret, clock: options.runnerClock }),
+     ...(bridgeJobs ? { windows_bridge: options.bridgeRunnerAdapter || bridgeJobs } : {})
+   };
+@@ -362,3 +370,12 @@ function runtimePhaseFromOptions(options = {}, targetVersion = targetVersionFrom
+   }
+   return Number(targetVersion);
+ }
++function hostIdentity(vault) {
++  const ref = 'host-runner-signing-v1';
++  if (!vault.has(ref)) {
++    const identity = generateKeyPairSync('ed25519'); const bytes = Buffer.from(identity.privateKey.export({type:'pkcs8',format:'pem'}));
++    try { vault.put(ref,bytes); } finally { bytes.fill(0); }
++  }
++  const bytes = vault.read(ref);
++  try { const privateKey = createPrivateKey(bytes); return {privateKey,publicKey:createPublicKey(privateKey)}; } finally { bytes.fill(0); }
++}
+diff --git a/apps/api/src/modules/registry.mjs b/apps/api/src/modules/registry.mjs
+index 5548e7b..96a31c2 100644
+--- a/apps/api/src/modules/registry.mjs
++++ b/apps/api/src/modules/registry.mjs
+@@ -77,6 +77,8 @@ export const CLEAN_SQL_BOUNDARIES = Object.freeze([
+   'apps/api/src/clean/quality-service.mjs',
+   'apps/api/src/clean/outcome-evaluation-service.mjs'
+   , 'apps/api/src/clean/p10-service.mjs'
++  , 'apps/api/src/clean/candidate-workspace.mjs'
++  , 'apps/api/src/clean/runner-input-provider.mjs'
+ ]);
+ 
+ export const PLACEHOLDER_SUCCESS_PATTERNS = Object.freeze([
+diff --git a/apps/web/src/features/project/ProjectOnboardingPage.tsx b/apps/web/src/features/project/ProjectOnboardingPage.tsx
+index b2f0a4c..7badec0 100644
+--- a/apps/web/src/features/project/ProjectOnboardingPage.tsx
++++ b/apps/web/src/features/project/ProjectOnboardingPage.tsx
+@@ -69,6 +69,7 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
+   const [intake, setIntake] = useState<Intake | null>(null);
+   const [brief, setBrief] = useState<BriefHead | null>(null);
+   const [workflow, setWorkflow] = useState<Workflow | null>(null);
++  const [providerProfileId, setProviderProfileId] = useState('');
+   const [generations, setGenerations] = useState<Generation[]>([]);
+   const [templates, setTemplates] = useState<BriefTemplate[]>([]);
+   const [profiles, setProfiles] = useState<ProviderProfile[]>([]);
+@@ -207,7 +208,7 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
+     try { graph = JSON.parse(workflowGraph) as Record<string, unknown>; } catch { throw new Error('Workflow JSON 格式错误'); }
+     await mutateV2(`/api/v2/projects/${encodeURIComponent(projectId)}/workflow-draft`, { graph, nodes: Array.isArray(graph.nodes) ? graph.nodes : [], layout: {} }, 'POST', workflow?.revision);
+   });
+-  const generate = () => void run('generation', () => mutateV2(`/api/v2/projects/${encodeURIComponent(projectId)}/workflow-generations`, { mode: 'initial', candidate: {} }, 'POST', project?.revision));
++  const generate = () => void run('generation', () => mutateV2(`/api/v2/projects/${encodeURIComponent(projectId)}/workflow-generations`, { mode: 'initial', candidate: {}, ...(providerProfileId ? { provider_profile_id: providerProfileId } : {}) }, 'POST', project?.revision));
+   const retryGeneration = () => currentGeneration && void run('generation-retry', () => mutateV2(`/api/v2/workflow-generations/${encodeURIComponent(currentGeneration.id)}/retry`, {}, 'POST', currentGeneration.revision));
+   const critic = () => currentGeneration && void run('critic', () => mutateV2(`/api/v2/workflow-generations/${encodeURIComponent(currentGeneration.id)}/critic`, {}, 'POST', currentGeneration.revision));
+   const applyProposal = () => currentGeneration?.proposal_id && void run('apply', () => mutateV2(`/api/v2/workflow-proposals/${encodeURIComponent(currentGeneration.proposal_id || '')}/apply`, {}, 'POST', workflow?.revision));
+@@ -236,7 +237,7 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
+ 
+     {step === 2 && <section className="onboarding-workstage"><div className="workstage-title"><span>2</span><div><h2>编辑完整 Brief</h2><small>项目修订 {project?.revision}</small></div><FileText size={19} /></div><form className="brief-onboarding-form" onSubmit={saveBrief}><div className="template-picker"><label><span>Brief 模板</span><select aria-label="Brief 模板" value={selectedTemplate} onChange={(event) => setSelectedTemplate(event.target.value)}><option value="">不使用模板</option>{templates.map((item) => <option key={item.id} value={item.id}>{item.name} · r{item.current_revision}</option>)}</select></label><button type="button" className="button" disabled={!selectedTemplate} onClick={applyTemplate}><Sparkles size={15} />应用模板</button></div><label><span>目标</span><textarea aria-label="目标" rows={3} value={briefDraft.objective} onChange={(event) => setBriefDraft((value) => ({ ...value, objective: event.target.value }))} required /></label><div className="brief-field-grid"><BriefField label="用户" value={briefDraft.users} setValue={(users) => setBriefDraft((value) => ({ ...value, users }))} /><BriefField label="范围内" value={briefDraft.scopeIn} setValue={(scopeIn) => setBriefDraft((value) => ({ ...value, scopeIn }))} /><BriefField label="范围外" value={briefDraft.scopeOut} setValue={(scopeOut) => setBriefDraft((value) => ({ ...value, scopeOut }))} /><BriefField label="约束" value={briefDraft.constraints} setValue={(constraints) => setBriefDraft((value) => ({ ...value, constraints }))} /><BriefField label="里程碑" value={briefDraft.milestones} setValue={(milestones) => setBriefDraft((value) => ({ ...value, milestones }))} /><BriefField label="验收" value={briefDraft.acceptance} setValue={(acceptance) => setBriefDraft((value) => ({ ...value, acceptance }))} /><BriefField label="风险" value={briefDraft.risks} setValue={(risks) => setBriefDraft((value) => ({ ...value, risks }))} /><BriefField label="开放问题" value={briefDraft.openQuestions} setValue={(openQuestions) => setBriefDraft((value) => ({ ...value, openQuestions }))} /></div><button className="button primary" disabled={busy === 'brief' || !briefDraft.objective.trim()}>{busy === 'brief' ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}保存 Brief</button></form></section>}
+ 
+-    {step === 3 && <section className="onboarding-workstage"><div className="workstage-title"><span>3</span><div><h2>审查 Brief 与初始 Workflow</h2><small>Brief r{brief?.current_revision || 0} · Workflow r{workflow?.current_revision || 0}</small></div><Status value={complete ? 'confirmed' : currentGeneration?.phase || workflow?.status} /></div><div className="onboarding-review-grid"><div className="brief-review"><h3>Brief</h3><strong>{briefDraft.objective}</strong><dl><div><dt>用户</dt><dd>{lines(briefDraft.users).length}</dd></div><div><dt>验收</dt><dd>{lines(briefDraft.acceptance).length}</dd></div><div><dt>风险</dt><dd>{lines(briefDraft.risks).length}</dd></div><div><dt>开放问题</dt><dd>{lines(briefDraft.openQuestions).length}</dd></div></dl></div><label className="workflow-review"><span>Workflow JSON</span><textarea aria-label="Workflow JSON" rows={13} spellCheck={false} value={workflowGraph} onChange={(event) => setWorkflowGraph(event.target.value)} /></label></div><div className="onboarding-command-chain"><ChainItem done={Boolean(workflow?.current_revision)} label="初始 Workflow" detail={workflow?.current_revision ? `r${workflow.current_revision}` : '待保存'} /><ChainItem done={Boolean(currentGeneration)} active={Boolean(workflow?.current_revision && !currentGeneration)} label="生成" detail={currentGeneration?.phase ? statusLabel(currentGeneration.phase) : '待执行'} /><ChainItem done={['proposed', 'applied'].includes(currentGeneration?.phase || '')} active={currentGeneration?.phase === 'critic_pending'} label="Critic 审查" detail={currentGeneration?.phase === 'critic_pending' ? '等待审查' : statusLabel(currentGeneration?.phase || '待执行')} /><ChainItem done={currentGeneration?.phase === 'applied'} active={currentGeneration?.phase === 'proposed'} label="应用 Proposal" detail={currentGeneration?.phase === 'applied' ? '已应用' : '待执行'} /><ChainItem done={complete} active={currentGeneration?.phase === 'applied' && !complete} label="确认 Brief" detail={complete ? '项目已激活' : '最后一步'} /></div><div className="onboarding-actions command-actions">{!workflow?.current_revision && <button className="button primary" disabled={Boolean(busy)} onClick={saveWorkflow}><Save size={15} />保存初始 Workflow</button>}{Boolean(workflow?.current_revision) && !currentGeneration && <button className="button primary" disabled={Boolean(busy)} onClick={generate}><Play size={15} />生成候选</button>}{['queued', 'running'].includes(currentGeneration?.phase || '') && <span className="command-running"><LoaderCircle className="spin" size={15} />生成运行中</span>}{currentGeneration?.phase === 'critic_pending' && <button className="button primary" disabled={Boolean(busy)} onClick={critic}><Check size={15} />执行 Critic</button>}{currentGeneration?.phase === 'proposed' && <button className="button primary" disabled={Boolean(busy)} onClick={applyProposal}><WorkflowIcon size={15} />应用 Proposal</button>}{['failed', 'rejected', 'cancelled'].includes(currentGeneration?.phase || '') && <button className="button" disabled={Boolean(busy)} onClick={retryGeneration}><RotateCcw size={15} />重试生成</button>}{currentGeneration?.phase === 'applied' && !complete && <button className="button primary" disabled={Boolean(busy)} onClick={confirmBrief}><Check size={15} />确认 Brief 并激活</button>}{complete && <button className="button primary" onClick={() => navigateProject?.(projectId, 'workflow')}><ChevronRight size={15} />进入 Workflow</button>}</div>{currentGeneration?.error_code && <div className="state-banner error"><CircleAlert size={16} />{currentGeneration.error_code}</div>}</section>}
++    {step === 3 && <section className="onboarding-workstage"><div className="workstage-title"><span>3</span><div><h2>审查 Brief 与初始 Workflow</h2><small>Brief r{brief?.current_revision || 0} · Workflow r{workflow?.current_revision || 0}</small></div><Status value={complete ? 'confirmed' : currentGeneration?.phase || workflow?.status} /></div><div className="onboarding-review-grid"><div className="brief-review"><h3>Brief</h3><strong>{briefDraft.objective}</strong><dl><div><dt>用户</dt><dd>{lines(briefDraft.users).length}</dd></div><div><dt>验收</dt><dd>{lines(briefDraft.acceptance).length}</dd></div><div><dt>风险</dt><dd>{lines(briefDraft.risks).length}</dd></div><div><dt>开放问题</dt><dd>{lines(briefDraft.openQuestions).length}</dd></div></dl></div><label className="workflow-review"><span>Workflow JSON</span><textarea aria-label="Workflow JSON" rows={13} spellCheck={false} value={workflowGraph} onChange={(event) => setWorkflowGraph(event.target.value)} /></label></div><label>Codex Profile<select aria-label="Codex Profile" value={providerProfileId} onChange={(event) => setProviderProfileId(event.target.value)}><option value="">选择可用配置</option>{profiles.filter((profile) => profile.provider === 'codex' && profile.status === 'available' && profile.lifecycle_status !== 'disabled').map((profile) => <option value={profile.id} key={profile.id}>{profile.id}</option>)}</select></label><div className="onboarding-command-chain"><ChainItem done={Boolean(workflow?.current_revision)} label="初始 Workflow" detail={workflow?.current_revision ? `r${workflow.current_revision}` : '待保存'} /><ChainItem done={Boolean(currentGeneration)} active={Boolean(workflow?.current_revision && !currentGeneration)} label="生成" detail={currentGeneration?.phase ? statusLabel(currentGeneration.phase) : '待执行'} /><ChainItem done={['proposed', 'applied'].includes(currentGeneration?.phase || '')} active={currentGeneration?.phase === 'critic_pending'} label="Critic 审查" detail={currentGeneration?.phase === 'critic_pending' ? '等待审查' : statusLabel(currentGeneration?.phase || '待执行')} /><ChainItem done={currentGeneration?.phase === 'applied'} active={currentGeneration?.phase === 'proposed'} label="应用 Proposal" detail={currentGeneration?.phase === 'applied' ? '已应用' : '待执行'} /><ChainItem done={complete} active={currentGeneration?.phase === 'applied' && !complete} label="确认 Brief" detail={complete ? '项目已激活' : '最后一步'} /></div><div className="onboarding-actions command-actions">{!workflow?.current_revision && <button className="button primary" disabled={Boolean(busy)} onClick={saveWorkflow}><Save size={15} />保存初始 Workflow</button>}{Boolean(workflow?.current_revision) && !currentGeneration && <button className="button primary" disabled={Boolean(busy)} onClick={generate}><Play size={15} />生成候选</button>}{['queued', 'running'].includes(currentGeneration?.phase || '') && <span className="command-running"><LoaderCircle className="spin" size={15} />生成运行中</span>}{currentGeneration?.phase === 'critic_pending' && <button className="button primary" disabled={Boolean(busy)} onClick={critic}><Check size={15} />执行 Critic</button>}{currentGeneration?.phase === 'proposed' && <button className="button primary" disabled={Boolean(busy)} onClick={applyProposal}><WorkflowIcon size={15} />应用 Proposal</button>}{['failed', 'rejected', 'cancelled'].includes(currentGeneration?.phase || '') && <button className="button" disabled={Boolean(busy)} onClick={retryGeneration}><RotateCcw size={15} />重试生成</button>}{currentGeneration?.phase === 'applied' && !complete && <button className="button primary" disabled={Boolean(busy)} onClick={confirmBrief}><Check size={15} />确认 Brief 并激活</button>}{complete && <button className="button primary" onClick={() => navigateProject?.(projectId, 'workflow')}><ChevronRight size={15} />进入 Workflow</button>}</div>{currentGeneration?.error_code && <div className="state-banner error"><CircleAlert size={16} />{currentGeneration.error_code}</div>}</section>}
+   </div>;
+ }
+ 
+diff --git a/apps/web/src/features/project/ProjectWorkflowPage.tsx b/apps/web/src/features/project/ProjectWorkflowPage.tsx
+index e6a90a7..ade6cb8 100644
+--- a/apps/web/src/features/project/ProjectWorkflowPage.tsx
++++ b/apps/web/src/features/project/ProjectWorkflowPage.tsx
+@@ -121,6 +121,7 @@ export function ProjectWorkflowPage({ projectId, selectedProject, selectProject,
+   const [targets, setTargets] = useState<RepositoryTarget[]>([]);
+   const [lines, setLines] = useState<RepositoryLine[]>([]);
+   const [workflow, setWorkflow] = useState<Workflow | null>(null);
++  const [providerProfileId, setProviderProfileId] = useState('');
+   const [generations, setGenerations] = useState<Generation[]>([]);
+   const [requirements, setRequirements] = useState<Requirement[]>([]);
+   const [loadState, setLoadState] = useState<LoadState>('loading');
+@@ -386,7 +387,7 @@ export function ProjectWorkflowPage({ projectId, selectedProject, selectProject,
+     return runMutation('Workflow', () => mutateOfflineV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/workflow-draft`, { graph, nodes: Array.isArray(graph.nodes) ? graph.nodes : [], layout: {} }, 'POST', { command: 'workflow.revise', scope: offlineScope, aggregateKey: `project:${selectedId}:workflow`, expectedRevision: workflow?.revision }));
+   };
+ 
+-  const startGeneration = (mode: 'initial' | 'replan' = 'initial') => runMutation('Generation', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/workflow-generations`, { mode, candidate: {}, provider: 'server' }, 'POST', project?.revision));
++  const startGeneration = (mode: 'initial' | 'replan' = 'initial') => runMutation('Generation', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/workflow-generations`, { mode, candidate: {}, provider: 'server', ...(providerProfileId ? { provider_profile_id: providerProfileId } : {}) }, 'POST', project?.revision));
+   const evaluateCritic = (generation: Generation) => runMutation('Critic', () => mutateV2(`/api/v2/workflow-generations/${encodeURIComponent(generation.id)}/critic`, {}, 'POST', generation.revision));
+   const retryGeneration = (generation: Generation) => runMutation('Retry generation', () => mutateV2(`/api/v2/workflow-generations/${encodeURIComponent(generation.id)}/retry`, {}, 'POST', generation.revision));
+   const cancelGeneration = (generation: Generation) => runMutation('Cancel generation', () => mutateV2(`/api/v2/workflow-generations/${encodeURIComponent(generation.id)}/cancel`, {}, 'POST', generation.revision));
+@@ -425,7 +426,7 @@ export function ProjectWorkflowPage({ projectId, selectedProject, selectProject,
+ 
+     {section === 'repository' && <div className="project-workflow-grid"><section className="panel"><PanelTitle title="代码仓库连接" meta={`${connections.length} 个连接`} /><div className="compact-list">{connections.map((connection) => <div className="compact-row" key={connection.id}><span><strong>{kindLabel(connection.provider || 'fixture')}</strong><small>{kindLabel(connection.source_kind)} · {connection.source_revision || '未版本化'} · r{connection.revision}</small></span><Status value={connection.status} /></div>)}{!connections.length && <div className="list-empty">暂无代码仓库连接</div>}</div><form className="inline-form" onSubmit={(event) => { event.preventDefault(); void connectRepository(); }}><label><span>来源地址</span><input value={repositoryLocator} onChange={(event) => setRepositoryLocator(event.target.value)} required /></label><button className="button primary" disabled={busy === 'Repository'}><GitBranch size={15} />连接代码仓库</button></form></section><section className="panel"><PanelTitle title="仓库分支" meta={`${lines.length} 条分支`} /><div className="compact-list">{lines.map((line) => <div className="compact-row" key={line.id}><span><strong>{line.id}</strong><small>{line.source_revision || '未知'} · r{line.revision}{line.fault_code ? ` · ${errorCodeLabel(line.fault_code)}` : ''}</small></span><Status value={line.status} /></div>)}{!lines.length && <div className="list-empty">连接仓库后显示分支</div>}</div></section><RepositoryDeletionPanel targets={targets} intent={repositoryDeletionIntent} name={repositoryDeletionName} head={repositoryDeletionHead} setName={setRepositoryDeletionName} setHead={setRepositoryDeletionHead} onPrepare={() => void prepareRepositoryDeletion()} onCreatorConfirm={() => void confirmRepositoryDeletion('creator')} onOwnerConfirm={() => void confirmRepositoryDeletion('owner')} onExecute={() => void executeRepositoryDeletion()} onReconcile={() => void reconcileRepositoryDeletion()} onCancel={() => void cancelRepositoryDeletion()} busy={busy} /></div>}
+ 
+-    {section === 'workflow' && <div className="project-workflow-grid"><section className="panel workflow-editor"><PanelTitle title="工作流草稿" meta={`修订 ${workflow?.revision || 0} · 图谱 ${workflow?.current?.graph_sha256?.slice(0, 10) || '未提交'}`} /><WorkflowWorkbench graph={(workflow?.current?.graph || {}) as Record<string, unknown>} initialView={workflowInitialView} onViewContext={() => navigateProject?.(selectedId, 'context')} onReplan={() => void startGeneration('replan')} /><label className="workflow-json-editor"><span>图谱 JSON</span><textarea rows={7} value={workflowGraph} onChange={(event) => setWorkflowGraph(event.target.value)} spellCheck={false} /></label><div className="form-actions"><button className="button" disabled={Boolean(busy)} onClick={() => void reviseWorkflow()}><Save size={15} />保存草稿</button><button className="button primary" disabled={Boolean(busy)} onClick={() => void startGeneration()}><WorkflowIcon size={15} />生成候选</button></div></section><section className="panel"><PanelTitle title="生成与服务端 Critic" meta={`${generations.length} 次尝试`} /><div className="compact-list">{generations.map((generation) => <div className="compact-row" key={generation.id}><span><strong>{statusLabel(generation.phase)}</strong><small className="mono">{generation.id} · 第 {generation.attempt || 1} 次 · r{generation.revision}</small></span><Status value={generation.phase} /><div className="row-actions">{generation.phase === 'critic_pending' && <button className="icon-button" title="执行 Critic" aria-label={`执行 Critic ${generation.id}`} onClick={() => void evaluateCritic(generation)}><Check size={14} /></button>}{generation.phase === 'failed' && <button className="icon-button" title="重试生成" aria-label={`重试生成 ${generation.id}`} onClick={() => void retryGeneration(generation)}><RotateCcw size={14} /></button>}{['queued', 'running', 'critic_pending'].includes(generation.phase) && <button className="icon-button" title="取消生成" aria-label={`取消生成 ${generation.id}`} onClick={() => void cancelGeneration(generation)}><Square size={14} /></button>}{generation.proposal_id && generation.phase === 'proposed' && <button className="icon-button" title="应用提案" aria-label={`应用提案 ${generation.id}`} onClick={() => void applyProposal(generation)}><Check size={14} /></button>}</div>{generation.critic?.issues?.length ? <div className="critic-issues" data-testid={`critic-issues-${generation.id}`}>{generation.critic.issues.map((issue, index) => <span key={`${issue.code || 'issue'}-${index}`}>{issue.message || errorCodeLabel(issue.code || 'unknown')}{issue.node_id ? ` · ${issue.node_id}` : ''}</span>)}</div> : null}{generation.proposal && <div className="proposal-diff" data-testid={`proposal-diff-${generation.id}`}><strong>提案差异</strong><small>{statusLabel(generation.proposal.status || 'pending')} · {generation.proposal.proposal_hash || '等待哈希'}</small><pre tabIndex={0} role="region" aria-label="Workflow 提案 JSON">{JSON.stringify(generation.proposal.candidate || generation.candidate || {}, null, 2)}</pre></div>}</div>)}{!generations.length && <div className="list-empty">暂无生成尝试</div>}</div>{currentGeneration?.error_code && <div className="state-banner error"><AlertTriangle size={16} /><span>{errorCodeLabel(currentGeneration.error_code)}</span></div>}</section></div>}
++    {section === 'workflow' && <div className="project-workflow-grid"><section className="panel workflow-editor"><PanelTitle title="工作流草稿" meta={`修订 ${workflow?.revision || 0} · 图谱 ${workflow?.current?.graph_sha256?.slice(0, 10) || '未提交'}`} /><WorkflowWorkbench graph={(workflow?.current?.graph || {}) as Record<string, unknown>} initialView={workflowInitialView} onViewContext={() => navigateProject?.(selectedId, 'context')} onReplan={() => void startGeneration('replan')} /><label>Codex Profile ID<input aria-label="Codex Profile ID" value={providerProfileId} onChange={(event) => setProviderProfileId(event.target.value)} /></label><label className="workflow-json-editor"><span>图谱 JSON</span><textarea rows={7} value={workflowGraph} onChange={(event) => setWorkflowGraph(event.target.value)} spellCheck={false} /></label><div className="form-actions"><button className="button" disabled={Boolean(busy)} onClick={() => void reviseWorkflow()}><Save size={15} />保存草稿</button><button className="button primary" disabled={Boolean(busy)} onClick={() => void startGeneration()}><WorkflowIcon size={15} />生成候选</button></div></section><section className="panel"><PanelTitle title="生成与服务端 Critic" meta={`${generations.length} 次尝试`} /><div className="compact-list">{generations.map((generation) => <div className="compact-row" key={generation.id}><span><strong>{statusLabel(generation.phase)}</strong><small className="mono">{generation.id} · 第 {generation.attempt || 1} 次 · r{generation.revision}</small></span><Status value={generation.phase} /><div className="row-actions">{generation.phase === 'critic_pending' && <button className="icon-button" title="执行 Critic" aria-label={`执行 Critic ${generation.id}`} onClick={() => void evaluateCritic(generation)}><Check size={14} /></button>}{generation.phase === 'failed' && <button className="icon-button" title="重试生成" aria-label={`重试生成 ${generation.id}`} onClick={() => void retryGeneration(generation)}><RotateCcw size={14} /></button>}{['queued', 'running', 'critic_pending'].includes(generation.phase) && <button className="icon-button" title="取消生成" aria-label={`取消生成 ${generation.id}`} onClick={() => void cancelGeneration(generation)}><Square size={14} /></button>}{generation.proposal_id && generation.phase === 'proposed' && <button className="icon-button" title="应用提案" aria-label={`应用提案 ${generation.id}`} onClick={() => void applyProposal(generation)}><Check size={14} /></button>}</div>{generation.critic?.issues?.length ? <div className="critic-issues" data-testid={`critic-issues-${generation.id}`}>{generation.critic.issues.map((issue, index) => <span key={`${issue.code || 'issue'}-${index}`}>{issue.message || errorCodeLabel(issue.code || 'unknown')}{issue.node_id ? ` · ${issue.node_id}` : ''}</span>)}</div> : null}{generation.proposal && <div className="proposal-diff" data-testid={`proposal-diff-${generation.id}`}><strong>提案差异</strong><small>{statusLabel(generation.proposal.status || 'pending')} · {generation.proposal.proposal_hash || '等待哈希'}</small><pre tabIndex={0} role="region" aria-label="Workflow 提案 JSON">{JSON.stringify(generation.proposal.candidate || generation.candidate || {}, null, 2)}</pre></div>}</div>)}{!generations.length && <div className="list-empty">暂无生成尝试</div>}</div>{currentGeneration?.error_code && <div className="state-banner error"><AlertTriangle size={16} /><span>{errorCodeLabel(currentGeneration.error_code)}</span></div>}</section></div>}
+   </div>;
+ }
+ 
+diff --git a/docs/architecture/decision-log.md b/docs/architecture/decision-log.md
+index fda55b4..f96b93d 100644
+--- a/docs/architecture/decision-log.md
++++ b/docs/architecture/decision-log.md
+@@ -260,3 +260,18 @@ The measured objectives for this maintenance branch are at most `120000 ms`
+ for its incremental Gate and at most `360000 ms` for the formal Gate on the
+ same workstation, compared with the recorded `549714 ms` baseline. Timing is a
+ maintenance acceptance threshold, not a Catalog status transition.
++
++## D-041: Real development-loop reliability
++
++The post-P10 development loop keeps one Clean Operation/Event/CAS owner while
++making Evidence completion compensating and provider-backed by default. Startup
++replays all `execution.completed` events idempotently, advances the Evidence
++cursor only through contiguous successful captures, and records redacted failed
++receipts for pending work. Phase-10 non-deterministic runtime construction uses
++the process workflow adapter and returns `provider_rebind_required` when no
++credential lease exists; deterministic generator, critic, repository, and
++runner adapters remain explicit fixture inputs. Workflow execution plans are
++compiled from `config.execution` with command, path, dependency, capability,
++and deadline validation before Runner submission. CAS GC protects all current
++Context, Assist/File, Terminal, Execution, Evidence, Delivery, Deployment, and
++Backup references and preserves plan fencing and rollback.
+diff --git a/docs/testing.md b/docs/testing.md
+index a7a39c4..902217d 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -935,3 +935,24 @@ pnpm test:release
+ pnpm verify
+ git diff --check
+ ```
++
++### Real development loop
++
++The development reliability surface is exercised with:
++
++```text
++pnpm test:development
++node --test tests/p10/real-development-loop.test.mjs
++node scripts/v3-clean-real-development-loop.mjs --source <SOURCE_PATH> --project-name <PROJECT_NAME>
++pnpm probe:development -- --scenario minimal
++pnpm probe:development -- --scenario designsignal
++```
++
++The focused checks cover Evidence cursor compensation and receipt joins,
++provider-backed workflow generation, server-side critic assessment, execution
++plan command/path/DAG validation, and the expanded CAS protection set. A
++missing provider lease remains an explicit pending failure and never becomes a
++deterministic success. The real loop command requires a clean Git worktree,
++imports the local Codex discovery record into its temporary Vault, pins
++`gpt-5.6-sol/high`, and writes a redacted final receipt below
++`.ai-workspace/real-development-loop/<run_id>/receipts/`.
+diff --git a/feature-catalog.clean.json b/feature-catalog.clean.json
+index 524a6a3..437f522 100644
+--- a/feature-catalog.clean.json
++++ b/feature-catalog.clean.json
+@@ -142,7 +142,16 @@
+         "docs/evidence/post-p10-development-reliability-20260905/modified-artifact.tgz",
+         "docs/evidence/post-p10-development-reliability-20260905/change.patch",
+         "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1",
+-        "docs/evidence/post-p10-development-reliability-20260905"
++        "docs/evidence/post-p10-development-reliability-20260905",
++        "docs/evidence/post-p10-real-development-loop-20260911/verification.json",
++        "docs/evidence/post-p10-real-development-loop-20260911/preflight.txt",
++        "docs/evidence/post-p10-real-development-loop-20260911/modified-artifact.tgz",
++        "docs/evidence/post-p10-real-development-loop-20260911/change.patch",
++        "docs/evidence/post-p10-real-development-loop-20260911/rollback.ps1",
++        "docs/evidence/post-p10-real-development-loop-20260911/rollback-actual.json",
++        "docs/evidence/post-p10-real-development-loop-20260911",
++        "docs/evidence/post-p10-real-development-loop-20260911/original-artifact.tgz",
++        "docs/evidence/post-p10-real-development-loop-20260911/hashes.json"
+       ]
+     },
+     {
+@@ -546,7 +555,9 @@
+         "apps/api/src/clean/runner-adapters.mjs",
+         "apps/api/src/clean/runner-service.mjs",
+         "apps/runner-broker/clean-server.mjs",
+-        "apps/windows-native-bridge/src/protocol.mjs"
++        "apps/windows-native-bridge/src/protocol.mjs",
++        "apps/api/src/clean/runner-input-provider.mjs",
++        "apps/api/src/clean/candidate-workspace.mjs"
+       ],
+       "target_modules": [
+         "apps/api/src/clean/runner-protocol.mjs",
+@@ -554,7 +565,9 @@
+         "apps/api/src/clean/runner-service.mjs",
+         "apps/runner-broker/clean-server.mjs",
+         "apps/windows-native-bridge/server.mjs",
+-        "apps/web/src/features/connections/ConnectionsPage.tsx"
++        "apps/web/src/features/connections/ConnectionsPage.tsx",
++        "apps/api/src/clean/runner-input-provider.mjs",
++        "apps/api/src/clean/candidate-workspace.mjs"
+       ],
+       "tables": [
+         "runner_profiles",
+@@ -579,7 +592,8 @@
+       "behavior_tests": [
+         "tests/p6/runner-execution.test.mjs",
+         "tests/p6/runner-transports.test.mjs",
+-        "tests/p6/http-security.test.mjs"
++        "tests/p6/http-security.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "ui_tests": [
+         "apps/web/src/test/connections-p6.test.tsx"
+@@ -601,7 +615,8 @@
+         "scripts/v3-clean-p6-bridge-runner-probe.mjs",
+         "scripts/v3-clean-p6-restart-probe.mjs",
+         "tests/p9/web-governance.test.mjs",
+-        "scripts/v3-clean-p9-release-probe.mjs"
++        "scripts/v3-clean-p9-release-probe.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "runtime_surface": "v3-clean",
+       "parity_receipts": [
+@@ -969,14 +984,18 @@
+         "apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs",
+         "apps/api/src/clean/execution-service.mjs",
+         "apps/api/src/clean/command-dispatcher.mjs",
+-        "apps/api/src/clean/registry.mjs"
++        "apps/api/src/clean/registry.mjs",
++        "apps/api/src/clean/candidate-workspace.mjs",
++        "apps/api/src/clean/runner-input-provider.mjs"
+       ],
+       "target_modules": [
+         "apps/api/src/clean/execution-service.mjs",
+         "apps/api/src/clean/http.mjs",
+         "apps/api/src/clean/registry.mjs",
+         "apps/web/src/features/execution",
+-        "apps/web/src/features/execution/QualityPolicyPanel.tsx"
++        "apps/web/src/features/execution/QualityPolicyPanel.tsx",
++        "apps/api/src/clean/candidate-workspace.mjs",
++        "apps/api/src/clean/runner-input-provider.mjs"
+       ],
+       "tables": [
+         "executions",
+@@ -1016,7 +1035,8 @@
+         "tests/p6/http-security.test.mjs",
+         "tests/p6/transport-parity.test.mjs",
+         "tests/p6/migration.test.mjs",
+-        "tests/p10/post-closure-restoration.test.mjs"
++        "tests/p10/post-closure-restoration.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "ui_tests": [
+         "apps/web/src/test/execution-p6.test.tsx"
+@@ -1039,7 +1059,8 @@
+         "scripts/e2e.mjs",
+         "tests/p9/web-governance.test.mjs",
+         "scripts/v3-clean-p9-release-probe.mjs",
+-        "tests/p10/post-closure-restoration.test.mjs"
++        "tests/p10/post-closure-restoration.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "runtime_surface": "v3-clean",
+       "parity_receipts": [
+@@ -1061,14 +1082,18 @@
+       "source_files": [
+         "apps/api/src/clean/project-workflow.mjs",
+         "apps/api/src/clean/provider-adapters.mjs",
+-        "packages/contracts/src/clean-v2.mjs"
++        "packages/contracts/src/clean-v2.mjs",
++        "apps/api/src/clean/workflow-adapters.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "target_modules": [
+         "apps/api/src/clean/project-workflow.mjs",
+         "apps/api/src/clean/http.mjs",
+         "apps/api/src/clean/registry.mjs",
+         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+-        "apps/web/src/features/project/WorkflowCanvas.tsx"
++        "apps/web/src/features/project/WorkflowCanvas.tsx",
++        "apps/api/src/clean/workflow-adapters.mjs",
++        "apps/web/src/features/project/ProjectOnboardingPage.tsx"
+       ],
+       "tables": [
+         "workflow_generations",
+@@ -1095,7 +1120,8 @@
+       "behavior_tests": [
+         "tests/p3/project-workflow.test.mjs",
+         "tests/p3/migration.test.mjs",
+-        "tests/p10/post-closure-restoration.test.mjs"
++        "tests/p10/post-closure-restoration.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "ui_tests": [
+         "apps/web/src/test/project-workflow-clean.test.tsx"
+@@ -1113,7 +1139,8 @@
+         "apps/web/src/test/project-workflow-clean.test.tsx",
+         "tests/p9/web-governance.test.mjs",
+         "scripts/v3-clean-p9-release-probe.mjs",
+-        "tests/p10/post-closure-restoration.test.mjs"
++        "tests/p10/post-closure-restoration.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "runtime_surface": "v3-clean",
+       "parity_receipts": [
+diff --git a/feature-catalog.json b/feature-catalog.json
+index bf4ac2b..a926628 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -164,7 +164,16 @@
+         "docs/evidence/post-p10-development-reliability-20260905/modified-artifact.tgz",
+         "docs/evidence/post-p10-development-reliability-20260905/change.patch",
+         "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1",
+-        "docs/evidence/post-p10-development-reliability-20260905"
++        "docs/evidence/post-p10-development-reliability-20260905",
++        "docs/evidence/post-p10-real-development-loop-20260911/verification.json",
++        "docs/evidence/post-p10-real-development-loop-20260911/preflight.txt",
++        "docs/evidence/post-p10-real-development-loop-20260911/modified-artifact.tgz",
++        "docs/evidence/post-p10-real-development-loop-20260911/change.patch",
++        "docs/evidence/post-p10-real-development-loop-20260911/rollback.ps1",
++        "docs/evidence/post-p10-real-development-loop-20260911/rollback-actual.json",
++        "docs/evidence/post-p10-real-development-loop-20260911",
++        "docs/evidence/post-p10-real-development-loop-20260911/original-artifact.tgz",
++        "docs/evidence/post-p10-real-development-loop-20260911/hashes.json"
+       ]
+     },
+     {
+@@ -678,7 +687,9 @@
+         "apps/api/src/clean/runner-adapters.mjs",
+         "apps/api/src/clean/runner-service.mjs",
+         "apps/runner-broker/clean-server.mjs",
+-        "apps/windows-native-bridge/src/protocol.mjs"
++        "apps/windows-native-bridge/src/protocol.mjs",
++        "apps/api/src/clean/runner-input-provider.mjs",
++        "apps/api/src/clean/candidate-workspace.mjs"
+       ],
+       "target_modules": [
+         "apps/api/src/clean/runner-protocol.mjs",
+@@ -686,7 +697,9 @@
+         "apps/api/src/clean/runner-service.mjs",
+         "apps/runner-broker/clean-server.mjs",
+         "apps/windows-native-bridge/server.mjs",
+-        "apps/web/src/features/connections/ConnectionsPage.tsx"
++        "apps/web/src/features/connections/ConnectionsPage.tsx",
++        "apps/api/src/clean/runner-input-provider.mjs",
++        "apps/api/src/clean/candidate-workspace.mjs"
+       ],
+       "tables": [
+         "runner_profiles",
+@@ -711,7 +724,8 @@
+       "behavior_tests": [
+         "tests/p6/runner-execution.test.mjs",
+         "tests/p6/runner-transports.test.mjs",
+-        "tests/p6/http-security.test.mjs"
++        "tests/p6/http-security.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "ui_tests": [
+         "apps/web/src/test/connections-p6.test.tsx"
+@@ -731,7 +745,8 @@
+         "scripts/v3-clean-p6-docker-runner-probe.mjs",
+         "scripts/v3-clean-p6-host-runner-probe.mjs",
+         "scripts/v3-clean-p6-bridge-runner-probe.mjs",
+-        "scripts/v3-clean-p6-restart-probe.mjs"
++        "scripts/v3-clean-p6-restart-probe.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "runtime_surface": "v3-clean",
+       "parity_receipts": [
+@@ -1091,14 +1106,18 @@
+         "apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs",
+         "apps/api/src/clean/execution-service.mjs",
+         "apps/api/src/clean/command-dispatcher.mjs",
+-        "apps/api/src/clean/registry.mjs"
++        "apps/api/src/clean/registry.mjs",
++        "apps/api/src/clean/candidate-workspace.mjs",
++        "apps/api/src/clean/runner-input-provider.mjs"
+       ],
+       "target_modules": [
+         "apps/api/src/clean/execution-service.mjs",
+         "apps/api/src/clean/http.mjs",
+         "apps/api/src/clean/registry.mjs",
+         "apps/web/src/features/execution",
+-        "apps/web/src/features/execution/QualityPolicyPanel.tsx"
++        "apps/web/src/features/execution/QualityPolicyPanel.tsx",
++        "apps/api/src/clean/candidate-workspace.mjs",
++        "apps/api/src/clean/runner-input-provider.mjs"
+       ],
+       "tables": [
+         "executions",
+@@ -1138,7 +1157,8 @@
+         "tests/p6/http-security.test.mjs",
+         "tests/p6/transport-parity.test.mjs",
+         "tests/p6/migration.test.mjs",
+-        "tests/p10/post-closure-restoration.test.mjs"
++        "tests/p10/post-closure-restoration.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "ui_tests": [
+         "apps/web/src/test/execution-p6.test.tsx"
+@@ -1159,7 +1179,8 @@
+         "apps/web/src/test/execution-p6.test.tsx",
+         "scripts/v3-clean-p6-performance.mjs",
+         "scripts/e2e.mjs",
+-        "tests/p10/post-closure-restoration.test.mjs"
++        "tests/p10/post-closure-restoration.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "runtime_surface": "v3-clean",
+       "parity_receipts": [
+@@ -1181,14 +1202,18 @@
+       "source_files": [
+         "apps/api/src/clean/project-workflow.mjs",
+         "apps/api/src/clean/provider-adapters.mjs",
+-        "packages/contracts/src/clean-v2.mjs"
++        "packages/contracts/src/clean-v2.mjs",
++        "apps/api/src/clean/workflow-adapters.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "target_modules": [
+         "apps/api/src/clean/project-workflow.mjs",
+         "apps/api/src/clean/http.mjs",
+         "apps/api/src/clean/registry.mjs",
+         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+-        "apps/web/src/features/project/WorkflowCanvas.tsx"
++        "apps/web/src/features/project/WorkflowCanvas.tsx",
++        "apps/api/src/clean/workflow-adapters.mjs",
++        "apps/web/src/features/project/ProjectOnboardingPage.tsx"
+       ],
+       "tables": [
+         "workflow_generations",
+@@ -1215,7 +1240,8 @@
+       "behavior_tests": [
+         "tests/p3/project-workflow.test.mjs",
+         "tests/p3/migration.test.mjs",
+-        "tests/p10/post-closure-restoration.test.mjs"
++        "tests/p10/post-closure-restoration.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "ui_tests": [
+         "apps/web/src/test/project-workflow-clean.test.tsx"
+@@ -1231,7 +1257,8 @@
+         "tests/p3/project-workflow.test.mjs",
+         "tests/p3/migration.test.mjs",
+         "apps/web/src/test/project-workflow-clean.test.tsx",
+-        "tests/p10/post-closure-restoration.test.mjs"
++        "tests/p10/post-closure-restoration.test.mjs",
++        "tests/p10/real-development-loop.test.mjs"
+       ],
+       "runtime_surface": "v3-clean",
+       "parity_receipts": [
+diff --git a/package.json b/package.json
+index 1ec1501..85c4011 100644
+--- a/package.json
++++ b/package.json
+@@ -57,6 +57,8 @@
+     "test:security": "node scripts/layered-gate.mjs security",
+     "test:release": "node --test tests/release/*.test.mjs",
+     "test:runner-real": "node scripts/runner-real-smoke.mjs",
++    "test:development": "node --test tests/p10/development-reliability.test.mjs",
++    "probe:development": "node scripts/runner-real-smoke.mjs",
+     "github:seed-fixture": "node scripts/github-seed-fixture.mjs",
+     "verify:dev": "node scripts/verify-dev.mjs",
+     "verify": "node scripts/verify.mjs",
+diff --git a/packages/contracts/src/clean-v2.mjs b/packages/contracts/src/clean-v2.mjs
+index 6cb8acb..15d718c 100644
+--- a/packages/contracts/src/clean-v2.mjs
++++ b/packages/contracts/src/clean-v2.mjs
+@@ -113,7 +113,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
+   'repository.workspace.create.v2': closed({ line_id: id, relative_path: { type: 'string', maxLength: 512 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0 } }, ['line_id']),
+   'repository.workspace.lifecycle.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
+   'workflow.revise.v2': closed({ graph: looseObject, nodes: { type: 'array', items: looseObject }, layout: looseObject, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
+-  'generation.start.v2': closed({ mode: { enum: ['initial', 'replan'] }, candidate: looseObject, provider: { type: 'string' }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
++  'generation.start.v2': closed({ mode: { enum: ['initial', 'replan'] }, candidate: looseObject, provider: { type: 'string' }, provider_profile_id: { type: 'string' }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
+   'generation.lifecycle.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
+   'critic.evaluate.v2': closed({ candidate: looseObject, status: { enum: ['passed', 'rejected', 'failed'] }, issues: { type: 'array', items: looseObject }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
+   'proposal.apply.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
+diff --git a/scripts/check.mjs b/scripts/check.mjs
+index 21e9e0a..62eeb76 100644
+--- a/scripts/check.mjs
++++ b/scripts/check.mjs
+@@ -8,7 +8,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'ut
+ const failures = [];
+ 
+ if (manifest.version !== '3.0.0') failures.push('root package version must be 3.0.0');
+-if (Object.keys(manifest.scripts || {}).length > 58) failures.push('package scripts exceed 58');
++if (Object.keys(manifest.scripts || {}).length > 60) failures.push('package scripts exceed 60');
+ for (const legacy of ['apps/worker', 'apps/mcp-gateway', 'bridge', 'prisma']) {
+   if (fs.existsSync(path.join(root, legacy))) failures.push(`legacy runtime directory exists: ${legacy}`);
+ }
+diff --git a/scripts/lib/v3-clean-p1-scope.mjs b/scripts/lib/v3-clean-p1-scope.mjs
+index 30feebc..b9d5b02 100644
+--- a/scripts/lib/v3-clean-p1-scope.mjs
++++ b/scripts/lib/v3-clean-p1-scope.mjs
+@@ -175,6 +175,8 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
+   'fixture:legacy:security': { command: 'node scripts/layered-gate.mjs security --historical', role: 'deferred_fixture', phase: 'historical' },
+   'test:release': { command: 'node --test tests/release/*.test.mjs', role: 'characterization_gate', phase: 'P8-P9' },
+   'test:runner-real': { command: 'node scripts/runner-real-smoke.mjs', role: 'characterization_gate', phase: 'P6' },
++  'test:development': { command: 'node --test tests/p10/development-reliability.test.mjs', role: 'development_gate', phase: 'P10+' },
++  'probe:development': { command: 'node scripts/runner-real-smoke.mjs', role: 'development_probe', phase: 'P10+' },
+   'github:seed-fixture': { command: 'node scripts/github-seed-fixture.mjs', role: 'deferred_fixture', phase: 'P7' },
+   'verify:dev': { command: 'node scripts/verify-dev.mjs', role: 'development_gate', phase: 'P10+' },
+   verify: { command: 'node scripts/verify.mjs', role: 'p1_gate', phase: 'P1' },
+diff --git a/scripts/verify-dev.mjs b/scripts/verify-dev.mjs
+index c49c999..02a9a58 100644
+--- a/scripts/verify-dev.mjs
++++ b/scripts/verify-dev.mjs
+@@ -33,7 +33,7 @@ const GOVERNANCE_PATTERNS = [
+   /^\.githooks\//,
+   /^scripts\/(?:check|verify|verify-dev|test|layered-gate)\.mjs$/,
+   /^scripts\/lib\/(?:gate-process|git-blob|v3-clean-p1-scope)\.mjs$/,
+-  /^tests\/(?:p1|p31|p10)\/(?:.*governance|.*gate|development-reliability).*\.test\.mjs$/
++  /^tests\/(?:p1|p31|p10)\/(?:.*governance|.*gate|development-reliability|real-development-loop).*\.test\.mjs$/
+ ];
+ const GOLDEN_PATTERNS = [
+   /^tests\/golden\//,
+diff --git a/tests/p10/development-reliability.test.mjs b/tests/p10/development-reliability.test.mjs
+index 966372a..bdc5bc8 100644
+--- a/tests/p10/development-reliability.test.mjs
++++ b/tests/p10/development-reliability.test.mjs
+@@ -265,7 +265,8 @@ test('development receipt reports persisted execution metrics and leaves SQLite,
+     assert.equal(receipt.human_intervention.total_decisions >= 3, true);
+     assert.equal(receipt.measurable_durations.runner.sample_count >= 1, true);
+     assert.equal(receipt.measurable_durations.delivery.duration_ms, null);
+-    assert.equal(receipt.measurable_durations.gate.duration_ms, null);
++    assert.equal(receipt.measurable_durations.gate.sample_count >= 1, true);
++    assert.equal(receipt.measurable_durations.gate.duration_ms >= 0, true);
+     assert.deepEqual(receipt.failures_by_class, [{ failure_class: 'external_dependency', count: 1 }]);
+     assert.equal(receipt.manual_workarounds.value, null);
+     assert.equal(receipt.manual_workarounds.reason, 'not_persisted');
+diff --git a/tests/p4/governance-sync.test.mjs b/tests/p4/governance-sync.test.mjs
+index cf714e8..4871151 100644
+--- a/tests/p4/governance-sync.test.mjs
++++ b/tests/p4/governance-sync.test.mjs
+@@ -27,7 +27,7 @@ test('P4 migration, ownership, registry and package gate inventories are synchro
+   assert.deepEqual(CLEAN_P5_MIGRATION_REGISTRY.map((migration) => migration.id).slice(-1), ['005-assist-files-terminal-bridge']);
+   for (const table of ['assist_sessions', 'assist_turns', 'assist_messages', 'assist_goals', 'assist_configurations', 'assist_references', 'attachments', 'file_refs', 'file_change_batches', 'file_change_items', 'runtime_approvals', 'runtime_user_inputs', 'semantic_proposals', 'terminal_sessions', 'terminal_events', 'bridge_devices', 'bridge_transfers']) assert.equal(typeof CLEAN_P5_TABLE_OWNERS[table], 'string', table);
+   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+-  assert.equal(Object.keys(packageJson.scripts).length, 58);
++  assert.equal(Object.keys(packageJson.scripts).length, 60);
+   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
+   assert.equal(packageJson.scripts.test, 'node scripts/test.mjs');
+   assert.match(fs.readFileSync(path.join(root, 'scripts', 'test.mjs'), 'utf8'), /--test-skip-pattern=committed sanitized V2\.3 golden/);
+diff --git a/tests/p6/governance-sync.test.mjs b/tests/p6/governance-sync.test.mjs
+index 86aa055..e126195 100644
+--- a/tests/p6/governance-sync.test.mjs
++++ b/tests/p6/governance-sync.test.mjs
+@@ -45,7 +45,7 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
+   assert.deepEqual(registry.entries.filter((entry) => entry.phase === 'p6').map((entry) => entry.command_id), p6Commands);
+ 
+   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+-  assert.equal(Object.keys(packageJson.scripts).length, 58);
++  assert.equal(Object.keys(packageJson.scripts).length, 60);
+   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
+   assert.equal(packageJson.scripts['dev:broker'], 'node apps/runner-broker/clean-server.mjs');
+   assert.equal(packageJson.scripts['test:p6'], 'node --test tests/p6/*.test.mjs');
+diff --git a/tests/p7/governance-sync.test.mjs b/tests/p7/governance-sync.test.mjs
+index 4808924..ace5a93 100644
+--- a/tests/p7/governance-sync.test.mjs
++++ b/tests/p7/governance-sync.test.mjs
+@@ -61,7 +61,7 @@ test('P7 migration, ownership, registry, package gates and paths are synchronize
+   }
+ 
+   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+-  assert.equal(Object.keys(packageJson.scripts).length, 58);
++  assert.equal(Object.keys(packageJson.scripts).length, 60);
+   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
+   assert.equal(packageJson.scripts['test:p7'], 'node --test tests/p7/*.test.mjs');
+   assert.equal(packageJson.scripts['evidence:p7'], 'node scripts/v3-clean-p7-evidence.mjs');
+diff --git a/tests/p8/governance.test.mjs b/tests/p8/governance.test.mjs
+index 40dd876..5041492 100644
+--- a/tests/p8/governance.test.mjs
++++ b/tests/p8/governance.test.mjs
+@@ -60,7 +60,7 @@ test('P8 Evidence is hash-complete and synchronized with the layered Catalog pro
+ 
+ test('P8 package, testing policy, plan, matrix and Evidence references stay synchronized', () => {
+   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+-  assert.equal(Object.keys(manifest.scripts).length, 58);
++  assert.equal(Object.keys(manifest.scripts).length, 60);
+   assert.equal(manifest.scripts['test:p8'], 'node --test tests/p8/*.test.mjs');
+   assert.equal(manifest.scripts['evidence:p8'], 'node scripts/v3-clean-p8-evidence.mjs');
+   for (const file of ['AGENTS.md', 'docs/testing.md', 'docs/architecture/v3-clean-development-plan.md', 'docs/architecture/v23-capability-matrix.md']) {

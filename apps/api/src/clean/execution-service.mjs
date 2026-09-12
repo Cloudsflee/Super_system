@@ -1,8 +1,13 @@
 import fs from 'node:fs';
+import { CandidateWorkspace } from './candidate-workspace.mjs';
+import { executeHostCommand, hostInvocation } from './runner-adapters.mjs';
 import path from 'node:path';
 import { createHash, createHmac } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { canonicalJson, opaqueId, sha256Hex } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
+import { compileWorkflowToExecutionPlan } from './workflow-adapters.mjs';
 import {
   appendAggregate, createOperation, priorResponse, requestHash, requireIdempotency,
   requirePrincipal, requireRevision, assertRevision, saveResponse, time
@@ -14,6 +19,7 @@ const TERMINAL_EXECUTIONS = new Set(['completed', 'failed', 'cancelled']);
 const TERMINAL_ATTEMPTS = new Set(['succeeded', 'failed', 'cancelled', 'expired', 'external_result_unknown']);
 const TRANSIENT = new Set(['runner_unavailable', 'runner_spawn_failed', 'runner_timeout', 'runner_deadline_exceeded', 'transient_failure']);
 const CHECK_IDS = new Set(['node_test', 'git_diff_check']);
+const execFileAsync = promisify(execFile);
 
 export class CleanExecutionService {
   constructor({ db, events, operations, authorization, runner, projectWorkflow, assist, clock, config = {}, sleep = null, retryDelays = [1000, 4000] } = {}) {
@@ -22,6 +28,7 @@ export class CleanExecutionService {
     this.projectWorkflow = projectWorkflow; this.assist = assist; this.clock = clock; this.config = config;
     this.sleep = sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms))); this.retryDelays = retryDelays; this.active = new Map();
     this.workspaceRoot = path.resolve(config.workspaceRoot || path.join(process.cwd(), '.ai-workspace', 'v3-clean', 'workspaces'));
+    this.candidates = new CandidateWorkspace({ db, root: this.workspaceRoot, repository: projectWorkflow });
     this.taskRoot = path.join(this.workspaceRoot, '.p6-tasks'); this.replaySecret = String(config.cursorSecret || 'v3-clean-p6-replay');
     fs.mkdirSync(this.taskRoot, { recursive: true, mode: 0o700 });
   }
@@ -51,8 +58,9 @@ export class CleanExecutionService {
   async create(projectId, input = {}, principal) {
     requirePrincipal(principal); const project = this.assertProject(principal, 'run', projectId);
     const expected = requireRevision(input.expected_revision); assertRevision(project, expected); const key = requireIdempotency(input.idempotency_key);
-    const pins = this.resolvePins(project, input, principal); const tasks = normalizePlan(input.tasks || input.plan?.tasks || this.tasksFromWorkflow(pins.workflowRevisionRow));
+    const pins = this.resolvePins(project, input, principal); const tasks = normalizePlanWithContracts(input.tasks || input.plan?.tasks || this.tasksFromWorkflow(pins.workflowRevisionRow));
     const plan = { schema_version: 'aiws.execution-plan.v1', tasks, requires_approval: Boolean(input.requires_approval ?? input.plan?.requires_approval), check_ids: normalizeChecks(input.check_ids || input.plan?.check_ids || []) };
+    this.runner.cas?.policy?.assertSafe?.({ tasks: tasks.map(({ fixture: _fixture, ...task }) => task) });
     const planJson = canonicalJson(plan); const id = opaqueId('execution'); const now = time(this.clock);
     const hash = requestHash({ project_id: project.id, expected_revision: expected, pins: pins.hashes, plan });
     return this.db.withTransaction((tx) => {
@@ -119,8 +127,9 @@ export class CleanExecutionService {
   async replan(id, input = {}, principal) {
     const source = this.executionRow(id, principal, 'run'); const expected = requireRevision(input.expected_revision); assertRevision(source, expected);
     if (!['paused', 'failed', 'completed'].includes(source.status)) throw stateConflict('execution cannot be replanned', source.status);
-    const project = this.assertProject(principal, 'run', source.project_id); const key = requireIdempotency(input.idempotency_key); const tasks = normalizePlan(input.tasks || input.plan?.tasks || JSON.parse(source.plan_json).tasks);
+    const project = this.assertProject(principal, 'run', source.project_id); const key = requireIdempotency(input.idempotency_key); const tasks = normalizePlanWithContracts(input.tasks || input.plan?.tasks || JSON.parse(source.plan_json).tasks);
     const plan = { ...JSON.parse(source.plan_json), ...input.plan, tasks }; delete plan.full_prompt;
+    this.runner.cas?.policy?.assertSafe?.({ tasks: tasks.map(({ fixture: _fixture, ...task }) => task) });
     const planJson = canonicalJson(plan); const newId = opaqueId('execution'); const now = time(this.clock); const hash = requestHash({ execution_id: source.id, expected_revision: expected, plan });
     return this.db.withTransaction((tx) => {
       const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId: 'execution.replan', idempotencyKey: key, requestHash: hash, now }); if (prior) return prior;
@@ -143,7 +152,7 @@ export class CleanExecutionService {
     if (String(input.workspace_hash || '') !== checkpoint.workspace_sha256) throw new PlatformError('workspace_changed', 'replay workspace hash does not match the checkpoint', {}, 409);
     if (String(input.pins_hash || '') !== checkpoint.pins_sha256) throw new PlatformError('execution_pins_changed', 'replay pins hash does not match the checkpoint', {}, 409);
     if (!TERMINAL_EXECUTIONS.has(row.status) && !['paused', 'awaiting_approval'].includes(row.status)) throw stateConflict('execution must be stopped before replay', row.status);
-    this.validatePins(row, principal); const workspaceHash = this.workspaceHash(row.repository_workspace_id); if (workspaceHash !== checkpoint.workspace_sha256) throw new PlatformError('workspace_changed', 'workspace no longer matches the checkpoint', { expected_hash: checkpoint.workspace_sha256, actual_hash: workspaceHash }, 409);
+    this.validatePins(row, principal); const workspaceHash = this.workspaceHash(row.repository_workspace_id, row); if (workspaceHash !== checkpoint.workspace_sha256) throw new PlatformError('workspace_changed', 'workspace no longer matches the checkpoint', { expected_hash: checkpoint.workspace_sha256, actual_hash: workspaceHash }, 409);
     const active = this.db.get("SELECT count(*) AS count FROM task_attempts WHERE execution_id=? AND status IN ('leased','running')", [row.id]); if (Number(active.count)) throw new PlatformError('runner_busy', 'execution still has an active runner job', {}, 409);
     const key = requireIdempotency(input.idempotency_key); const now = time(this.clock); const hash = requestHash({ execution_id: row.id, stage: target, generation, checkpoint_sha256: checkpoint.checkpoint_sha256, expected_revision: expected });
     return this.db.withTransaction((tx) => {
@@ -212,7 +221,7 @@ export class CleanExecutionService {
       if (operation?.status === 'paused') await this.operations.start(operation.id, { expectedRevision: operation.revision, actorId: operation.actor_id, projectId: operation.project_id });
       return { ...this.checkpointView(existing), operation_id: existing.operation_id };
     }
-    this.validatePins(execution, principal); const workspaceHash = this.workspaceHash(execution.repository_workspace_id); const now = time(this.clock);
+    this.validatePins(execution, principal); await this.prepareCandidate(execution); const workspaceHash = this.workspaceHash(execution.repository_workspace_id, execution); const now = time(this.clock);
     return this.db.withTransaction((tx) => {
       const current = tx.get('SELECT * FROM executions WHERE id=?', [execution.id]); const operation = createOperation(this.operations, tx, { actorId: principal.actorId, commandId: `execution.stage.${stage}`, resourceType: 'execution_stage', resourceId: `${current.id}:${current.generation}:${stage}`, projectId: current.project_id, requestHash: requestHash({ execution_id: current.id, generation: current.generation, stage, plan_sha256: current.plan_sha256, workspace_sha256: workspaceHash }), status: 'running', now, parentOperationId: topOperationId });
       const prior = tx.get(`SELECT checkpoint_sha256 FROM execution_stage_checkpoints
@@ -230,7 +239,8 @@ export class CleanExecutionService {
   }
 
   async completeStage(executionId, stage, stageOperationId, outcome, actorId) {
-    const workspaceHash = this.workspaceHash(this.db.get('SELECT repository_workspace_id FROM executions WHERE id=?', [executionId]).repository_workspace_id);
+    const currentExecution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]);
+    const workspaceHash = this.workspaceHash(currentExecution.repository_workspace_id, currentExecution);
     return this.db.withTransaction((tx) => {
       const current = tx.get('SELECT * FROM executions WHERE id=?', [executionId]); const now = time(this.clock); const terminal = stage === 'deliver';
       const updates = { status: terminal ? 'completed' : current.status === 'pause_requested' ? 'pause_requested' : 'running', current_stage: stage, ...(terminal ? { handoff_manifest_json: canonicalJson(outcome.handoff_manifest || {}), handoff_manifest_sha256: sha256Hex(canonicalJson(outcome.handoff_manifest || {})), completed_at: now } : {}) };
@@ -244,18 +254,38 @@ export class CleanExecutionService {
     if (stage === 'prepare') { const row = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); this.validatePins(row, principal); normalizePlan(JSON.parse(row.plan_json).tasks); return { pins_sha256: sha256Hex(canonicalJson(pinsPayload(row))) }; }
     if (stage === 'context') { const row = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); const pack = this.db.get('SELECT status,pack_hash,payload_cas_hash FROM context_packs WHERE id=?', [row.context_pack_id]); if (!pack || pack.status !== 'sealed' || pack.pack_hash !== row.context_pack_hash) throw new PlatformError('context_inputs_changed', 'Context Pack pin is stale', {}, 409); return { context_pack_hash: pack.pack_hash, staging: 'bounded_cas' }; }
     if (stage === 'run') return this.executePlan(executionId, principal);
-    if (stage === 'check') { const failed = this.db.get("SELECT count(*) AS count FROM task_attempts WHERE execution_id=? AND generation=(SELECT generation FROM executions WHERE id=?) AND status!='succeeded' AND attempt_no=(SELECT max(a.attempt_no) FROM task_attempts a WHERE a.execution_id=task_attempts.execution_id AND a.generation=task_attempts.generation AND a.task_id=task_attempts.task_id)", [executionId, executionId]); if (Number(failed.count)) throw new PlatformError('check_failed', 'execution checks found an unsuccessful task', {}, 409); return { status: 'passed' }; }
+    if (stage === 'check') return this.runChecks(executionId, principal);
     if (stage === 'review') return this.review(executionId, principal);
-    if (stage === 'finalize') return this.finalize(executionId);
+    if (stage === 'finalize') return this.finalize(executionId, principal);
     if (stage === 'deliver') return { handoff_manifest: this.handoff(executionId) };
     throw new PlatformError('stage_invalid', 'execution stage is invalid', {}, 422);
+  }
+
+  async runChecks(executionId, principal) {
+    const execution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]);
+    const tasks = JSON.parse(execution.plan_json || '{}').tasks || [];
+    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]);
+    const root = this.candidates.directory(execution); const results = [];
+    for (const task of tasks) for (const checkId of task.check_ids || []) {
+      const attempt = this.effectiveAttempt(execution, task.id); const started = Date.now();
+      const command = checkId === 'git_diff_check' ? { command: 'git', args: ['diff', '--no-index', '--check', '--', this.workspaceDirectory(workspace), root] } : { command: process.execPath, args: ['--test'] };
+      let status = 'passed'; let exitCode = 0; let stdout = ''; let stderr = '';
+      try { const value = await executeHostCommand(command, { root, allowedExitCodes: checkId === 'git_diff_check' ? [0,1] : [0] }); stdout = String(value.stdout || ''); stderr = String(value.stderr || ''); exitCode = value.exit_code; status = value.status === 'succeeded' ? 'passed' : 'failed'; }
+      catch (error) { status = error?.killed ? 'error' : 'failed'; exitCode = typeof error?.code === 'number' ? error.code : 1; stdout = String(error?.stdout || ''); stderr = String(error?.stderr || error?.message || ''); }
+      const inputHash = sha256Hex(canonicalJson({ execution_id: execution.id, generation: execution.generation, task_id: task.id, check_id: checkId, workspace_hash: this.workspaceHash(execution.repository_workspace_id, execution), task_attempt_id: attempt?.id || null }));
+      const outputHash = sha256Hex(`${stdout}\n${stderr}`); const details = { command: [command.command, ...command.args], exit_code: exitCode, stdout_sha256: sha256Hex(stdout), stderr_sha256: sha256Hex(stderr), task_attempt_id: attempt?.id || null };
+      if (this.checkEvidence) await this.checkEvidence.recordCheckResult({ execution, attempt, checkId, status, commandHash: sha256Hex(canonicalJson({ command: checkId === 'node_test' ? 'node' : 'git', args: command.args })), inputHash, outputHash, durationMs: Date.now() - started, details: { ...details, command: checkId === 'node_test' ? ['node','--test'] : ['git','diff','--no-index','--check','--','<BASE>','<CANDIDATE>'] } }, principal);
+      results.push({ check_id: checkId, status, input_sha256: inputHash, output_sha256: outputHash });
+    }
+    if (results.some((item) => item.status !== 'passed')) throw new PlatformError('check_failed', 'independent checks failed', { checks: results.filter((item) => item.status !== 'passed').map((item) => item.check_id) }, 409);
+    return { status: 'passed', checks: results };
   }
 
   async executePlan(executionId, principal) {
     const execution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); const tasks = JSON.parse(execution.plan_json).tasks; const completed = new Set(); const results = [];
     for (const task of tasks) {
       const latest = this.db.get('SELECT * FROM task_attempts WHERE execution_id=? AND generation=? AND task_id=? ORDER BY attempt_no DESC LIMIT 1', [execution.id, execution.generation, task.id]);
-      if (latest?.status === 'succeeded') { completed.add(task.id); results.push(attemptView(latest)); }
+      if (latest?.status === 'succeeded') { if (!this.effectiveAttempt(execution, task.id)) throw new PlatformError('runner_output_mismatch', 'successful task output is stale', {}, 409); completed.add(task.id); results.push(attemptView(latest)); }
       else if (latest?.status === 'external_result_unknown') throw new PlatformError('external_result_unknown', 'runner result could not be reconciled', { task_id: task.id }, 409);
       else if (latest && TERMINAL_ATTEMPTS.has(latest.status) && (!TRANSIENT.has(latest.error_code) || Number(latest.attempt_no) >= 3)) throw new PlatformError(latest.error_code || 'runner_failed', 'runner task failed', { task_id: task.id }, 409);
     }
@@ -276,6 +306,7 @@ export class CleanExecutionService {
       try {
         result = await this.runner.runSignedJob(started.signed, started.profile, {
           workspacePath: started.taskWorkspace,
+          task,
           fixture: fixtureFor(task, attemptNo),
           onSubmitted: async (job) => {
             await this.leaseAttempt(started.attempt.id, job, principal.actorId);
@@ -297,7 +328,7 @@ export class CleanExecutionService {
   async startAttempt(executionId, task, attemptNo, principal) {
     const execution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); const profile = this.db.get('SELECT * FROM runner_profiles WHERE id=?', [execution.runner_profile_id]);
     if (!profile || profile.status !== 'ready' || Number(profile.revision) !== Number(execution.runner_profile_revision) || profileSnapshotHash(profile) !== execution.runner_profile_hash) throw new PlatformError('runner_profile_changed', 'runner profile pin changed', {}, 409);
-    const workspaceHash = this.workspaceHash(execution.repository_workspace_id); const taskWorkspace = this.prepareTaskWorkspace(execution, task, attemptNo); const now = time(this.clock); const id = opaqueId('task_attempt');
+    const workspaceHash = this.workspaceHash(execution.repository_workspace_id, execution); const taskWorkspace = this.prepareTaskWorkspace(execution, task, attemptNo); const now = time(this.clock); const id = opaqueId('task_attempt');
     return this.db.withTransaction((tx) => {
       const operation = createOperation(this.operations, tx, { actorId: principal.actorId, commandId: 'execution.task.run', resourceType: 'task_attempt', resourceId: id, projectId: execution.project_id, requestHash: requestHash({ execution_id: execution.id, generation: execution.generation, task_id: task.id, attempt: attemptNo, workspace_hash: workspaceHash }), status: 'running', now });
       tx.run(`INSERT INTO task_attempts(id,execution_id,generation,task_id,task_ordinal,attempt_no,execution_mode,operation_id,runner_profile_id,status,dependency_hash,workspace_hash,revision,created_at,updated_at,started_at)
@@ -358,10 +389,11 @@ export class CleanExecutionService {
     return { awaiting_approval: true };
   }
 
-  finalize(executionId) {
+  async finalize(executionId, principal) {
     const execution = this.db.get('SELECT * FROM executions WHERE id=?', [executionId]); const tasks = JSON.parse(execution.plan_json).tasks;
     for (const task of tasks) { const attempt = this.effectiveAttempt(execution, task.id); if (!attempt || attempt.status !== 'succeeded' || !attempt.job_spec_id || !attempt.runner_receipt_id) throw new PlatformError('execution_incomplete', 'execution has an incomplete task receipt', { task_id: task.id }, 409); }
     for (const stage of RUNNER_STAGES.slice(0, 6)) { const checkpoint = this.db.get('SELECT id FROM execution_stage_checkpoints WHERE execution_id=? AND generation<=? AND stage=? ORDER BY generation DESC LIMIT 1', [execution.id, execution.generation, stage]); if (!checkpoint) throw new PlatformError('execution_incomplete', 'execution stage checkpoints are incomplete', { stage }, 409); }
+    await this.candidates.publish(execution, this.workspaceDirectory(this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id])), principal);
     return { status: 'verified', task_count: tasks.length };
   }
 
@@ -493,27 +525,37 @@ export class CleanExecutionService {
     return this.operations.succeed(prior.id, { expectedRevision: running.revision, actorId: prior.actor_id || actorId, projectId: prior.project_id, result: { execution_id: executionId, status: 'resumed', continued_by_operation_id: currentOperationId } });
   }
 
-  async mergeWriteAttempt(started, task, principal) {
-    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [started.execution.repository_workspace_id]); const base = this.workspaceDirectory(workspace); const currentHash = this.workspaceHash(workspace.id); if (currentHash !== started.attempt.workspace_hash) throw new PlatformError('workspace_changed', 'workspace changed during the runner attempt', {}, 409);
-    const lease = await this.projectWorkflow.lockRepositoryWorkspace(workspace.id, { expected_revision: workspace.revision, idempotency_key: `p6-lease-${started.attempt.id}` }, principal); const token = String(lease.lock?.fencing_token || ''); if (!token) throw new PlatformError('workspace_lease_unavailable', 'Repository owner did not issue a fencing lease', {}, 503);
-    try {
-      let outputBytes = 0;
-      for (const relative of task.output_paths) { const source = safeJoin(started.taskWorkspace, relative); if (!fs.existsSync(source)) continue; const stat = fs.lstatSync(source); outputBytes += stat.size; if (!stat.isFile() || outputBytes > 10 * 1024 * 1024) throw new PlatformError('runner_output_too_large', 'runner outputs exceed the allowed bounds', {}, 422); const active = this.db.get("SELECT fencing_token FROM repository_locks WHERE id=? AND status='active'", [lease.lock.id]); if (!active || active.fencing_token !== token) throw new PlatformError('workspace_lease_lost', 'Repository fencing lease changed', {}, 409); const target = safeJoin(base, relative); fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 }); const temp = `${target}.${started.attempt.id}.tmp`; fs.copyFileSync(source, temp); fs.renameSync(temp, target); }
-      return { fencing_token_hash: sha256Hex(token) };
-    } finally { const current = this.db.get('SELECT revision,status FROM repository_workspaces WHERE id=?', [workspace.id]); if (current?.status === 'locked') await this.projectWorkflow.releaseRepositoryWorkspace(workspace.id, { expected_revision: current.revision, idempotency_key: `p6-release-${started.attempt.id}` }, principal); }
+  async mergeWriteAttempt(started, task, _principal) {
+    const base = this.candidates.directory(started.execution);
+    if (this.workspaceHash(started.execution.repository_workspace_id, started.execution) !== started.attempt.workspace_hash) throw new PlatformError('workspace_changed', 'candidate changed during task', {}, 409);
+    for (const relative of task.output_paths) {
+      const source = safeJoin(started.taskWorkspace, relative);
+      if (!fs.existsSync(source)) { if (task.argv?.length) throw new PlatformError('runner_artifact_missing', 'output missing', {}, 409); continue; }
+      const target = safeJoin(base, relative); fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(source, target);
+    }
+    return { candidate_hash: this.workspaceHash(started.execution.repository_workspace_id, started.execution) };
+  }
+
+  async prepareCandidate(execution) {
+    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]);
+    return this.candidates.prepare(execution, this.workspaceDirectory(workspace));
   }
 
   taskWorkspace(execution, task, attemptNo) { return path.join(this.taskRoot, execution.id, String(execution.generation), task.id, String(attemptNo)); }
-  prepareTaskWorkspace(execution, task, attemptNo) { const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]); const source = this.workspaceDirectory(workspace); const target = this.taskWorkspace(execution, task, attemptNo); fs.rmSync(target, { recursive: true, force: true }); fs.mkdirSync(target, { recursive: true, mode: 0o700 }); if (fs.existsSync(source)) { assertTreeSafe(source); fs.cpSync(source, target, { recursive: true, force: false, filter: (entry) => !path.relative(source, entry).replaceAll('\\', '/').startsWith('.p6-tasks') }); } return target; }
+  prepareTaskWorkspace(execution, task, attemptNo) { const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [execution.repository_workspace_id]); const source = this.candidates.directory(execution); const target = this.taskWorkspace(execution, task, attemptNo); fs.rmSync(target, { recursive: true, force: true }); fs.mkdirSync(target, { recursive: true, mode: 0o700 }); if (fs.existsSync(source)) { assertTreeSafe(source); fs.cpSync(source, target, { recursive: true, force: false, filter: (entry) => !path.relative(source, entry).replaceAll('\\', '/').startsWith('.p6-tasks') }); } return target; }
   workspaceDirectory(workspace) { return safeJoin(this.workspaceRoot, workspace.relative_path || `projects/${workspace.project_id}/workspace`); }
-  workspaceHash(workspaceId) { const workspace = this.db.get('SELECT rw.*,rl.source_hash,rl.revision AS line_revision FROM repository_workspaces rw JOIN repository_lines rl ON rl.id=rw.line_id WHERE rw.id=?', [String(workspaceId)]); if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404); const root = this.workspaceDirectory(workspace); const hash = createHash('sha256'); hash.update(canonicalJson({ workspace_id: workspace.id, line_revision: Number(workspace.line_revision), source_hash: workspace.source_hash || '' })); if (!fs.existsSync(root)) return hash.digest('hex'); for (const file of walkFiles(root)) { const relative = path.relative(root, file).replaceAll('\\', '/'); hash.update(relative); hash.update(fs.readFileSync(file)); } return hash.digest('hex'); }
+  workspaceHash(workspaceId, execution = null) { const workspace = this.db.get('SELECT rw.*,rl.source_hash,rl.revision AS line_revision FROM repository_workspaces rw JOIN repository_lines rl ON rl.id=rw.line_id WHERE rw.id=?', [String(workspaceId)]); if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404); const root = execution ? this.candidates.directory(execution) : this.workspaceDirectory(workspace); const hash = createHash('sha256'); hash.update(canonicalJson({ workspace_id: workspace.id, line_revision: Number(workspace.line_revision), source_hash: workspace.source_hash || '' })); if (!fs.existsSync(root)) return hash.digest('hex'); for (const file of walkFiles(root)) { const relative = path.relative(root, file).replaceAll('\\', '/'); hash.update(relative); hash.update(fs.readFileSync(file)); } return hash.digest('hex'); }
 
-  validateWorkspaceForResume(execution) { const completed = this.db.query("SELECT data_json FROM events WHERE aggregate_type='execution' AND aggregate_id=? AND type IN ('execution.stage_completed','execution.completed') ORDER BY sequence DESC", [execution.id]).map((item) => JSON.parse(item.data_json || '{}')).find((item) => Number(item.generation) === Number(execution.generation) && item.workspace_sha256); const checkpoint = this.db.get('SELECT * FROM execution_stage_checkpoints WHERE execution_id=? AND generation=? ORDER BY stage_ordinal DESC LIMIT 1', [execution.id, execution.generation]); const expected = completed?.workspace_sha256 || checkpoint?.workspace_sha256; if (expected && this.workspaceHash(execution.repository_workspace_id) !== expected) throw new PlatformError('workspace_changed', 'workspace changed since the last safe boundary', {}, 409); }
-  validatePins(execution, principal) { const pins = this.resolvePins(this.assertProject(principal, 'run', execution.project_id), { workflow_id: execution.workflow_id, workflow_revision: execution.workflow_revision, repository_workspace_id: execution.repository_workspace_id, context_pack_id: execution.context_pack_id, runner_profile_id: execution.runner_profile_id }, principal); const expected = pinsPayload(execution); const actual = { workflow_revision: pins.workflowRevision, workflow_hash: pins.workflowHash, brief_revision: pins.briefRevision, brief_hash: pins.briefHash, repository_revision: pins.repositoryRevision, repository_hash: pins.repositoryHash, context_pack_hash: pins.contextPackHash, runner_profile_revision: Number(pins.profile.revision), runner_profile_hash: pins.runnerProfileHash }; if (canonicalJson(expected) !== canonicalJson(actual)) throw new PlatformError('execution_pins_changed', 'execution pins are stale', { expected_sha256: sha256Hex(canonicalJson(expected)), actual_sha256: sha256Hex(canonicalJson(actual)) }, 409); return true; }
+  validateWorkspaceForResume(execution) { const completed = this.db.query("SELECT data_json FROM events WHERE aggregate_type='execution' AND aggregate_id=? AND type IN ('execution.stage_completed','execution.completed') ORDER BY sequence DESC", [execution.id]).map((item) => JSON.parse(item.data_json || '{}')).find((item) => Number(item.generation) === Number(execution.generation) && item.workspace_sha256); const checkpoint = this.db.get('SELECT * FROM execution_stage_checkpoints WHERE execution_id=? AND generation=? ORDER BY stage_ordinal DESC LIMIT 1', [execution.id, execution.generation]); const expected = completed?.workspace_sha256 || checkpoint?.workspace_sha256; if (expected && this.workspaceHash(execution.repository_workspace_id, execution) !== expected) throw new PlatformError('workspace_changed', 'workspace changed since the last safe boundary', {}, 409); }
+  validatePins(execution, principal) { if (sha256Hex(execution.plan_json) !== execution.plan_sha256) throw new PlatformError('execution_pins_changed', 'plan hash changed', {}, 409); const pins = this.resolvePins(this.assertProject(principal, 'run', execution.project_id), { workflow_id: execution.workflow_id, workflow_revision: execution.workflow_revision, repository_workspace_id: execution.repository_workspace_id, context_pack_id: execution.context_pack_id, runner_profile_id: execution.runner_profile_id }, principal); const expected = pinsPayload(execution); const actual = { workflow_revision: pins.workflowRevision, workflow_hash: pins.workflowHash, brief_revision: pins.briefRevision, brief_hash: pins.briefHash, repository_revision: pins.repositoryRevision, repository_hash: pins.repositoryHash, context_pack_hash: pins.contextPackHash, runner_profile_revision: Number(pins.profile.revision), runner_profile_hash: pins.runnerProfileHash }; if (canonicalJson(expected) !== canonicalJson(actual)) throw new PlatformError('execution_pins_changed', 'execution pins are stale', { expected_sha256: sha256Hex(canonicalJson(expected)), actual_sha256: sha256Hex(canonicalJson(actual)) }, 409); return true; }
 
   resolvePins(project, input, principal) { const workflow = this.db.get('SELECT * FROM workflows WHERE id=? AND project_id=?', [String(input.workflow_id || this.db.get('SELECT id FROM workflows WHERE project_id=?', [project.id])?.id || ''), project.id]); if (!workflow) throw new PlatformError('workflow_required', 'workflow is required', {}, 409); const workflowRevision = Number(input.workflow_revision || workflow.current_revision); const workflowRevisionRow = this.db.get('SELECT * FROM workflow_revisions WHERE workflow_id=? AND revision=?', [workflow.id, workflowRevision]); if (!workflowRevisionRow) throw new PlatformError('workflow_required', 'workflow revision is required', {}, 409); const brief = this.db.get('SELECT * FROM briefs WHERE project_id=?', [project.id]); if (!brief?.confirmed_revision || !brief.confirmed_hash) throw new PlatformError('brief_required', 'confirmed Brief is required', {}, 409); const workspace = input.repository_workspace_id ? this.db.get('SELECT * FROM repository_workspaces WHERE id=? AND project_id=?', [String(input.repository_workspace_id), project.id]) : this.db.get("SELECT * FROM repository_workspaces WHERE project_id=? AND status IN ('ready','released') ORDER BY updated_at DESC,id LIMIT 1", [project.id]); if (!workspace) throw new PlatformError('workspace_required', 'managed repository workspace is required', {}, 409); const line = this.db.get('SELECT * FROM repository_lines WHERE id=?', [workspace.line_id]); if (!line || line.status !== 'ready') throw new PlatformError('workspace_changed', 'repository source is not ready', {}, 409); const pack = input.context_pack_id ? this.db.get('SELECT * FROM context_packs WHERE id=? AND project_id=?', [String(input.context_pack_id), project.id]) : this.db.get("SELECT * FROM context_packs WHERE project_id=? AND status='sealed' ORDER BY created_at DESC,id LIMIT 1", [project.id]); if (!pack || pack.status !== 'sealed') throw new PlatformError('context_pack_required', 'sealed Context Pack is required', {}, 409); const profile = this.runner.profileForExecution(input.runner_profile_id, principal, project.id); const runnerProfileHash = profileSnapshotHash(profile); return { workflow, workflowRevision, workflowRevisionRow, workflowHash: workflowRevisionRow.graph_sha256, briefRevision: Number(brief.confirmed_revision), briefHash: brief.confirmed_hash, workspace, repositoryRevision: Number(line.revision), repositoryHash: line.source_hash || sha256Hex(canonicalJson({ line_id: line.id, revision: line.revision })), pack, contextPackHash: pack.pack_hash, profile, runnerProfileHash, hashes: { workflow_hash: workflowRevisionRow.graph_sha256, brief_hash: brief.confirmed_hash, repository_hash: line.source_hash, context_pack_hash: pack.pack_hash, runner_profile_hash: runnerProfileHash } }; }
 
-  tasksFromWorkflow(revision) { const graph = JSON.parse(revision.graph_json || '{}'); return Array.isArray(graph.nodes) ? graph.nodes.filter((node) => (node.kind || node.node_kind || 'task') !== 'workstream').map((node, index) => ({ id: String(node.id || node.node_key || `task_${index + 1}`), title: String(node.title || node.name || node.id || 'Task'), mode: node.mode === 'write' ? 'write' : 'read', depends_on: node.depends_on || node.dependencies || [], input_paths: node.input_paths || [], output_paths: node.output_paths || [], check_ids: node.check_ids || [], resource_profile: node.resource_profile || 'light' })) : []; }
+  tasksFromWorkflow(revision) {
+    const graph = JSON.parse(revision.graph_json || '{}');
+    return compileWorkflowToExecutionPlan(graph, {}, this.projectWorkflow?.policy).tasks;
+  }
   insertInputs(tx, executionId, pins, extra, actorId, now) { const values = [{ input_type: 'brief', ref_id: `brief_${pins.workflow.project_id}`, ref_revision: pins.briefRevision, ref_hash: pins.briefHash }, { input_type: 'workflow', ref_id: pins.workflow.id, ref_revision: pins.workflowRevision, ref_hash: pins.workflowHash }, { input_type: 'repository', ref_id: pins.workspace.id, ref_revision: pins.repositoryRevision, ref_hash: pins.repositoryHash }, { input_type: 'context_pack', ref_id: pins.pack.id, ref_revision: Number(pins.pack.revision), ref_hash: pins.contextPackHash }, ...extra].slice(0, 256); values.forEach((item, index) => { const metadataJson = canonicalJson(item.metadata || {}); tx.run('INSERT INTO execution_inputs(id,execution_id,ordinal,input_type,ref_id,ref_revision,ref_hash,metadata_json,metadata_sha256,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)', [opaqueId('execution_input'), executionId, index + 1, item.input_type || item.type, String(item.ref_id || item.ref), Number(item.ref_revision ?? item.revision ?? 0), String(item.ref_hash || item.hash), metadataJson, sha256Hex(metadataJson), now, actorId]); }); }
 
   updateExecution(tx, row, changes, now, actorId) { const nextRevision = Number(row.revision) + 1; const fields = { status: row.status, current_stage: row.current_stage, generation: Number(row.generation), handoff_manifest_json: row.handoff_manifest_json, handoff_manifest_sha256: row.handoff_manifest_sha256, error_code: row.error_code, started_at: row.started_at, completed_at: row.completed_at, ...changes }; if (fields.status === 'running' && !fields.started_at) fields.started_at = now; tx.run('UPDATE executions SET status=?,current_stage=?,generation=?,handoff_manifest_json=?,handoff_manifest_sha256=?,error_code=?,revision=?,updated_at=?,started_at=?,completed_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [fields.status, fields.current_stage, fields.generation, fields.handoff_manifest_json, fields.handoff_manifest_sha256, fields.error_code, nextRevision, now, fields.started_at || null, fields.completed_at || null, actorId, row.id, row.revision], 1); return tx.get('SELECT * FROM executions WHERE id=?', [row.id]); }
@@ -523,12 +565,39 @@ export class CleanExecutionService {
   resumeStageIndex(executionId, generation) { const completed = this.db.query("SELECT data_json FROM events WHERE aggregate_type='execution' AND aggregate_id=? AND type IN ('execution.stage_completed','execution.completed') ORDER BY sequence", [executionId]).map((item) => JSON.parse(item.data_json || '{}')).filter((item) => Number(item.generation) === Number(generation)); if (!completed.length) { const current = this.db.get('SELECT current_stage FROM executions WHERE id=?', [executionId]); return Math.max(0, RUNNER_STAGES.indexOf(current?.current_stage || '')); } return Math.min(RUNNER_STAGES.length - 1, RUNNER_STAGES.indexOf(completed.at(-1).stage) + 1); }
   assertReviewApproved(row) { const approval = this.db.query("SELECT * FROM runtime_approvals WHERE project_id=? AND action='execution.review' ORDER BY created_at DESC,id", [row.project_id]).find((item) => { const value = JSON.parse(item.request_json || '{}'); return value.execution_id === row.id && Number(value.generation) === Number(row.generation); }); if (!approval || approval.status !== 'approved') throw new PlatformError('approval_required', 'execution review approval is pending', {}, 409); }
   latestExecutionOperation(id) { return this.db.get("SELECT o.* FROM operations o JOIN operation_links l ON l.operation_id=o.id WHERE l.aggregate_type='execution' AND l.aggregate_id=? AND o.command_id IN ('execution.start','execution.resume','execution.stage.replay') ORDER BY o.created_at DESC,o.id DESC LIMIT 1", [id]); }
-  effectiveAttempt(execution, taskId) { return this.db.get("SELECT * FROM task_attempts WHERE execution_id=? AND generation<=? AND task_id=? AND status='succeeded' ORDER BY generation DESC,attempt_no DESC LIMIT 1", [execution.id, execution.generation, String(taskId)]); }
+  effectiveAttempt(execution, taskId) {
+    const attempt = this.db.get('SELECT * FROM task_attempts WHERE execution_id=? AND generation<=? AND task_id=? ORDER BY generation DESC,attempt_no DESC LIMIT 1', [execution.id,execution.generation,String(taskId)]);
+    if (!attempt || attempt.status !== 'succeeded') return null;
+    const signed = this.db.get('SELECT * FROM job_specs WHERE id=?',[attempt.job_spec_id]);
+    const spec = signed ? JSON.parse(signed.spec_json) : null;
+    const ref = spec?.input_refs.find((item) => item.type === 'task_contract');
+    if (!ref) return attempt;
+    const task = JSON.parse(execution.plan_json).tasks.find((item) => item.id === taskId);
+    if (!task || task.task_contract_sha256 !== ref.hash || spec.runner_profile_hash !== execution.runner_profile_hash || spec.runner_profile_revision !== Number(execution.runner_profile_revision)) return null;
+    try {
+      const manifest = JSON.parse(this.runner.cas.read(attempt.output_sha256).toString('utf8'));
+      const root = this.candidates.directory(execution);
+      for (const entry of manifest.entries) if (sha256Hex(fs.readFileSync(safeJoin(root,entry.path))) !== entry.sha256) return null;
+    } catch { return null; }
+    return attempt;
+  }
   executionRow(id, principal, action) { requirePrincipal(principal); const row = this.db.get('SELECT * FROM executions WHERE id=?', [String(id)]); if (!row) throw new PlatformError('not_found', 'execution not found', {}, 404); this.assertProject(principal, action, row.project_id); return row; }
   assertProject(principal, action, projectId) { requirePrincipal(principal); const project = this.db.get('SELECT * FROM projects WHERE id=?', [String(projectId)]); if (!project) throw new PlatformError('not_found', 'project not found', {}, 404); this.authorization.assert(principal, action, project.id, { execution: true }); return project; }
 }
 
 function normalizePlan(input) { if (!Array.isArray(input) || input.length > 100) throw new PlatformError('execution_task_limit', 'execution plan must contain at most 100 tasks', {}, 422); const ids = new Set(); const tasks = input.map((value, index) => { const id = String(value?.id || value?.task_id || `task_${index + 1}`); if (!/^[A-Za-z][A-Za-z0-9_.-]{0,159}$/.test(id) || ids.has(id)) throw new PlatformError('execution_task_invalid', 'execution task id is invalid or duplicated', { task_id: id }, 422); ids.add(id); const mode = value?.mode === 'write' ? 'write' : 'read'; const dependencies = [...new Set((value?.depends_on || value?.dependencies || []).map(String))].sort(); return { id, ordinal: index + 1, title: String(value?.title || id).slice(0, 200), mode, depends_on: dependencies, input_paths: normalizePaths(value?.input_paths || []), output_paths: normalizePaths(value?.output_paths || []), check_ids: normalizeChecks(value?.check_ids || []), resource_profile: value?.resource_profile === 'standard' ? 'standard' : 'light', ...(value?.fixture && typeof value.fixture === 'object' ? { fixture: JSON.parse(canonicalJson(value.fixture)) } : {}) }; }); const edges = edgeCount(tasks); if (edges > 500) throw new PlatformError('execution_edge_limit', 'execution dependency edge limit exceeded', {}, 422); for (const task of tasks) for (const dependency of task.depends_on) if (!ids.has(dependency) || dependency === task.id) throw new PlatformError('execution_dependency_invalid', 'execution dependency is missing or self-referential', { task_id: task.id, dependency }, 422); const pending = new Set(ids); const complete = new Set(); while (pending.size) { const ready = tasks.filter((task) => pending.has(task.id) && task.depends_on.every((item) => complete.has(item))).sort(taskOrder); if (!ready.length) throw new PlatformError('execution_dag_cycle', 'execution task graph has a cycle', {}, 422); for (const task of ready) { pending.delete(task.id); complete.add(task.id); } } return tasks; }
+function normalizePlanWithContracts(input) {
+  const tasks = normalizePlan(input);
+  return tasks.map((task, index) => {
+    const source = Array.isArray(input) ? input[index] || {} : {};
+    const argv = Array.isArray(source.argv) ? source.argv.map(String) : [];
+    if (argv.length && !['node', 'pnpm', 'npm', 'git', 'codex'].includes(argv[0])) throw new PlatformError('runner_command_not_allowed', 'task command is not registered', { task_id: task.id }, 422);
+    const next = { ...task, argv, cwd_role: String(source.cwd_role || 'task'), deadline_seconds: Math.max(1, Number(source.deadline_seconds || 900)), runner_profile_ref: String(source.runner_profile_ref || ''), capabilities: Array.isArray(source.capabilities) ? source.capabilities.map(String) : ['network:none'] };
+    next.task_contract = { argv: next.argv, cwd_role: next.cwd_role, mode: next.mode, input_paths: next.input_paths, output_paths: next.output_paths, runner_profile_ref: next.runner_profile_ref, resource_profile: next.resource_profile, deadline_seconds: next.deadline_seconds, check_ids: next.check_ids, capabilities: next.capabilities };
+    next.task_contract_sha256 = sha256Hex(canonicalJson(next.task_contract));
+    return next;
+  });
+}
 function normalizePaths(value) { if (!Array.isArray(value) || value.length > 64) throw new PlatformError('runner_path_invalid', 'task path list is invalid', {}, 422); const paths = value.map((item) => { const text = String(item || ''); if (!text || text.length > 512 || text.includes('\\') || text.startsWith('/') || /^[A-Za-z]:/.test(text) || text.split('/').some((segment) => !segment || segment === '.' || segment === '..')) throw new PlatformError('runner_path_invalid', 'task path is invalid', {}, 422); return text; }); if (new Set(paths).size !== paths.length) throw new PlatformError('runner_path_invalid', 'task path is duplicated', {}, 422); return paths; }
 function normalizeChecks(value) { if (!Array.isArray(value) || value.length > 16) throw new PlatformError('check_invalid', 'check list is invalid', {}, 422); const checks = [...new Set(value.map(String))].sort(); if (checks.some((item) => !CHECK_IDS.has(item))) throw new PlatformError('check_invalid', 'check id is outside the allowlist', {}, 422); return checks; }
 function edgeCount(tasks) { return tasks.reduce((total, task) => total + task.depends_on.length, 0); }

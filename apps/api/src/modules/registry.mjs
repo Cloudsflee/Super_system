@@ -77,6 +77,8 @@ export const CLEAN_SQL_BOUNDARIES = Object.freeze([
   'apps/api/src/clean/quality-service.mjs',
   'apps/api/src/clean/outcome-evaluation-service.mjs'
   , 'apps/api/src/clean/p10-service.mjs'
+  , 'apps/api/src/clean/candidate-workspace.mjs'
+  , 'apps/api/src/clean/runner-input-provider.mjs'
 ]);
 
 export const PLACEHOLDER_SUCCESS_PATTERNS = Object.freeze([

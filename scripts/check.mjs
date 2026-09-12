@@ -8,7 +8,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'ut
 const failures = [];
 
 if (manifest.version !== '3.0.0') failures.push('root package version must be 3.0.0');
-if (Object.keys(manifest.scripts || {}).length > 58) failures.push('package scripts exceed 58');
+if (Object.keys(manifest.scripts || {}).length > 60) failures.push('package scripts exceed 60');
 for (const legacy of ['apps/worker', 'apps/mcp-gateway', 'bridge', 'prisma']) {
   if (fs.existsSync(path.join(root, legacy))) failures.push(`legacy runtime directory exists: ${legacy}`);
 }

@@ -33,7 +33,7 @@ const GOVERNANCE_PATTERNS = [
   /^\.githooks\//,
   /^scripts\/(?:check|verify|verify-dev|test|layered-gate)\.mjs$/,
   /^scripts\/lib\/(?:gate-process|git-blob|v3-clean-p1-scope)\.mjs$/,
-  /^tests\/(?:p1|p31|p10)\/(?:.*governance|.*gate|development-reliability).*\.test\.mjs$/
+  /^tests\/(?:p1|p31|p10)\/(?:.*governance|.*gate|development-reliability|real-development-loop).*\.test\.mjs$/
 ];
 const GOLDEN_PATTERNS = [
   /^tests\/golden\//,

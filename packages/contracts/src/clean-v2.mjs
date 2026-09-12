@@ -113,7 +113,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'repository.workspace.create.v2': closed({ line_id: id, relative_path: { type: 'string', maxLength: 512 }, idempotency_key: idempotency, expected_revision: { type: 'integer', minimum: 0 } }, ['line_id']),
   'repository.workspace.lifecycle.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'workflow.revise.v2': closed({ graph: looseObject, nodes: { type: 'array', items: looseObject }, layout: looseObject, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
-  'generation.start.v2': closed({ mode: { enum: ['initial', 'replan'] }, candidate: looseObject, provider: { type: 'string' }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
+  'generation.start.v2': closed({ mode: { enum: ['initial', 'replan'] }, candidate: looseObject, provider: { type: 'string' }, provider_profile_id: { type: 'string' }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'generation.lifecycle.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'critic.evaluate.v2': closed({ candidate: looseObject, status: { enum: ['passed', 'rejected', 'failed'] }, issues: { type: 'array', items: looseObject }, idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),
   'proposal.apply.v2': closed({ idempotency_key: idempotency, expected_revision: revision }, ['expected_revision']),

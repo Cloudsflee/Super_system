@@ -260,3 +260,18 @@ The measured objectives for this maintenance branch are at most `120000 ms`
 for its incremental Gate and at most `360000 ms` for the formal Gate on the
 same workstation, compared with the recorded `549714 ms` baseline. Timing is a
 maintenance acceptance threshold, not a Catalog status transition.
+
+## D-041: Real development-loop reliability
+
+The post-P10 development loop keeps one Clean Operation/Event/CAS owner while
+making Evidence completion compensating and provider-backed by default. Startup
+replays all `execution.completed` events idempotently, advances the Evidence
+cursor only through contiguous successful captures, and records redacted failed
+receipts for pending work. Phase-10 non-deterministic runtime construction uses
+the process workflow adapter and returns `provider_rebind_required` when no
+credential lease exists; deterministic generator, critic, repository, and
+runner adapters remain explicit fixture inputs. Workflow execution plans are
+compiled from `config.execution` with command, path, dependency, capability,
+and deadline validation before Runner submission. CAS GC protects all current
+Context, Assist/File, Terminal, Execution, Evidence, Delivery, Deployment, and
+Backup references and preserves plan fencing and rollback.

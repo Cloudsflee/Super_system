@@ -142,7 +142,25 @@
         "docs/evidence/post-p10-development-reliability-20260905/modified-artifact.tgz",
         "docs/evidence/post-p10-development-reliability-20260905/change.patch",
         "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1",
-        "docs/evidence/post-p10-development-reliability-20260905"
+        "docs/evidence/post-p10-development-reliability-20260905",
+        "docs/evidence/post-p10-real-development-loop-20260911/verification.json",
+        "docs/evidence/post-p10-real-development-loop-20260911/preflight.txt",
+        "docs/evidence/post-p10-real-development-loop-20260911/modified-artifact.tgz",
+        "docs/evidence/post-p10-real-development-loop-20260911/change.patch",
+        "docs/evidence/post-p10-real-development-loop-20260911/rollback.ps1",
+        "docs/evidence/post-p10-real-development-loop-20260911/rollback-actual.json",
+        "docs/evidence/post-p10-real-development-loop-20260911",
+        "docs/evidence/post-p10-real-development-loop-20260911/original-artifact.tgz",
+        "docs/evidence/post-p10-real-development-loop-20260911/hashes.json",
+        "docs/evidence/post-p10-real-development-loop-20260912-134500/verification.json",
+        "docs/evidence/post-p10-real-development-loop-20260912-134500/preflight.txt",
+        "docs/evidence/post-p10-real-development-loop-20260912-134500/modified-artifact.tgz",
+        "docs/evidence/post-p10-real-development-loop-20260912-134500/change.patch",
+        "docs/evidence/post-p10-real-development-loop-20260912-134500/rollback.ps1",
+        "docs/evidence/post-p10-real-development-loop-20260912-134500/rollback-actual.json",
+        "docs/evidence/post-p10-real-development-loop-20260912-134500",
+        "docs/evidence/post-p10-real-development-loop-20260912-134500/original-artifact.tgz",
+        "docs/evidence/post-p10-real-development-loop-20260912-134500/hashes.json"
       ]
     },
     {
@@ -546,7 +564,9 @@
         "apps/api/src/clean/runner-adapters.mjs",
         "apps/api/src/clean/runner-service.mjs",
         "apps/runner-broker/clean-server.mjs",
-        "apps/windows-native-bridge/src/protocol.mjs"
+        "apps/windows-native-bridge/src/protocol.mjs",
+        "apps/api/src/clean/runner-input-provider.mjs",
+        "apps/api/src/clean/candidate-workspace.mjs"
       ],
       "target_modules": [
         "apps/api/src/clean/runner-protocol.mjs",
@@ -554,7 +574,9 @@
         "apps/api/src/clean/runner-service.mjs",
         "apps/runner-broker/clean-server.mjs",
         "apps/windows-native-bridge/server.mjs",
-        "apps/web/src/features/connections/ConnectionsPage.tsx"
+        "apps/web/src/features/connections/ConnectionsPage.tsx",
+        "apps/api/src/clean/runner-input-provider.mjs",
+        "apps/api/src/clean/candidate-workspace.mjs"
       ],
       "tables": [
         "runner_profiles",
@@ -579,7 +601,8 @@
       "behavior_tests": [
         "tests/p6/runner-execution.test.mjs",
         "tests/p6/runner-transports.test.mjs",
-        "tests/p6/http-security.test.mjs"
+        "tests/p6/http-security.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/connections-p6.test.tsx"
@@ -601,7 +624,8 @@
         "scripts/v3-clean-p6-bridge-runner-probe.mjs",
         "scripts/v3-clean-p6-restart-probe.mjs",
         "tests/p9/web-governance.test.mjs",
-        "scripts/v3-clean-p9-release-probe.mjs"
+        "scripts/v3-clean-p9-release-probe.mjs",
+        "tests/p10/real-development-loop.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -969,14 +993,18 @@
         "apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs",
         "apps/api/src/clean/execution-service.mjs",
         "apps/api/src/clean/command-dispatcher.mjs",
-        "apps/api/src/clean/registry.mjs"
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/candidate-workspace.mjs",
+        "apps/api/src/clean/runner-input-provider.mjs"
       ],
       "target_modules": [
         "apps/api/src/clean/execution-service.mjs",
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
         "apps/web/src/features/execution",
-        "apps/web/src/features/execution/QualityPolicyPanel.tsx"
+        "apps/web/src/features/execution/QualityPolicyPanel.tsx",
+        "apps/api/src/clean/candidate-workspace.mjs",
+        "apps/api/src/clean/runner-input-provider.mjs"
       ],
       "tables": [
         "executions",
@@ -1016,7 +1044,8 @@
         "tests/p6/http-security.test.mjs",
         "tests/p6/transport-parity.test.mjs",
         "tests/p6/migration.test.mjs",
-        "tests/p10/post-closure-restoration.test.mjs"
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/execution-p6.test.tsx"
@@ -1039,7 +1068,8 @@
         "scripts/e2e.mjs",
         "tests/p9/web-governance.test.mjs",
         "scripts/v3-clean-p9-release-probe.mjs",
-        "tests/p10/post-closure-restoration.test.mjs"
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -1061,14 +1091,19 @@
       "source_files": [
         "apps/api/src/clean/project-workflow.mjs",
         "apps/api/src/clean/provider-adapters.mjs",
-        "packages/contracts/src/clean-v2.mjs"
+        "packages/contracts/src/clean-v2.mjs",
+        "apps/api/src/clean/workflow-adapters.mjs",
+        "scripts/v3-clean-real-development-loop.mjs",
+        "tests/p10/real-development-loop.test.mjs"
       ],
       "target_modules": [
         "apps/api/src/clean/project-workflow.mjs",
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
-        "apps/web/src/features/project/WorkflowCanvas.tsx"
+        "apps/web/src/features/project/WorkflowCanvas.tsx",
+        "apps/api/src/clean/workflow-adapters.mjs",
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx"
       ],
       "tables": [
         "workflow_generations",
@@ -1095,7 +1130,8 @@
       "behavior_tests": [
         "tests/p3/project-workflow.test.mjs",
         "tests/p3/migration.test.mjs",
-        "tests/p10/post-closure-restoration.test.mjs"
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/project-workflow-clean.test.tsx"
@@ -1113,7 +1149,8 @@
         "apps/web/src/test/project-workflow-clean.test.tsx",
         "tests/p9/web-governance.test.mjs",
         "scripts/v3-clean-p9-release-probe.mjs",
-        "tests/p10/post-closure-restoration.test.mjs"
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [

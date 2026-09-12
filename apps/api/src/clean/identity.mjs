@@ -713,6 +713,18 @@ class IdentityCoreService {
     return this.db.query('SELECT * FROM provider_profiles WHERE owner_actor_id=? ORDER BY created_at,id', [principal.actorId]).map(profileView);
   }
 
+  leaseProviderCredential(profileId, principal) {
+    requirePrincipal(principal);
+    const row = this.db.get("SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?", [String(profileId), principal.actorId]);
+    if (!row) throw notFound('profile');
+    if (row.provider !== 'codex' || row.lifecycle_status === 'disabled' || row.status !== 'available') throw new PlatformError('provider_rebind_required', 'provider profile is not active', { profile_id: row.id, status: row.status }, 409);
+    const credential = row.credential_ref_id ? this.db.get("SELECT * FROM credential_refs WHERE id=? AND owner_actor_id=?", [row.credential_ref_id, principal.actorId]) : null;
+    if (!credential || credential.status !== 'active' || !String(credential.external_ref || '').startsWith('vault:') || !this.vault) throw new PlatformError('provider_rebind_required', 'provider credential lease is unavailable', {}, 409);
+    if (credential.provider !== row.provider) throw new PlatformError('provider_rebind_required', 'provider credential binding differs', {}, 409);
+    const value = this.vault.read(credential.external_ref);
+    return { credential: value, profile_id: row.id, profile_revision: Number(row.revision), profile_hash: sha256Hex(canonicalJson({ id: row.id, revision: row.revision, config_sha256: row.config_sha256, credential_revision: credential.revision })), provider_config: parseCanonicalJson(row.config_json, {}) };
+  }
+
   async recoverPending() {
     const rows = this.db.query(`SELECT id,status,revision,command_id,resource_type,resource_id FROM operations
       WHERE command_id IN ('credential.rebind','credential.rotate','profile.probe') AND status IN ('accepted','queued','running') ORDER BY created_at,id`);
@@ -1231,6 +1243,8 @@ export class IdentityService {
   rotateCredential(...args) { return this.credentialProfileService.rotate(...args); }
   revokeCredential(...args) { return this.credentialProfileService.revoke(...args); }
   probeProfile(...args) { return this.credentialProfileService.probeProfile(...args); }
+  leaseProviderCredential(...args) { return this.core.leaseProviderCredential(...args); }
+  providerProfileSnapshot(...args) { const lease = this.core.leaseProviderCredential(...args); try { return { profile_id: lease.profile_id, profile_revision: lease.profile_revision, profile_hash: lease.profile_hash }; } finally { lease.credential.fill(0); } }
 }
 
 export const IdentityDomainService = IdentityService;

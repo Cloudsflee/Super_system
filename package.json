@@ -57,6 +57,8 @@
     "test:security": "node scripts/layered-gate.mjs security",
     "test:release": "node --test tests/release/*.test.mjs",
     "test:runner-real": "node scripts/runner-real-smoke.mjs",
+    "test:development": "node --test tests/p10/development-reliability.test.mjs",
+    "probe:development": "node scripts/runner-real-smoke.mjs",
     "github:seed-fixture": "node scripts/github-seed-fixture.mjs",
     "verify:dev": "node scripts/verify-dev.mjs",
     "verify": "node scripts/verify.mjs",
