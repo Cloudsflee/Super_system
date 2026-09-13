@@ -566,3 +566,9 @@ The same generation row also binds the separately reviewed Critic correction:
 complete task/check coverage, rejection of malformed/duplicate/stale/orphan
 rows, and provider receipt immutability. Regression owner: Workflow/Critic;
 test link remains `tests/p10/real-development-loop.test.mjs`; status is frozen.
+
+Gate hardening (Platform/Testing, post-P10 D-040) retains
+`REC-D0-GOVERNANCE-000`: fixed 120000/360000 ms limits, literal exit checks,
+complete untruncated capture, redaction and pre-push input checks. Its test link
+remains `tests/p10/development-reliability.test.mjs`; no Catalog/Evidence
+reference or status is added. Local diagnostic hashes are not release proof.

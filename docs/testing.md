@@ -982,3 +982,26 @@ deriving missing entries. A provider rejection is never upgraded. Tests assert
 that a real provider-Critic call occurred, avoiding structural-rejection false
 positives. The existing JSON-repair fixture now explicitly passes its original
 Brief to the Critic; its success assertion is unchanged.
+
+### Fail-closed maintenance gates (Platform/Testing owner)
+
+The existing `scripts/lib/gate-process.mjs` owns fixed elapsed-time budgets:
+development 120000 ms and formal 360000 ms, without environment or CLI
+overrides. Both Gate entrypoints cap each child to the remaining budget and
+return failure when the total is exceeded. Receipts add the measured `budget`
+object; existing schema ids, commands and D-032 stdout-only success semantics
+remain unchanged. Failed runs stay append-only diagnostics, not new Evidence.
+
+Gate acceptance requires the literal zero exit, no signal/timeout/error,
+complete capture/timing metadata, untruncated stdout/stderr and successful
+redaction. A reported `ok` flag never overrides those checks. Pre-push rejects
+Evidence-skipping inputs and unknown bypass arguments. The additive regressions
+in `tests/p10/development-reliability.test.mjs` exercise budget overflow,
+zero-exit output truncation, incomplete receipts and pre-push input rejection;
+its existing advisory fixture now supplies complete process capture metadata.
+
+Verification on an isolated exact HEAD must retain full command streams with
+exclusive creation and SHA-256 manifests. Local hashes detect subsequent edits;
+they are not an independent signature. Git can skip local hooks, so remote
+required checks and protected branches, administered outside the editing
+process, remain the independent publication boundary.

@@ -10,6 +10,8 @@ import {
   pnpmInvocation,
   runGateCommand
 } from '../../scripts/lib/gate-process.mjs';
+import { gateBudget, gateRecordFailure, GATE_BUDGETS_MS } from '../../scripts/lib/gate-process.mjs';
+import { formalInputFailure } from '../../scripts/verify.mjs';
 import {
   classifyFailure,
   generateDevelopmentReceipt,
@@ -25,6 +27,72 @@ import { open as openP10 } from './helpers.mjs';
 import { prepare, waitOperation } from '../p6/helpers.mjs';
 
 const root = process.cwd();
+
+test('hard gate limits are fixed and over-budget success is rejected', () => {
+  assert.deepEqual(GATE_BUDGETS_MS, { development: 120000, formal: 360000 });
+  for (const channel of ['development', 'formal']) {
+    const limit = GATE_BUDGETS_MS[channel];
+    assert.equal(gateBudget(channel, limit).exceeded, false);
+    assert.equal(gateBudget(channel, limit + 1).exceeded, true);
+    assert.equal(gateBudget(channel, limit + 1).remaining_ms, 0);
+  }
+  assert.throws(() => gateBudget('formal', NaN), /gate_budget_invalid/);
+  assert.throws(() => gateBudget('formal', -1), /gate_budget_invalid/);
+  assert.throws(() => gateBudget('override', 1), /gate_budget_invalid/);
+});
+
+test('a self-reported ok flag never masks nonzero exit, signal, truncation or redaction failure', () => {
+  const valid = { ok: true, exit_status: 0, signal: null, error_code: null, duration_ms: 1,
+    output: { stdout: '', stderr: '' }, capture: { stdout_truncated: false, stderr_truncated: false }, redaction: { passed: true } };
+  assert.equal(gateRecordFailure(valid), null);
+  assert.equal(gateRecordFailure({ ...valid, exit_status: 7 }), 'gate_command_failed');
+  assert.equal(gateRecordFailure({ ...valid, signal: 'SIGTERM' }), 'gate_command_failed');
+  assert.equal(gateRecordFailure({ ...valid, capture: { stdout_truncated: true, stderr_truncated: false } }), 'gate_output_truncated');
+  assert.equal(gateRecordFailure({ ...valid, capture: null }), 'gate_record_incomplete');
+  assert.equal(gateRecordFailure({ ...valid, duration_ms: undefined }), 'gate_record_incomplete');
+  assert.equal(gateRecordFailure({ ...valid, redaction: { passed: false } }), 'gate_redaction_failed');
+  assert.equal(gateRecordFailure({ ...valid, redaction: null }), 'gate_redaction_failed');
+});
+
+test('real process output truncation fails while retaining the literal zero process exit', async () => {
+  const record = await runGateCommand({ command: process.execPath, args: ['-e', "process.stdout.write('x'.repeat(4096))"] },
+    { cwd: root, stdout: false, stderr: false, maxCaptureBytes: 128, timeoutMs: 5000 });
+  assert.equal(record.exit_status, 0);
+  assert.equal(record.capture.stdout_truncated, true);
+  assert.equal(record.ok, false);
+  assert.equal(record.error_code, 'gate_output_truncated');
+});
+
+test('pre-push verification rejects evidence-skip inputs and unknown bypass arguments', () => {
+  assert.equal(formalInputFailure(['--pre-push'], {}), null);
+  assert.equal(formalInputFailure(['--pre-push', '--skip-p1-evidence'], {}), 'pre_push_evidence_skip_forbidden');
+  assert.equal(formalInputFailure(['--pre-push'], { AIWS_P1_EVIDENCE_GENERATING: '1' }), 'pre_push_evidence_skip_forbidden');
+  assert.equal(formalInputFailure(['--no-verify'], {}), 'verify_argument_invalid');
+});
+
+test('development orchestration freezes successful commands after the fixed time limit', async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-budget-regression-'));
+  let now = 1000, calls = 0, output = '';
+  t.mock.method(Date, 'now', () => now);
+  t.mock.method(process.stdout, 'write', chunk => { output += String(chunk); return true; });
+  try {
+    const result = await devMain([], directory, {
+      repositoryState: () => ({ base: 'a'.repeat(40), head: 'b'.repeat(40), base_source: 'fixture', changed_paths: [] }),
+      loadCatalog: () => ({ features: [] }),
+      runGateCommand: async (invocation, options) => {
+        calls++; assert.equal(options.timeoutMs, 120000); now += 120001;
+        return { command: '<NODE>', args: [], ok: true, exit_status: 0, error_code: null, duration_ms: 120001,
+          capture: { stdout_truncated: false, stderr_truncated: false },
+          output: { stdout: '', stderr: '' }, redaction: { passed: true } };
+      }
+    });
+    assert.equal(result, 1);
+    assert.equal(calls, 1);
+    assert.match(output, /development_time_budget_exceeded/);
+    const receipts = fs.readdirSync(path.join(directory, '.ai-workspace/gate-receipts'));
+    assert.equal(receipts.length, 1);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
 
 test('Gate process preserves Windows-sensitive arguments without shell parsing', async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws 参数 space '));
@@ -367,7 +435,7 @@ test('combined development layers preserve advisory status and receipts omit raw
       loadCatalog: () => ({ features: [] }),
       runGateCommand: async (invocation) => {
         const layered = invocation.args.find((arg) => ['test:integration', 'test:security'].includes(arg));
-        return { command: '<NODE>', args: ['fixture'], exit_status: 0, signal: null, duration_ms: 1, ok: true, error_code: null, output: { stdout: layered ? JSON.stringify({ schema_version: 'aiws.v3-clean.layered-gate-result.v2', status: 'advisory', receipt: null }) : '', stderr: '' }, redaction: { passed: true, removed: 0 } };
+        return { command: '<NODE>', args: ['fixture'], exit_status: 0, signal: null, duration_ms: 1, ok: true, error_code: null, capture: { stdout_truncated: false, stderr_truncated: false }, output: { stdout: layered ? JSON.stringify({ schema_version: 'aiws.v3-clean.layered-gate-result.v2', status: 'advisory', receipt: null }) : '', stderr: '' }, redaction: { passed: true, removed: 0 } };
       }
     });
     assert.equal(exit, 0);

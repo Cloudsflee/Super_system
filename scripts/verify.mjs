@@ -6,6 +6,8 @@ import {
   executableInvocation,
   nodeInvocation,
   pnpmInvocation,
+  gateBudget,
+  gateRecordFailure,
   redactGateText,
   runGateCommand
 } from './lib/gate-process.mjs';
@@ -13,6 +15,12 @@ import {
 export const VERIFY_RESULT_SCHEMA = 'aiws.v3-clean.verify-result.v3';
 export const VERIFY_RECEIPT_SCHEMA = 'aiws.v3-clean.verify-receipt.v3';
 export const LOCAL_RECEIPT_DIRECTORY = '.ai-workspace/gate-receipts';
+
+export function formalInputFailure(argv, env = process.env) {
+  if (argv.some(arg => !['--', '--pre-push', '--skip-p1-evidence'].includes(arg))) return 'verify_argument_invalid';
+  if (argv.includes('--pre-push') && (argv.includes('--skip-p1-evidence') || env.AIWS_P1_EVIDENCE_GENERATING === '1')) return 'pre_push_evidence_skip_forbidden';
+  return null;
+}
 
 process.env.AIWS_VERIFY_RUNNING = '1';
 
@@ -86,18 +94,20 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
   const skipP1Evidence = argv.includes('--skip-p1-evidence') || process.env.AIWS_P1_EVIDENCE_GENERATING === '1';
   const records = [];
   const advisoryFailures = [];
-  let blockingFailure = null;
+  let blockingFailure = formalInputFailure(argv);
   const plan = createFormalVerificationPlan({ skipP1Evidence });
   if (prePushHead) plan.find((entry) => entry.id === 'evidence-p10').env.AIWS_PRE_PUSH_HEAD = prePushHead;
-  for (let index = 0; index < plan.length;) {
+  for (let index = 0; !blockingFailure && index < plan.length;) {
+    const budget = gateBudget('formal', Date.now() - started);
+    if (budget.remaining_ms <= 0) { blockingFailure = 'formal_time_budget_exceeded'; break; }
     const specification = plan[index];
     const group = specification.parallel_group
       ? plan.slice(index).filter((entry) => entry.parallel_group === specification.parallel_group)
       : [specification];
     for (const entry of group) process.stdout.write(`\n== ${entry.id} ==\n`);
     const executed = specification.parallel_group
-      ? await Promise.all(group.map((entry) => executeSpecification(entry, root, true)))
-      : [await executeSpecification(specification, root, false)];
+      ? await Promise.all(group.map((entry) => executeSpecification(entry, root, true, budget.remaining_ms)))
+      : [await executeSpecification(specification, root, false, budget.remaining_ms)];
     for (const record of executed) {
       records.push(record);
       if (record.advisory) advisoryFailures.push(record.id);
@@ -107,6 +117,9 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
     if (blockingFailure) break;
   }
 
+  const budget = gateBudget('formal', Date.now() - started);
+  if (budget.exceeded) blockingFailure ||= 'formal_time_budget_exceeded';
+
   const status = blockingFailure ? 'failed' : advisoryFailures.length ? 'advisory' : 'passed';
   const receipt = {
     schema_version: VERIFY_RECEIPT_SCHEMA,
@@ -115,6 +128,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
     advisory_failures: advisoryFailures,
     generated_at: new Date().toISOString(),
     duration_ms: Date.now() - started,
+    budget,
     policy: {
       publication_check: prePush ? 'pending-push-local-head' : 'pushed-upstream-head',
       current_phase: 'P10',
@@ -133,6 +147,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
     blocking_command: blockingFailure,
     advisory_failures: advisoryFailures,
     duration_ms: receipt.duration_ms,
+    budget,
     commands: records.map(publicRecord),
     receipt: receiptPath
   };
@@ -140,17 +155,19 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
   return blockingFailure ? 1 : 0;
 }
 
-async function executeSpecification(specification, root, parallel) {
+async function executeSpecification(specification, root, parallel, remainingMs) {
   const result = await runGateCommand(specification.invocation, {
     cwd: root,
     workspaceRoot: root,
     cwdRole: 'repository-root',
-    timeoutMs: specification.timeoutMs,
+    timeoutMs: Math.min(specification.timeoutMs, remainingMs),
     maxCaptureBytes: 16 * 1024 * 1024,
     env: { AIWS_VERIFY_RUNNING: '1', ...specification.env },
     ...(parallel ? { stdoutPrefix: `[${specification.id}] `, stderrPrefix: `[${specification.id}] ` } : {})
   });
   const layered = specification.layered ? layeredResult(result.output.stdout) : null;
+  const policyFailure = gateRecordFailure(result);
+  if (policyFailure) { result.ok = false; result.error_code = policyFailure; }
   if (specification.layered && result.ok && !layered) {
     result.ok = false;
     result.error_code = 'gate_command_failed';

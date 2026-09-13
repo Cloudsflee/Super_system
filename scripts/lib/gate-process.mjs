@@ -12,6 +12,24 @@ export const GATE_ERROR_CODES = Object.freeze({
 const DEFAULT_MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
 
+// Fixed maintenance acceptance limits. No CLI or environment override.
+export const GATE_BUDGETS_MS = Object.freeze({ development: 120_000, formal: 360_000 });
+export function gateBudget(channel, elapsedMs) {
+  if (!Object.hasOwn(GATE_BUDGETS_MS, channel) || !Number.isFinite(elapsedMs) || elapsedMs < 0) throw new Error('gate_budget_invalid');
+  const limit = GATE_BUDGETS_MS[channel];
+  return { limit_ms: limit, elapsed_ms: elapsedMs, remaining_ms: Math.max(0, limit - elapsedMs), exceeded: elapsedMs > limit };
+}
+
+export function gateRecordFailure(record) {
+  if (!record || record.exit_status !== 0 || record.signal || record.timed_out || record.ok !== true || record.error_code) return record?.error_code || 'gate_command_failed';
+  if (!Number.isFinite(record.duration_ms) || record.duration_ms < 0
+    || typeof record.output?.stdout !== 'string' || typeof record.output?.stderr !== 'string'
+    || typeof record.capture?.stdout_truncated !== 'boolean' || typeof record.capture?.stderr_truncated !== 'boolean') return 'gate_record_incomplete';
+  if (record.capture?.stdout_truncated || record.capture?.stderr_truncated) return 'gate_output_truncated';
+  if (record.redaction?.passed !== true) return 'gate_redaction_failed';
+  return null;
+}
+
 export function nodeInvocation(script, args = []) {
   return { command: process.execPath, args: [String(script), ...args.map(String)], command_role: 'node' };
 }
@@ -86,13 +104,19 @@ export async function runGateCommand(invocation, options = {}) {
     spawnError?.message || ''
   ].filter(Boolean).join('\n'), root);
   const command = publicInvocation(invocation, root);
-  const errorCode = timedOut
+  const processErrorCode = timedOut
     ? GATE_ERROR_CODES.timeout
     : spawnError?.code === 'ENOENT'
       ? GATE_ERROR_CODES.notFound
       : completed.exitStatus === 0
         ? null
         : GATE_ERROR_CODES.failed;
+  const redactionPassed = !containsSensitiveGateText(command.command)
+    && command.args.every(value => !containsSensitiveGateText(value))
+    && !containsSensitiveGateText(stdout.value) && !containsSensitiveGateText(stderr.value);
+  const errorCode = processErrorCode
+    || (stdoutCapture.truncated() || stderrCapture.truncated() ? 'gate_output_truncated' : null)
+    || (!redactionPassed ? 'gate_redaction_failed' : null);
   return {
     command: command.command,
     args: command.args,
@@ -113,10 +137,7 @@ export async function runGateCommand(invocation, options = {}) {
       stderr_truncated: stderrCapture.truncated()
     },
     redaction: {
-      passed: !containsSensitiveGateText(command.command)
-        && command.args.every((value) => !containsSensitiveGateText(value))
-        && !containsSensitiveGateText(stdout.value)
-        && !containsSensitiveGateText(stderr.value),
+      passed: redactionPassed,
       removed: command.removed + stdout.removed + stderr.removed
     }
   };

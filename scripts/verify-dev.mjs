@@ -7,6 +7,8 @@ import {
   executableInvocation,
   nodeInvocation,
   pnpmInvocation,
+  gateBudget,
+  gateRecordFailure,
   runGateCommand
 } from './lib/gate-process.mjs';
 
@@ -90,16 +92,20 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
   const historicalAdvisory = [];
   if (!cleanBlocking.length) {
     for (const command of selection.commands) {
+      const budget = gateBudget('development', Date.now() - started);
+      if (budget.remaining_ms <= 0) { cleanBlocking.push({ code: 'development_time_budget_exceeded' }); break; }
       process.stdout.write(`\n== dev:${command.id} ==\n`);
       const result = await (dependencies.runGateCommand || runGateCommand)(command.invocation, {
         cwd: root,
         workspaceRoot: root,
         cwdRole: 'repository-root',
-        timeoutMs: command.timeoutMs,
+        timeoutMs: Math.min(command.timeoutMs, budget.remaining_ms),
         maxCaptureBytes: 16 * 1024 * 1024,
         env: command.env
       });
       const layered = command.layered ? parseLayeredResult(result.output.stdout) : null;
+      const policyFailure = gateRecordFailure(result);
+      if (policyFailure) { result.ok = false; result.error_code = policyFailure; }
       if (command.layered && result.ok && !layered) {
         result.ok = false;
         result.error_code = 'gate_command_failed';
@@ -117,6 +123,8 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
       }
     }
   }
+  const budget = gateBudget('development', Date.now() - started);
+  if (budget.exceeded && !cleanBlocking.some(failure => failure.code === 'development_time_budget_exceeded')) cleanBlocking.push({ code: 'development_time_budget_exceeded' });
   const status = cleanBlocking.length ? 'failed' : historicalAdvisory.length ? 'advisory' : 'passed';
   const receipt = {
     ...baseResult,
@@ -124,6 +132,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
     status,
     generated_at: new Date().toISOString(),
     duration_ms: Date.now() - started,
+    budget,
     clean_blocking: cleanBlocking,
     historical_advisory: historicalAdvisory,
     commands: records
@@ -133,6 +142,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
     ...baseResult,
     status,
     duration_ms: receipt.duration_ms,
+    budget,
     commands: records.map(publicRecord),
     clean_blocking: cleanBlocking,
     historical_advisory: historicalAdvisory,

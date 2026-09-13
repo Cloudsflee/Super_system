@@ -1177,3 +1177,15 @@ of rejected status. Missing mappings produce rejection, never inferred rows.
 The registered real-development-loop suite covers these cases and proves that
 its assertions reach the independent provider-Critic branch. Existing commands,
 Catalog entries and formal Evidence references remain unchanged.
+
+### 21.3 Fail-closed verification limits
+
+Owner: Platform/Testing. Phase: post-P10 D-040. The existing development and
+formal budgets are enforced as blocking acceptance conditions, including child
+timeouts bounded by remaining total time. Original process exits are retained;
+missing metadata, truncated capture, redaction failure and inconsistent
+success flags block verification. Formal pre-push disallows Evidence skipping.
+The registered Gate process and entrypoints own these checks; existing package
+commands and Catalog links remain in force. Additive tests are in the registered
+development-reliability suite; testing policy and this matrix are synchronized
+under GS-001 through GS-007. No status or immutable Evidence byte is promoted.
