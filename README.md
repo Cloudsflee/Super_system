@@ -2,10 +2,10 @@
 
 AIWS is a local, single-user workspace for AI-assisted software delivery. Version 3.0 keeps one product journey: register a project, seal a Project Brief and workflow revision, build a Context Pack, execute a two-level DAG, review immutable evidence, and create a GitHub Draft PR delivery.
 
-The target architecture is **V3-Clean**. Its normative public contract is `/api/v2`
-and its database starts from a clean baseline. The current branch still contains
-the pre-clean V6/R6 implementation as a historical fixture; the implementation
-plan and capability matrix are the authority for what has actually been restored.
+The target architecture is **V3-Clean**. Its normative public contract is `/api/v2`,
+and the active runtime is phase 10 with schema `user_version=9`. The current branch
+still contains the pre-clean V6/R6 implementation as a historical fixture; the
+implementation plan and capability matrix are the authority for the active surface.
 
 ## Runtime
 
@@ -15,17 +15,17 @@ The target production topology has two long-running services and one temporary w
 - `runner-broker`: the only service with Docker CLI and `/var/run/docker.sock`.
 - `codex-runner`: a short-lived container created from a pinned image digest.
 
-Broker, Runner, external provider, and browser journeys remain characterization
-fixtures during P1. Their implementation and release claims begin in P2-P9 as
-listed in the development plan.
+Broker, Runner, external providers, Parser, Web, and browser journeys are first-class
+V3-Clean capabilities. Historical V1-V6 behavior remains available only through
+explicit fixture commands.
 
 The eventual clean deployment is published only at `http://127.0.0.1:4317`. The
 Broker is reachable only on the internal Compose network. V3-Clean uses a
 `v3-clean` database/CAS volume; historical V2.3 and pre-clean V3 volumes are
 read-only importer inputs and are forbidden as runtime write volumes.
 
-The P1 clean platform is the default API entrypoint and can be started without
-the historical adapters:
+The clean runtime is the default API entrypoint and can be started without the
+historical adapters:
 
 ```powershell
 corepack pnpm start
@@ -33,16 +33,16 @@ corepack pnpm start
 
 `corepack pnpm start:clean` is an explicit alias for the same clean entrypoint.
 
-It creates `001-clean-baseline` (`PRAGMA user_version = 1`), exposes `/livez`,
-`/readyz`, and the operation/replay routes under `/api/v2`, and keeps a local
-CAS and receipt volume beside the database.
+It applies the forward-only clean migrations through `009-final-business-parity-governance`
+(`PRAGMA user_version = 9`), exposes `/livez`, `/readyz`, and the operation/replay
+routes under `/api/v2`, and keeps a local CAS and receipt volume beside the database.
 
-## P1 Start
+## Local development
 
 ```powershell
 corepack pnpm install --frozen-lockfile
-corepack pnpm verify
-corepack pnpm start
+corepack pnpm verify:dev
+corepack pnpm start:clean
 ```
 
 From another shell, probe the clean process:
@@ -52,27 +52,25 @@ Invoke-RestMethod http://127.0.0.1:4317/livez
 Invoke-RestMethod http://127.0.0.1:4317/readyz
 ```
 
-During P1, local source development starts the clean API only; Broker and Web
-remain later-phase fixtures:
+Local source development starts the clean API and serves the built Web surface:
 
 ```powershell
 corepack pnpm dev
 ```
 
-The pre-clean demonstration seeder is retained only for explicit historical
-fixture runs; clean project creation enters in P3:
+Historical demonstrations remain explicit fixtures and never become startup
+inputs:
 
 ```powershell
 corepack pnpm fixture:seed-demo
 ```
 
-## Deferred Fixtures
+## Historical fixtures
 
-The checked-in Web, Broker, MCP stdio, Compose, deployment, importer-adjacent,
-and release tooling are inputs to P2-P9. Commands that can execute the old
-runtime are registered under `fixture:legacy:*`; their output characterizes
-historical behavior and is not a clean release receipt. P1 has no active
-build/rehearse/promote command.
+The checked-in historical runtime and characterization tooling remain available
+under `fixture:legacy:*` commands. Their output is diagnostic historical behavior
+and never a V3-Clean release receipt. Startup uses only the clean schema family;
+historical databases and volumes are offline importer inputs.
 
 ## API
 
@@ -115,13 +113,14 @@ clean volume before one-time cutover. Credentials import as metadata with
 | `pnpm check` | syntax, TypeScript, runtime ownership, script count |
 | `pnpm test` | DAG, SQLite, immutability, paths, Broker contracts |
 | `pnpm test:p1` | V3-Clean baseline, operation/event/CAS/API v2 probes |
-| `pnpm audit:p1` | all-path P1/future-fixture classification, active docs, final Evidence and rollback freshness |
-| `pnpm scan:clean` | clean dependency boundary, ownership, registry parity and global P1 audit |
-| `pnpm test:integration` | P1 integration plus historical API/Broker/MCP characterization |
-| `pnpm test:e2e` | historical Web journey characterization; no P1 Web claim |
-| `pnpm test:security` | P1 security plus deferred Compose/Broker/provider characterization |
-| `pnpm test:release` | historical release receipt and deferred deployment characterization |
-| `pnpm verify` | P1 gates plus explicitly classified historical regression gates |
+| `pnpm audit:p1` | all-path classification, ownership, active docs, Evidence and rollback freshness |
+| `pnpm scan:clean` | clean dependency boundary, ownership and registry parity |
+| `pnpm test:integration` | Clean integration plus explicit historical characterization |
+| `pnpm test:e2e` | Clean Web journey across the supported viewports |
+| `pnpm test:security` | Clean security plus explicit historical characterization |
+| `pnpm test:release` | release receipt and temporary deployment boundary checks |
+| `pnpm verify:dev` | bounded incremental checks for changed paths |
+| `pnpm verify` | formal P10 verification and release/rollback gates |
 
 Recovery planning and impact are executable before the release gates:
 
@@ -134,9 +133,9 @@ corepack pnpm recovery:impact --audit
 
 The commands validate `feature-catalog.json` and write metadata receipts below `.ai-workspace/recovery` without touching the formal `4317` service.
 
-Clean deployment build, rehearsal, promotion, temporary-volume import, and
-actual deployment rollback enter in P8-P9. Existing pre-clean scripts and
-receipts remain read-only fixtures until those phase gates replace them.
+Release probes use temporary volumes, dynamic loopback origins and isolated
+rollback. Production cutover and production-volume mutation remain outside the
+development workflow.
 
 ## Documentation
 
