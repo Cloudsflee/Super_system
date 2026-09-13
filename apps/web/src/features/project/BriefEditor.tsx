@@ -25,11 +25,11 @@ export function BriefEditor({ brief, projectRevision, busy, online, intakeReady,
     setDirty(false); setQueued(false); onDirty(false);
   };
   const move = (index: number, direction: number) => { const acceptance = [...draft.acceptance]; [acceptance[index], acceptance[index + direction]] = [acceptance[index + direction], acceptance[index]]; edit({ ...draft, acceptance }); };
-  const valid = Boolean(draft.objective.trim() && draft.acceptance.length && draft.acceptance.every(item => item.trim()));
-  const reason = !online ? '恢复连接后可用' : !intakeReady ? '请先完成来源接入' : dirty || queued ? '请先保存修订并完成同步' : !revision || !valid ? '确认需要已保存的目标和至少一条非空验收标准' : '';
+  const valid = Boolean(draft.objective.trim() && draft.acceptance.every(item => item.trim()));
+  const reason = !online ? '恢复连接后可用' : !intakeReady ? '请先完成来源接入' : dirty || queued ? '请先保存修订并完成同步' : !revision || !valid || !draft.acceptance.length ? '确认需要已保存的目标和至少一条非空验收标准' : '';
   return <div className="brief-editor">
     <fieldset disabled={busy}><legend className="sr-only">编辑 Brief</legend>
-      <label><span>目标</span><textarea required rows={3} value={draft.objective} aria-invalid={!draft.objective.trim()} onChange={event => edit({ ...draft, objective: event.target.value })} /></label>
+      <label><span>目标</span><textarea aria-label="目标" required rows={3} value={draft.objective} aria-invalid={!draft.objective.trim()} onChange={event => edit({ ...draft, objective: event.target.value })} /></label>
       {!draft.objective.trim() && <p className="field-error">目标不能为空</p>}
       <fieldset><legend>验收标准</legend>
         {draft.acceptance.map((item, index) => <div key={index} className="brief-criterion"><label><span>验收标准 {index + 1}</span><textarea aria-label={`验收标准 ${index + 1}`} rows={2} value={item} required aria-invalid={!item.trim()} onChange={event => edit({ ...draft, acceptance: draft.acceptance.map((value, ordinal) => ordinal === index ? event.target.value : value) })} />{!item.trim() && <small className="field-error">条目不能为空</small>}</label><div className="row-actions"><button type="button" className="button" aria-label={`上移验收标准 ${index + 1}`} disabled={index === 0} onClick={() => move(index, -1)}>上移</button><button type="button" className="button" aria-label={`下移验收标准 ${index + 1}`} disabled={index === draft.acceptance.length - 1} onClick={() => move(index, 1)}>下移</button><button type="button" className="button" aria-label={`删除验收标准 ${index + 1}`} onClick={() => edit({ ...draft, acceptance: draft.acceptance.filter((_, ordinal) => ordinal !== index) })}>删除</button></div></div>)}

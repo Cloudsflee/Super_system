@@ -29,6 +29,8 @@ import { TerminalPage } from './features/terminal';
 import { FinalBusinessParityPage } from './features/p10';
 import type { Project } from './types';
 import type { WorkspacePageProps, WorkspaceRoute } from './workspace';
+import { projectDeepLink } from './workspace';
+export { projectDeepLink } from './workspace';
 import { clearWorkspaceScope, queryClient, workspaceQueryKey } from './query';
 import { ProjectEventSynchronizer, type EventSyncState } from './events';
 import { OutboxStatus } from './offline/OutboxStatus';
@@ -83,7 +85,7 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
 };
 
 const ROUTES = new Set<WorkspaceRoute>(Object.keys(PAGES) as WorkspaceRoute[]);
-const PROJECT_ROUTES = new Set<WorkspaceRoute>(['onboarding', 'brief', 'repository', 'workflow', 'context', 'governance']);
+const PROJECT_ROUTES = new Set<WorkspaceRoute>(['onboarding', 'brief', 'repository', 'workflow', 'context', 'governance', 'execution', 'assist', 'outcome', 'delivery']);
 const SETTINGS_ROUTES = new Set<WorkspaceRoute>(['settings', 'identity', 'exchange', 'gateway', 'runner', 'connections']);
 
 export function routeFromPath(pathname: string): WorkspaceRoute {
@@ -97,10 +99,6 @@ export function routeFromPath(pathname: string): WorkspaceRoute {
   };
   const route = (aliases[projectView] || aliases[clean] || aliases[clean.split('/', 1)[0]] || projectView || clean) as WorkspaceRoute;
   return ROUTES.has(route) ? route : 'projects';
-}
-
-export function projectDeepLink(projectId: string, view: WorkspaceRoute = 'workflow'): string {
-  return `#/projects/${encodeURIComponent(projectId)}/${view}`;
 }
 
 function navIsActive(nav: WorkspaceRoute, page: WorkspaceRoute) {
@@ -273,10 +271,10 @@ function WorkspaceLayout() {
     else if (!event.shiftKey && (document.activeElement === last || !drawerRef.current.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
   };
 
-  const navigateProject = useCallback((id: string, next: WorkspaceRoute) => {
+  const navigateProject = useCallback((id: string, next: WorkspaceRoute, query?: Record<string, string>) => {
     const project = projects.find((item) => item.id === id);
     const target = next === 'workflow' && project?.status === 'draft' ? 'onboarding' : next;
-    routerNavigate(`/projects/${encodeURIComponent(id)}/${target}`);
+    routerNavigate(projectDeepLink(id, target, query).slice(1));
     setNotice(null);
     closeNavigation();
   }, [closeNavigation, projects, routerNavigate]);
