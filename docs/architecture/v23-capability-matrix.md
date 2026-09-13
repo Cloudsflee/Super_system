@@ -561,3 +561,8 @@ Provider boundary hardening (Workflow owner, post-P10 D-040) retains
 `tests/p10/real-development-loop.test.mjs` reference. Complete JSON, bounded
 repair, nonempty typed task contracts and zeroed leases are additive behavior
 checks, not a status promotion or a new Evidence reference.
+
+The same generation row also binds the separately reviewed Critic correction:
+complete task/check coverage, rejection of malformed/duplicate/stale/orphan
+rows, and provider receipt immutability. Regression owner: Workflow/Critic;
+test link remains `tests/p10/real-development-loop.test.mjs`; status is frozen.

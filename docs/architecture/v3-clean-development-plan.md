@@ -1167,3 +1167,13 @@ the existing command inventory and Catalog status are unchanged. GS-001 through
 GS-007 review reuses existing Catalog test/Evidence references and keeps new
 diagnostics outside formal Evidence. Protected Critic and Gate changes are
 reviewed and committed separately from this generator correction.
+
+### 21.2 Critic corrective gate-sync review
+
+Owner: Workflow/Critic. Phase: post-P10 D-040. GS-001 through GS-007 require
+bidirectional requirement/task and task/check receipts, strict row types,
+duplicate/orphan/stale rejection, immutable provider mappings and preservation
+of rejected status. Missing mappings produce rejection, never inferred rows.
+The registered real-development-loop suite covers these cases and proves that
+its assertions reach the independent provider-Critic branch. Existing commands,
+Catalog entries and formal Evidence references remain unchanged.

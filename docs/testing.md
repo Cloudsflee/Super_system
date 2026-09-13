@@ -973,3 +973,12 @@ changing prior assertions. Commands remain `pnpm test:p10`,
 `pnpm test:development`, `pnpm check`, `pnpm verify:dev` and `pnpm verify`.
 Catalog path ownership and status stay unchanged; local command records are
 diagnostic only, append-only, and never substitute for immutable P10 Evidence.
+
+Critic hardening (Workflow/Critic owner, separate corrective gate-sync review)
+checks every expected task/check pair and every Brief requirement. Duplicate,
+stale, orphan and malformed rows fail as `critic_failed`; absent mappings reject
+even when the provider reports passed. Provider coverage is copied before
+deriving missing entries. A provider rejection is never upgraded. Tests assert
+that a real provider-Critic call occurred, avoiding structural-rejection false
+positives. The existing JSON-repair fixture now explicitly passes its original
+Brief to the Critic; its success assertion is unchanged.

@@ -105,6 +105,45 @@ test('hard limits: provider protocol errors retain stable codes and clear the le
 });
 
 // Owner: Workflow/Repository/Runner/Evidence. Phase: post-P10; explicit provider fixtures.
+
+test('hard limits: provider rejected stays rejected with complete coverage and no findings', async () => {
+  const receipt = hardAssessment('rejected'); const before = structuredClone(receipt);
+  assert.equal((await hardCritic(receipt)).status, 'rejected');
+  assert.deepEqual(receipt, before);
+});
+test('hard limits: every task check requires its own immutable coverage row', async () => {
+  const receipt = hardAssessment(); receipt.coverage.task_to_acceptance.pop();
+  const before = structuredClone(receipt);
+  const result = await hardCritic(receipt);
+  assert.equal(result.status, 'rejected');
+  assert.ok(result.coverage.missing.length > 0);
+  assert.deepEqual(receipt, before, 'provider receipt must not be edited');
+});
+test('hard limits: complete coverage passes and critical issues still reject', async () => {
+  assert.equal((await hardCritic(hardAssessment())).status, 'passed');
+  const receipt = hardAssessment(); receipt.issues.push({ code: 'fixture_issue', severity: 'critical' });
+  assert.equal((await hardCritic(receipt)).status, 'rejected');
+});
+test('hard limits: malformed, duplicate, stale and orphan Critic rows fail closed', async () => {
+  const mutations = [
+    r => r.coverage.task_to_acceptance.push({ task: 'write', check: 'node_test' }),
+    r => r.coverage.task_to_acceptance.push({ task: 'orphan', check: 'node_test' }),
+    r => r.coverage.task_to_acceptance.push({ task: 'write', check: 'stale_check' }),
+    r => r.coverage.requirement_to_task.push({ requirement: 'result', task: 'write' }),
+    r => r.coverage.requirement_to_task.push({ requirement: 'obsolete', task: 'write' }),
+    r => r.coverage.requirement_to_task.push({ requirement: 'result', task: 'orphan' }),
+    r => r.coverage.task_to_acceptance.push(null),
+    r => r.coverage.missing.push({}),
+    r => r.issues.push({ code: 'fixture_issue', severity: 'unknown' }),
+    r => r.issues.push(null)
+  ];
+  for (const mutate of mutations) {
+    const receipt = hardAssessment(); mutate(receipt);
+    const before = structuredClone(receipt);
+    await assert.rejects(hardCritic(receipt), { code: 'critic_failed', status: 502 });
+    assert.deepEqual(receipt, before);
+  }
+});
 const task = (extra = {}) => ({ id:'write', mode:'write', argv:['node','-e',"require('node:fs').writeFileSync('result.txt','verified\\n')"], cwd_role:'task', input_paths:['README.md'], output_paths:['result.txt'], check_ids:['node_test'], capabilities:['network:none'], resource_profile:'light', deadline_seconds:30, ...extra });
 const candidate = (value = task()) => ({ nodes:[{ id:value.id, kind:'task', config:{execution:value}, contract:{acceptance:['result']} }] });
 const events = (content) => ({ events:[{sequence:1,method:'turn/started',params:{}},{sequence:2,method:'item/completed',params:{role:'assistant',content}},{sequence:3,method:'turn/completed',params:{}}] });
@@ -193,7 +232,7 @@ test('provider JSON gets one repair and zeroizes its lease after a separate crit
   const generator=new ProcessWorkflowGenerator({adapter,credentialResolver:resolver});
   const generated=await generator.generate({brief:{acceptance:['result']}}); assert.equal(calls,2);assert.deepEqual(generated.candidate,candidate());assert.equal(buffers[0].every(x=>x===0),true);
   adapter.startTurn=async()=>events(JSON.stringify({status:'passed',issues:[],coverage:{requirement_to_task:[{requirement:'result',task:'write'}],task_to_acceptance:[{task:'write',check:'node_test'}],missing:[]}}));
-  const critic=new ProcessWorkflowCritic({generator}); const assessed=await critic.evaluate({candidate:generated.candidate});
+  const critic=new ProcessWorkflowCritic({generator}); const assessed=await critic.evaluate({candidate:generated.candidate,brief:{acceptance:['result']}});
   assert.equal(assessed.provider,'process-app-server-critic');assert.equal(threads,2); assert.equal(buffers[1].every(x=>x===0),true);
   assert.match(assessed.coverage_sha256,/^[a-f0-9]{64}$/);
 });

@@ -111,15 +111,39 @@ export class ProcessWorkflowCritic {
     if (!tasks.length || missingStructural.length) return { status: 'rejected', issues: [{ code: 'critic_coverage_incomplete', severity: 'error' }], coverage: { missing: missingStructural }, provider: 'server-structural-check' };
     if (!this.generator) throw new PlatformError('critic_failed', 'independent provider critic is required', {}, 409);
     const result = await this.generator.generate({ ...input, purpose: 'critic' });
-    const assessed = result.candidate;
-    if (!['passed','rejected'].includes(assessed.status) || !Array.isArray(assessed.issues) || !Array.isArray(assessed.coverage?.requirement_to_task) || !Array.isArray(assessed.coverage?.task_to_acceptance) || !Array.isArray(assessed.coverage?.missing)) throw new PlatformError('critic_failed', 'critic coverage receipt is incomplete', {}, 502);
+    const assessed = result?.candidate;
+    const text = value => typeof value === 'string' && value.trim().length > 0;
+    const invalidReceipt = () => { throw new PlatformError('critic_failed', 'critic coverage receipt is invalid or incomplete', {}, 502); };
+    if (!assessed || !['passed','rejected'].includes(assessed.status) || !Array.isArray(assessed.issues)
+      || !Array.isArray(assessed.coverage?.requirement_to_task) || !Array.isArray(assessed.coverage?.task_to_acceptance)
+      || !Array.isArray(assessed.coverage?.missing)) invalidReceipt();
+    if (assessed.issues.some(issue => !issue || !text(issue.code) || !['info', 'warning', 'error', 'critical'].includes(issue.severity))
+      || assessed.coverage.missing.some(value => !text(value))) invalidReceipt();
     const taskIds = new Set(tasks.map((task) => task.id));
     const requirements = (input.brief?.acceptance || []).map((value) => typeof value === 'string' ? value : value.id);
-    const coverageMissing = requirements.filter((requirement) => !assessed.coverage.requirement_to_task.some((row) => row.requirement === requirement && taskIds.has(row.task)));
-    coverageMissing.push(...tasks.filter((task) => !assessed.coverage.task_to_acceptance.some((row) => row.task === task.id && task.check_ids.includes(row.check))).map((task) => task.id));
-    assessed.coverage.missing = [...new Set([...assessed.coverage.missing, ...coverageMissing])];
-    const status = assessed.coverage.missing.length || assessed.issues.some((issue) => ['error','critical'].includes(issue.severity)) ? 'rejected' : assessed.status;
-    return { ...assessed, status, provider: 'process-app-server-critic', candidate_sha256: sha256Hex(canonicalJson(input.candidate)), coverage_sha256: sha256Hex(canonicalJson(assessed.coverage)), provider_receipt: result.provider_receipt };
+    if (requirements.some(value => !text(value)) || taskIds.size !== tasks.length) invalidReceipt();
+    const requirementIds = new Set(requirements);
+    const expectedChecks = new Set(tasks.flatMap(task => task.check_ids.map(check => canonicalJson([task.id, check]))));
+    const requirementPairs = new Set(); const coveredRequirements = new Set(); const coveredChecks = new Set();
+    for (const row of assessed.coverage.requirement_to_task) {
+      if (!row || !text(row.requirement) || !text(row.task) || !requirementIds.has(row.requirement) || !taskIds.has(row.task)) invalidReceipt();
+      const pair = canonicalJson([row.requirement, row.task]);
+      if (requirementPairs.has(pair)) invalidReceipt();
+      requirementPairs.add(pair); coveredRequirements.add(row.requirement);
+    }
+    for (const row of assessed.coverage.task_to_acceptance) {
+      if (!row || !text(row.task) || !text(row.check)) invalidReceipt();
+      const pair = canonicalJson([row.task, row.check]);
+      if (!expectedChecks.has(pair) || coveredChecks.has(pair)) invalidReceipt();
+      coveredChecks.add(pair);
+    }
+    const coverageMissing = requirements.filter(requirement => !coveredRequirements.has(requirement));
+    coverageMissing.push(...tasks.filter(task => task.check_ids.some(check => !coveredChecks.has(canonicalJson([task.id, check])))).map(task => task.id));
+    // Derived missing entries may only reject. Never fill provider mappings or
+    // mutate the original provider receipt, and never upgrade a rejection.
+    const coverage = { ...structuredClone(assessed.coverage), missing: [...new Set([...assessed.coverage.missing, ...coverageMissing])] };
+    const status = coverage.missing.length || assessed.issues.some((issue) => ['error','critical'].includes(issue.severity)) ? 'rejected' : assessed.status;
+    return { ...assessed, coverage, status, provider: 'process-app-server-critic', candidate_sha256: sha256Hex(canonicalJson(input.candidate)), coverage_sha256: sha256Hex(canonicalJson(coverage)), provider_receipt: result.provider_receipt };
   }
 }
 
