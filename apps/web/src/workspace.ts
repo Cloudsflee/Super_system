@@ -9,12 +9,7 @@ export interface WorkspacePageProps {
   refreshProjects: () => Promise<void>;
   notify: (text: string, tone?: 'ok' | 'error') => void;
   navigate: (page: WorkspaceRoute) => void;
-  navigateProject?: (projectId: string, page: WorkspaceRoute, query?: Record<string, string>) => void;
+  navigateProject?: (projectId: string, page: WorkspaceRoute) => void;
   setupReady: boolean;
   refreshSetup: () => Promise<void>;
-}
-
-export function projectDeepLink(projectId: string, view: WorkspaceRoute = 'workflow', query?: Record<string, string>): string {
-  const search = new URLSearchParams(query).toString();
-  return `#/projects/${encodeURIComponent(projectId)}/${view}${search ? `?${search}` : ''}`;
 }

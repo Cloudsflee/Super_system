@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { App } from '../App';
+import { App, projectDeepLink, routeFromPath } from '../App';
 import { systemOnboardingKey } from '../features/setup';
 
 function envelope(data: unknown) {
@@ -9,6 +9,13 @@ function envelope(data: unknown) {
 
 beforeEach(() => {
   localStorage.clear(); sessionStorage.clear(); location.hash = '#/projects';
+});
+
+it('encodes execution deep links without changing route selection', () => {
+  const link = projectDeepLink('project 1', 'execution', { execution_id: 'execution/2' });
+  expect(link).toBe('#/projects/project%201/execution?execution_id=execution%2F2');
+  expect(routeFromPath(link.slice(1))).toBe('execution');
+  expect(routeFromPath('/projects/project_1/workflow?execution_id=ignored')).toBe('workflow');
 });
 
 function emptyShellFetch() {

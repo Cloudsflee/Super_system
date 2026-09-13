@@ -495,6 +495,7 @@ try {
     }
   }
 
+  const workbench = await workflowWorkbenchJourney(browser, await context.storageState(), project.id, providerProfile.body.data.profile.id);
   const legacyRequests = requests.filter((url) => /\/api\/v1(?:\/|$)/.test(url));
   if (legacyRequests.length) throw new Error(`active Clean Web emitted /api/v1: ${legacyRequests.join(', ')}`);
   assert(browserErrors.length === 0, `browser errors:${JSON.stringify(browserErrors)} http:${JSON.stringify(httpErrors)}`);
@@ -506,7 +507,7 @@ try {
     routes: ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer'], business_groups: ['identity-acl','provider-settings','project-brief','workflow','repository','context','assist','files-approval','terminal-bridge','runner-execution','evidence','parser','quality','outcome','mcp-exchange-gateway','delivery','operations-recovery','offline-pwa','web-complete-experience'], request_count: requests.length,
     legacy_api_v1_requests: legacyRequests, browser_errors: browserErrors, http_errors: httpErrors,
     onboarding: { system: ['owner-team','codex-probe','github-skip','summary'], project: ['intake','brief-template','workflow-generation','critic','proposal-apply','brief-confirm'], secret_storage: 'passed' },
-    drawer: drawerReceipts, accessibility: accessibilityReceipts, onboarding_layouts: onboardingLayoutReceipts,
+    drawer: drawerReceipts, accessibility: accessibilityReceipts, onboarding_layouts: onboardingLayoutReceipts, workbench,
     layouts: layoutReceipts, context_pack_hash: pack.body.data.pack.pack_hash,
     runner_profile: { id: profileId, type: readyProfile.body.data.profile.runner_type, status: readyProfile.body.data.profile.status },
     p10: {
@@ -527,6 +528,132 @@ try {
   await browser.close();
   for (const child of children.reverse()) await stop(child);
   removeTree(home);
+}
+
+async function workflowWorkbenchJourney(browser, storageState, projectId, providerId) {
+  const workContext = await browser.newContext({ storageState, viewport: { width: 1440, height: 900 } });
+  const workPage = await workContext.newPage();
+  const errors = []; const writes = []; const layouts = []; const expectedErrors = [];
+  let expectConflict = false; let offlineWindow = false;
+  workPage.on('pageerror', error => errors.push(error.message));
+  workPage.on('console', message => {
+    if (message.type() !== 'error') return;
+    const text = message.text();
+    if ((expectConflict && /409/.test(text) && message.location().url.endsWith('/briefs')) || (offlineWindow && /ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED/.test(text))) expectedErrors.push(text);
+    else errors.push(text);
+  });
+  workPage.on('request', request => { requests.push(request.url()); if (request.method() === 'POST') writes.push({ path: new URL(request.url()).pathname, headers: request.headers(), body: request.postDataJSON() }); });
+  const projectApiPath = `/api/v2/projects/${projectId}`;
+  const waitWrite = (suffix, click) => {
+    const response = workPage.waitForResponse(response => new URL(response.url()).pathname.endsWith(suffix) && response.request().method() === 'POST');
+    return click().then(() => response).then(async response => { const body = await response.json(); assert(response.ok(), `workbench ${suffix}:${response.status()}:${JSON.stringify(body)}`); return body.data; });
+  };
+  try {
+    await workPage.goto(`${base}/#/projects/${projectId}/workflow`);
+    await workPage.getByRole('heading', { name: '工作流草稿', exact: true }).waitFor();
+    await workPage.getByRole('tab', { name: 'Brief', exact: true }).click();
+    await workPage.getByLabel('目标', { exact: true }).fill('Verify the complete Web Workflow workbench');
+    await workPage.getByRole('button', { name: '添加验收标准', exact: true }).click();
+    const criteria = workPage.getByRole('textbox', { name: /^验收标准 \d+$/ });
+    await criteria.last().fill('Workbench browser journey reaches an Execution terminal state');
+    assert(await workPage.getByRole('button', { name: '确认修订', exact: true }).isDisabled(), 'workbench unsaved Brief confirmation blocked');
+    await waitWrite('/briefs', () => workPage.getByRole('button', { name: '保存修订', exact: true }).click());
+    const confirmed = await waitWrite('/confirm', () => workPage.getByRole('button', { name: '确认修订', exact: true }).click());
+    assert(confirmed.brief?.confirmed_revision > 0, 'workbench Brief confirmation');
+    await workPage.getByRole('tab', { name: '工作流', exact: true }).click();
+    await workPage.getByRole('tab', { name: '节点', exact: true }).click();
+    await workPage.locator('.workflow-row').filter({ hasText: 'Deliver' }).click();
+    await workPage.getByLabel('节点标题', { exact: true }).fill('Workbench task');
+    await workPage.getByLabel('节点目标', { exact: true }).fill('Verify the Web workbench');
+    await workPage.getByLabel('检查 ID（每行一个）', { exact: true }).fill('node_test');
+    await workPage.getByLabel('验收检查（与检查 ID 一致）', { exact: true }).fill('node_test');
+    const saved = await waitWrite('/workflow-draft', () => workPage.getByRole('button', { name: '保存草稿', exact: true }).click());
+    assert(saved.workflow?.current?.graph?.nodes.some(node => node.title === 'Workbench task' && node.config.goal === 'Verify the Web workbench'), 'workbench saved structured config');
+    await workPage.waitForFunction(() => document.activeElement?.classList.contains('workbench-result'));
+    await workPage.reload();
+    await workPage.getByLabel('Provider Profile', { exact: true }).selectOption(providerId);
+    await waitWrite('/workflow-generations', () => workPage.getByRole('button', { name: '生成候选', exact: true }).click());
+    await waitWrite('/critic', () => workPage.getByRole('button', { name: '执行 Critic', exact: true }).click());
+    await workPage.getByRole('button', { name: '查看提案', exact: true }).click();
+    await workPage.getByRole('region', { name: 'Workflow 提案 JSON' }).waitFor();
+    assert(await workPage.getByText('candidate hash：', { exact: false }).count() > 0, 'workbench candidate hash');
+    await waitWrite('/apply', () => workPage.getByRole('button', { name: '应用提案', exact: true }).click());
+    for (const [name, width, height] of [['desktop', 1440, 900], ['tablet', 1024, 768], ['mobile', 390, 844]]) {
+      await workPage.setViewportSize({ width, height });
+      await workPage.getByRole('tab', { name: '节点', exact: true }).click();
+      await workPage.locator('.workflow-row').filter({ hasText: 'Deliver' }).click();
+      await workPage.waitForFunction(() => document.querySelector('.workflow-node-editor')?.disabled === false);
+      await workPage.getByLabel('节点标题', { exact: true }).focus();
+      await workPage.keyboard.press('Tab');
+      assert(await workPage.getByLabel('节点目标', { exact: true }).evaluate(element => element === document.activeElement), `workbench keyboard ${name}:${await workPage.evaluate(() => document.activeElement?.outerHTML)}`);
+      // Inspect the initial viewport, as the existing route layout checks do;
+      // keyboard focus may have scrolled content beneath the sticky topbar.
+      await workPage.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+      const layout = await inspectLayout(workPage);
+      assert(!layout.horizontal_overflow && layout.overlaps.length === 0, `workbench layout ${name}:${JSON.stringify(layout)}`);
+      await workPage.screenshot({ path: path.join(reportDir, `${name}-workflow-workbench.png`), fullPage: true });
+      layouts.push({ viewport: name, ...layout });
+    }
+    await workPage.setViewportSize({ width: 1440, height: 900 });
+    const created = await waitWrite('/executions', () => workPage.getByRole('button', { name: '创建并开始执行', exact: true }).click());
+    const id = created.execution?.id; assert(id, 'workbench Execution created');
+    await workPage.waitForURL(`**/execution?execution_id=${id}`);
+    await workPage.getByRole('heading', { name: '执行', exact: true }).waitFor();
+    await workPage.getByText('已完成', { exact: true }).first().waitFor({ timeout: 20000 });
+    for (const name of ['证据', '质量', '结果', '交付']) { await workPage.getByRole('tab', { name, exact: true }).click(); await workPage.waitForTimeout(100); }
+    // Bounded read fixtures exercise unavailable prerequisites without changing
+    // the real Provider or Runner used by the positive journey above.
+    await workPage.route('**/api/v2/profiles', route => route.fulfill({ json: { data: { profiles: [{ id: providerId, provider: 'codex', label: 'Unavailable provider', status: 'unavailable', revision: 1 }] } } }));
+    await workPage.route('**/api/v2/runners/profiles', route => route.fulfill({ json: { data: { profiles: [] } } }));
+    await workPage.goto(`${base}/#/projects/${projectId}/workflow`);
+    await workPage.getByRole('button', { name: '前往 Provider 设置', exact: true }).waitFor();
+    assert(await workPage.getByRole('button', { name: '生成候选', exact: true }).isDisabled(), 'workbench unavailable Provider blocks generation');
+    assert(await workPage.getByRole('button', { name: '创建并开始执行', exact: true }).isDisabled(), 'workbench unavailable Runner blocks launch');
+    await workPage.getByRole('button', { name: '前往 Runner 设置', exact: true }).waitFor();
+    await workPage.unroute('**/api/v2/profiles'); await workPage.unroute('**/api/v2/runners/profiles');
+    await workPage.reload();
+    await workPage.getByRole('tab', { name: 'Brief', exact: true }).click();
+    await workPage.getByLabel('目标', { exact: true }).fill('Local conflicting Brief input');
+    const serverProject = (await pageApi(projectApiPath)).body.data.project;
+    const concurrent = await pageApi(projectApiPath, { method: 'PATCH', headers: { 'Idempotency-Key': 'workbench-concurrent-project', 'X-Expected-Revision': String(serverProject.revision) }, body: { name: serverProject.name, description: 'Concurrent revision test', metadata: {} } });
+    assert(concurrent.status === 200, 'workbench concurrent project revision');
+    expectConflict = true;
+    const conflictResponse = workPage.waitForResponse(response => new URL(response.url()).pathname === `${projectApiPath}/briefs` && response.request().method() === 'POST');
+    await workPage.getByRole('button', { name: '保存修订', exact: true }).click();
+    const conflict = await conflictResponse; const conflictBody = await conflict.json();
+    assert(conflict.status() === 409 && conflictBody.error?.code === 'revision_conflict', 'workbench literal revision conflict');
+    await workPage.getByRole('button', { name: '重新加载服务器版本', exact: true }).click();
+    await workPage.getByText(`项目修订 ${concurrent.body.data.project.revision}`, { exact: true }).waitFor();
+    assert(await workPage.getByLabel('目标', { exact: true }).inputValue() === 'Local conflicting Brief input', 'workbench conflict preserves local input');
+    await workPage.getByRole('button', { name: '放弃本地修改', exact: true }).click();
+    expectConflict = false;
+    offlineWindow = true; await workContext.setOffline(true);
+    await workPage.getByLabel('目标', { exact: true }).fill('Offline workbench Brief');
+    const beforeOfflineWrites = writes.length;
+    await workPage.getByRole('button', { name: '保存修订', exact: true }).click();
+    await workPage.getByText('已离线保存，等待同步', { exact: true }).waitFor();
+    assert(writes.length === beforeOfflineWrites, 'workbench offline save makes no network mutation');
+    assert(await workPage.getByRole('button', { name: '确认修订', exact: true }).isDisabled(), 'workbench offline confirmation blocked');
+    await workPage.getByRole('tab', { name: '工作流', exact: true }).click();
+    assert(await workPage.getByRole('button', { name: '生成候选', exact: true }).isDisabled(), 'workbench offline generation blocked');
+    assert(await workPage.getByRole('button', { name: '创建并开始执行', exact: true }).isDisabled(), 'workbench offline launch blocked');
+    await workContext.setOffline(false);
+    await workPage.getByRole('button', { name: /离线队列：1 项待发送/ }).click();
+    await waitWrite('/briefs', () => workPage.getByRole('button', { name: '发送', exact: true }).click());
+    await workPage.getByText('队列为空', { exact: true }).waitFor();
+    offlineWindow = false;
+    const creation = writes.findIndex(row => row.path === `${projectApiPath}/executions`);
+    assert(creation >= 0 && writes[creation + 1]?.path === `/api/v2/executions/${id}/start`, 'workbench create/start sequence');
+    assert(writes[creation + 1].headers['x-expected-revision'] === String(created.execution.revision), 'workbench start revision');
+    assert(writes.every(row => row.path.startsWith('/api/v2/') && row.headers['idempotency-key'] && row.headers['x-expected-revision'] != null), 'workbench mutation headers');
+    assert(errors.length === 0, `workbench browser errors:${JSON.stringify(errors)}`);
+    return { status: 'passed', execution_id: id, steps: ['brief-save', 'brief-confirm', 'node-edit', 'workflow-save', 'generation', 'critic', 'proposal-view', 'proposal-apply', 'execution-create', 'execution-start', 'terminal', 'evidence', 'quality', 'outcome', 'delivery'], layouts, mutation_headers: true, exact_execution_link: true, unavailable_provider: true, unavailable_runner: true, revision_conflict: conflictBody.error.code, offline_queue_replayed: true, expected_errors: expectedErrors };
+  } catch (error) {
+    await workPage.screenshot({ path: path.join(reportDir, 'workbench-failure.png'), fullPage: true }).catch(() => {});
+    fs.writeFileSync(path.join(reportDir, 'workbench-failure.txt'), await workPage.locator('body').innerText());
+    process.stderr.write(`Workbench failed at ${workPage.url()}:\n${await workPage.locator('body').innerText()}\n`);
+    throw error;
+  } finally { await workContext.close(); }
 }
 
 function start(command, args, env = {}, cwd = root) {
