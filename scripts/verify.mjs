@@ -65,10 +65,10 @@ export function createFormalVerificationPlan({ skipP1Evidence = false } = {}) {
     )),
     node('p10-parser-probe', 'scripts/v3-clean-p10-parser-probe.mjs', ['node scripts/v3-clean-p10-parser-probe.mjs'], { owner: 'parser' }),
     node('p10-github-deletion-probe', 'scripts/v3-clean-p10-github-deletion-probe.mjs', ['node scripts/v3-clean-p10-github-deletion-probe.mjs'], { owner: 'repository' }),
+    pnpm('integration', ['test:integration'], ['pnpm test:integration:clean', 'pnpm fixture:legacy:integration', 'pnpm test:integration'], { layered: true, owner: 'testing', parallelGroup: 'integration-security' }),
+    pnpm('security', ['test:security'], ['pnpm test:security:clean', 'pnpm fixture:legacy:security', 'pnpm test:security'], { layered: true, owner: 'testing', parallelGroup: 'integration-security', env: { AIWS_SECURITY_DEFER_DOCKER: '1' } }),
     pnpm('web-test', ['--filter', '@aiws/web', 'test'], ['pnpm --filter @aiws/web test'], { owner: 'frontend', parallelGroup: 'local-validation' }),
     pnpm('unit-test', ['test'], ['pnpm test'], { env: { AIWS_TEST_UNIT_ONLY: '1' }, owner: 'testing', parallelGroup: 'local-validation' }),
-    pnpm('integration', ['test:integration'], ['pnpm test:integration:clean', 'pnpm fixture:legacy:integration', 'pnpm test:integration'], { layered: true, owner: 'testing', parallelGroup: 'local-validation' }),
-    pnpm('security', ['test:security'], ['pnpm test:security:clean', 'pnpm fixture:legacy:security', 'pnpm test:security'], { layered: true, owner: 'testing', parallelGroup: 'local-validation', env: { AIWS_SECURITY_DEFER_DOCKER: '1' } }),
     pnpm('build', ['build'], ['pnpm build', 'pnpm --filter @aiws/web typecheck'], { owner: 'frontend', parallelGroup: 'local-validation' }),
     pnpm('e2e', ['test:e2e'], ['pnpm test:e2e'], { timeoutMs: 1_800_000, owner: 'frontend' }),
     node('p10-release-probe', 'scripts/v3-clean-p10-release-probe.mjs', ['node scripts/v3-clean-p10-release-probe.mjs'], { timeoutMs: 1_800_000, owner: 'deployment' }),
@@ -100,14 +100,15 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
   // Start the independent release probe once at process start so cold Docker
   // work overlaps deterministic gates; its receipt remains at plan position.
   const releaseSpec = plan.find((entry) => entry.id === 'p10-release-probe');
-  const releasePromise = !blockingFailure && releaseSpec
-    ? executeSpecification(releaseSpec, root, true, gateBudget('formal', 0).limit_ms)
-    : null;
+  let releasePromise = null;
   let releaseRecorded = false;
   for (let index = 0; !blockingFailure && index < plan.length;) {
     const budget = gateBudget('formal', Date.now() - started);
     if (budget.remaining_ms <= 0) { blockingFailure = 'formal_time_budget_exceeded'; break; }
     const specification = plan[index];
+    if (specification.id === 'web-test' && !releasePromise && !blockingFailure && releaseSpec) {
+      releasePromise = executeSpecification(releaseSpec, root, true, gateBudget('formal', Date.now() - started).remaining_ms);
+    }
     const group = specification.parallel_group
       ? plan.slice(index).filter((entry) => entry.parallel_group === specification.parallel_group)
       : [specification];
