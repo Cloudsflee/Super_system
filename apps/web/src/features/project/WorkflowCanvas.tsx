@@ -21,7 +21,7 @@ export function normalizeWorkflowNodes(graph: WorkflowGraph | null | undefined):
       title: String(item.title || item.name || item.label || id),
       kind: String(item.kind || item.type || fallbackKind),
       ...(parentId ? { parent_id: parentId } : item.parent_id ? { parent_id: String(item.parent_id) } : {}),
-      deps: Array.isArray(item.deps) ? item.deps.map(String) : Array.isArray(item.dependencies) ? item.dependencies.map(String) : []
+      deps: Array.isArray(item.depends_on) ? item.depends_on.map(String) : Array.isArray(item.deps) ? item.deps.map(String) : Array.isArray(item.dependencies) ? item.dependencies.map(String) : []
     };
     rows.push(node);
     if (Array.isArray(item.tasks)) for (const task of item.tasks) push(task, 'task', id);
@@ -38,22 +38,23 @@ function graphEdges(nodes: WorkflowNode[]): Edge[] {
   return nodes.flatMap((node) => (node.deps || []).filter((dep) => known.has(dep)).map((dep) => ({ id: `${dep}->${node.id}`, source: dep, target: node.id, animated: false })));
 }
 
-export function WorkflowCanvas({ graph, density = 'comfortable' }: { graph: WorkflowGraph | null | undefined; density?: 'compact' | 'comfortable' }) {
+export function WorkflowCanvas({ graph, density = 'comfortable', selectedId, onSelect }: { graph: WorkflowGraph | null | undefined; density?: 'compact' | 'comfortable'; selectedId?: string; onSelect?: (id: string) => void }) {
   const rows = useMemo(() => normalizeWorkflowNodes(graph), [graph]);
   const nodes = useMemo<Node[]>(() => rows.map((row, index) => ({
     id: row.id,
     position: { x: Number(row.position?.x || (index % 3) * 250), y: Number(row.position?.y || Math.floor(index / 3) * (density === 'compact' ? 86 : 120)) },
     data: { label: <span><strong>{row.title}</strong><small>{nodeKindLabel(row.kind)}{row.parent_id ? ` · ${row.parent_id}` : ''}</small></span> },
-    className: row.kind === 'workstream' ? 'workflow-flow-node workstream' : 'workflow-flow-node'
-  })), [density, rows]);
+    className: row.kind === 'workstream' ? 'workflow-flow-node workstream' : 'workflow-flow-node',
+    selected: row.id === selectedId
+  })), [density, rows, selectedId]);
   const edges = useMemo(() => graphEdges(rows), [rows]);
   if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') {
-    return <div className={`workflow-canvas-fallback ${density}`} data-testid="workflow-canvas" role="img" aria-label="Workflow 画布"><div className="workflow-canvas-grid">{rows.map((row) => <div className="workflow-flow-node" key={row.id}><strong>{row.title}</strong><small>{nodeKindLabel(row.kind)}</small></div>)}{!rows.length && <span className="list-empty">暂无工作流节点</span>}</div></div>;
+    return <div className={`workflow-canvas-fallback ${density}`} data-testid="workflow-canvas" role="group" aria-label="Workflow 画布"><div className="workflow-canvas-grid">{rows.map((row) => <button type="button" aria-pressed={row.id === selectedId} onClick={() => onSelect?.(row.id)} className="workflow-flow-node" key={row.id}><strong>{row.title}</strong><small>{nodeKindLabel(row.kind)}</small></button>)}{!rows.length && <span className="list-empty">暂无工作流节点</span>}</div></div>;
   }
-  return <div className={`workflow-canvas ${density}`} data-testid="workflow-canvas"><ReactFlow nodes={nodes} edges={edges} fitView minZoom={0.35} maxZoom={1.8} nodesConnectable={false} nodesDraggable={false} elementsSelectable><MiniMap pannable zoomable /><Controls showInteractive={false} /><Background gap={density === 'compact' ? 14 : 20} size={1} /></ReactFlow></div>;
+  return <div className={`workflow-canvas ${density}`} data-testid="workflow-canvas"><ReactFlow nodes={nodes} edges={edges} fitView minZoom={0.35} maxZoom={1.8} nodesConnectable={false} nodesDraggable={false} elementsSelectable onNodeClick={(_, node) => onSelect?.(node.id)} onSelectionChange={({ nodes: selected }) => { if (selected[0] && selected[0].id !== selectedId) onSelect?.(selected[0].id); }}><MiniMap pannable zoomable /><Controls showInteractive={false} /><Background gap={density === 'compact' ? 14 : 20} size={1} /></ReactFlow></div>;
 }
 
-export function WorkflowWorkbench({ graph, initialView = 'canvas', onViewContext, onReplan }: { graph: WorkflowGraph | null | undefined; initialView?: 'canvas' | 'workstreams' | 'nodes'; onViewContext?: () => void; onReplan?: () => void }) {
+export function WorkflowWorkbench({ graph, initialView = 'canvas', onViewContext, onReplan, selectedId, onSelect, replanDisabled = false }: { graph: WorkflowGraph | null | undefined; initialView?: 'canvas' | 'workstreams' | 'nodes'; onViewContext?: () => void; onReplan?: () => void; selectedId?: string; onSelect?: (id: string) => void; replanDisabled?: boolean }) {
   const [view, setView] = useState<'canvas' | 'workstreams' | 'nodes'>(initialView);
   useEffect(() => setView(initialView), [initialView]);
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
@@ -71,11 +72,11 @@ export function WorkflowWorkbench({ graph, initialView = 'canvas', onViewContext
         <button className="icon-button" title="紧凑密度" aria-label="紧凑密度" aria-pressed={density === 'compact'} onClick={() => setDensity('compact')}><Maximize2 size={14} /></button>
         <button className="icon-button" title="舒适密度" aria-label="舒适密度" aria-pressed={density === 'comfortable'} onClick={() => setDensity('comfortable')}><Rows3 size={14} /></button>
         <button className="icon-button" title="查看上下文" aria-label="查看上下文" onClick={onViewContext}><Network size={14} /></button>
-        <button className="button" onClick={onReplan}>重新规划</button>
+        <button className="button" disabled={replanDisabled} onClick={onReplan}>重新规划</button>
       </div>
     </div>
-    {view === 'canvas' && <WorkflowCanvas graph={graph} density={density} />}
-    {view === 'workstreams' && <div className="workflow-row-list">{workstreams.map((row) => <div className="workflow-row" key={row.id}><span><strong>{row.title}</strong><small>{row.goal || '工作流组'} · {(row.tasks as unknown[] | undefined)?.length || tasks.filter((task) => task.parent_id === row.id).length} 个任务</small></span><code>{row.id}</code></div>)}{!workstreams.length && <div className="list-empty">暂无工作流组</div>}</div>}
-    {view === 'nodes' && <div className="workflow-row-list">{rows.map((row) => <div className="workflow-row" key={row.id}><span><strong>{row.title}</strong><small>{nodeKindLabel(row.kind)}{row.parent_id ? ` · 父节点 ${row.parent_id}` : ''} · {(row.deps || []).length} 个依赖</small></span><code>{row.id}</code></div>)}{!rows.length && <div className="list-empty">暂无节点</div>}</div>}
+    {view === 'canvas' && <WorkflowCanvas graph={graph} density={density} selectedId={selectedId} onSelect={onSelect} />}
+    {view === 'workstreams' && <div className="workflow-row-list">{workstreams.map((row) => <button type="button" aria-pressed={row.id === selectedId} className="workflow-row" key={row.id} onClick={() => onSelect?.(row.id)}><span><strong>{row.title}</strong><small>{row.goal || '工作流组'} · {(row.tasks as unknown[] | undefined)?.length || tasks.filter((task) => task.parent_id === row.id).length} 个任务</small></span><code>{row.id}</code></button>)}{!workstreams.length && <div className="list-empty">暂无工作流组</div>}</div>}
+    {view === 'nodes' && <div className="workflow-row-list">{rows.map((row) => <button type="button" aria-pressed={row.id === selectedId} className="workflow-row" key={row.id} onClick={() => onSelect?.(row.id)}><span><strong>{row.title}</strong><small>{nodeKindLabel(row.kind)}{row.parent_id ? ` · 父节点 ${row.parent_id}` : ''} · {(row.deps || []).length} 个依赖</small></span><code>{row.id}</code></button>)}{!rows.length && <div className="list-empty">暂无节点</div>}</div>}
   </div>;
 }
