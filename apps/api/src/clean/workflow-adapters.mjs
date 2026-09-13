@@ -117,10 +117,12 @@ export class ProcessWorkflowCritic {
     if (!assessed || !['passed','rejected'].includes(assessed.status) || !Array.isArray(assessed.issues)
       || !Array.isArray(assessed.coverage?.requirement_to_task) || !Array.isArray(assessed.coverage?.task_to_acceptance)
       || !Array.isArray(assessed.coverage?.missing)) invalidReceipt();
-    if (assessed.issues.some(issue => !issue || !text(issue.code) || !['info', 'warning', 'error', 'critical'].includes(issue.severity))
-      || assessed.coverage.missing.some(value => !text(value))) invalidReceipt();
     const taskIds = new Set(tasks.map((task) => task.id));
     const requirements = (input.brief?.acceptance || []).map((value) => typeof value === 'string' ? value : value.id);
+    const allowedMissing = new Set([...requirements, ...tasks.map(task => task.id), 'structural']);
+    if (assessed.issues.some(issue => !issue || !text(issue.code) || !['info', 'warning', 'error', 'critical'].includes(issue.severity))
+      || assessed.coverage.missing.some(value => !text(value) || !allowedMissing.has(value))
+      || new Set(assessed.coverage.missing).size !== assessed.coverage.missing.length) invalidReceipt();
     if (requirements.some(value => !text(value)) || taskIds.size !== tasks.length) invalidReceipt();
     const requirementIds = new Set(requirements);
     const expectedChecks = new Set(tasks.flatMap(task => task.check_ids.map(check => canonicalJson([task.id, check]))));
@@ -128,7 +130,7 @@ export class ProcessWorkflowCritic {
     for (const row of assessed.coverage.requirement_to_task) {
       if (!row || !text(row.requirement) || !text(row.task) || !requirementIds.has(row.requirement) || !taskIds.has(row.task)) invalidReceipt();
       const pair = canonicalJson([row.requirement, row.task]);
-      if (requirementPairs.has(pair)) invalidReceipt();
+      if (requirementPairs.has(pair) || coveredRequirements.has(row.requirement)) invalidReceipt();
       requirementPairs.add(pair); coveredRequirements.add(row.requirement);
     }
     for (const row of assessed.coverage.task_to_acceptance) {

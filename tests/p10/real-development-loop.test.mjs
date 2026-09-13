@@ -244,6 +244,17 @@ test('provider incomplete events and empty output are failed rather than candida
   }
 });
 
+test('Critic rejects duplicate ownership and unknown missing markers', async () => {
+  const baseCandidate = candidate();
+  for (const coverage of [
+    { requirement_to_task: [{ requirement: 'result', task: 'write' }, { requirement: 'result', task: 'write' }], task_to_acceptance: [{ task: 'write', check: 'node_test' }], missing: [] },
+    { requirement_to_task: [{ requirement: 'result', task: 'write' }], task_to_acceptance: [{ task: 'write', check: 'node_test' }], missing: ['obsolete'] }
+  ]) {
+    const critic = new ProcessWorkflowCritic({ generator: { async generate() { return { candidate: { status: 'passed', issues: [], coverage } }; } } });
+    await assert.rejects(critic.evaluate({ candidate: baseCandidate, brief: { acceptance: ['result'] } }), { code: 'critic_failed', status: 502 });
+  }
+});
+
 test('real Host task stays in candidate until finalize, binds CAS outputs and captures Evidence',async()=>{
   const hostRoot=fs.mkdtempSync(path.join(os.tmpdir(),'aiws-host-')); const adapter=new HostRunnerAdapter({homeRoot:hostRoot}); const state=await open({runnerAdapter:adapter});
   try {
