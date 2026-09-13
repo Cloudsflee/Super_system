@@ -28,16 +28,15 @@ function extractJsonObject(text) {
 }
 
 function invalidGeneratedTaskContracts(candidate) {
-  if (!candidate || typeof candidate !== 'object' || !Array.isArray(candidate.nodes)) return false;
+  const nonemptyStrings = value => Array.isArray(value) && value.length > 0
+    && value.every(item => typeof item === 'string' && item.trim().length > 0);
+  if (!candidate || typeof candidate !== 'object' || !Array.isArray(candidate.nodes) || !candidate.nodes.length) return true;
   return candidate.nodes.some((node) => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return true;
     const kind = String(node?.kind || node?.node_kind || 'task');
     if (kind === 'workstream') return false;
     if (kind === 'check') return true;
-    const checks = Array.isArray(node?.config?.execution?.check_ids)
-      ? node.config.execution.check_ids.map(String).filter((value) => value.trim()) : [];
-    const acceptance = Array.isArray(node?.contract?.acceptance)
-      ? node.contract.acceptance.map(String).filter((value) => value.trim()) : [];
-    return !checks.length || !acceptance.length;
+    return !nonemptyStrings(node.config?.execution?.check_ids) || !nonemptyStrings(node.contract?.acceptance);
   });
 }
 
@@ -51,10 +50,11 @@ export class ProcessWorkflowGenerator {
     const leased = await this.credentialResolver?.(input);
     const credential = Buffer.isBuffer(leased) ? leased : leased?.credential;
     if (!Buffer.isBuffer(credential) || !credential.length) throw new PlatformError('provider_rebind_required', 'provider credential lease is required', {}, 409);
-    const adapter = this.adapter || new ProcessAppServerAdapter({ command: this.config.providerCommand || 'codex', timeoutMs: this.config.providerTimeoutMs || 30000, homeRoot: this.config.providerHomeRoot });
-    const prompt = canonicalJson({ purpose: input.purpose || 'generation', brief: input.brief || {}, context_pack: input.context_pack || {}, repository_snapshot: input.repository_snapshot || {}, policy_revision: input.policy_revision || 1, ...(input.purpose === 'critic' ? { candidate: input.candidate } : {}) });
+    let adapter = this.adapter;
     let thread;
     try {
+      adapter ||= new ProcessAppServerAdapter({ command: this.config.providerCommand || 'codex', timeoutMs: this.config.providerTimeoutMs || 30000, homeRoot: this.config.providerHomeRoot });
+      const prompt = canonicalJson({ purpose: input.purpose || 'generation', brief: input.brief || {}, context_pack: input.context_pack || {}, repository_snapshot: input.repository_snapshot || {}, policy_revision: input.policy_revision || 1, ...(input.purpose === 'critic' ? { candidate: input.candidate } : {}) });
       thread = await adapter.startThread({ credential, provider_config: leased.provider_config || {}, sandbox: 'read-only', approval_policy: 'never' });
       let response;
       let retryInstruction = null;
@@ -65,6 +65,7 @@ export class ProcessWorkflowGenerator {
           : 'Return a workflow JSON {nodes:[{id,kind,title,parent_id,config:{execution:{argv,cwd_role,mode,input_paths,output_paths,runner_profile_ref,resource_profile,deadline_seconds,check_ids,capabilities}},contract:{acceptance:[]}}]}. Every task needs an independent check. ' + generationContract;
         const result = await adapter.startTurn({ thread_id: thread.thread_id, message: (retryInstruction || initialInstruction) + prompt, credential, approval_policy: 'never' });
         const events = result?.events || [];
+        if (!Array.isArray(events) || events.some(event => !event || typeof event.method !== 'string')) throw new PlatformError('provider_protocol_drift', 'provider events are malformed', {}, 502);
         if (events.some((event,index) => event.sequence !== index + 1)) throw new PlatformError('provider_protocol_drift', 'provider sequence is not contiguous', {}, 502);
         if (events.some((event) => event.method.includes('requestApproval') || event.method.includes('requestUserInput'))) throw new PlatformError('provider_input_required', 'provider turn is waiting for a human decision', {}, 409);
         if (events.at(-1)?.method !== 'turn/completed') throw new PlatformError('provider_turn_incomplete', 'provider turn did not complete', {}, 502);
@@ -84,14 +85,6 @@ export class ProcessWorkflowGenerator {
         } catch (error) {
           if (error instanceof PlatformError) throw error;
           if (attempt === 1) {
-            const extracted = extractJsonObject(message);
-            if (extracted) {
-              try {
-                response = JSON.parse(extracted);
-                if (input.purpose !== 'critic' && invalidGeneratedTaskContracts(response)) throw new PlatformError('provider_workflow_invalid', 'provider task checks and acceptance do not match', {}, 422);
-                break;
-              } catch (repairError) { if (repairError instanceof PlatformError) throw repairError; /* retain the stable failure below */ }
-            }
             throw new PlatformError('provider_output_invalid_json', 'provider JSON repair failed', {}, 502);
           }
           retryInstruction = 'The response was not valid JSON. Return only the requested JSON object without markdown, and obey every enum and field constraint. ';
@@ -104,7 +97,7 @@ export class ProcessWorkflowGenerator {
       const outputHash = sha256Hex(canonicalJson(response));
       const receipt = { adapter: 'process-app-server', profile_id: leased.profile_id, profile_revision: leased.profile_revision, profile_hash: leased.profile_hash, input_sha256: sha256Hex(prompt), output_sha256: outputHash, turn_completed: true };
       return { candidate: response, provider_receipt: receipt, input_sha256: sha256Hex(prompt), output_sha256: outputHash };
-    } finally { credential.fill(0); await adapter.close?.(); }
+    } finally { credential.fill(0); await adapter?.close?.(); }
   }
 }
 

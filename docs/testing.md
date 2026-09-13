@@ -956,3 +956,20 @@ deterministic success. The real loop command requires a clean Git worktree,
 imports the local Codex discovery record into its temporary Vault, pins
 `gpt-5.6-sol/high`, and writes a redacted final receipt below
 `.ai-workspace/real-development-loop/<run_id>/receipts/`.
+
+### Provider boundary hardening (post-P10, Workflow owner)
+
+Generator acceptance uses the complete JSON response, never an extracted
+substring. One provider repair is allowed; a second invalid document returns
+`provider_output_invalid_json`. Ordinary tasks require nonempty string arrays
+for checks and acceptance; invalid contracts return `provider_workflow_invalid`
+after the same bounded repair. Workstream containers remain allowed. Credential
+leases are zeroed on success and failure. The existing balanced-object helper
+is not a provider acceptance boundary.
+
+The registered `tests/p10/real-development-loop.test.mjs` adds strict JSON,
+empty/ill-typed contract, retry-count, protocol and cleanup regressions without
+changing prior assertions. Commands remain `pnpm test:p10`,
+`pnpm test:development`, `pnpm check`, `pnpm verify:dev` and `pnpm verify`.
+Catalog path ownership and status stay unchanged; local command records are
+diagnostic only, append-only, and never substitute for immutable P10 Evidence.

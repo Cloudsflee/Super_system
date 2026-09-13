@@ -1156,3 +1156,14 @@ The maintenance delivery is append-only under
 and state copy, restore code to `5f2be38845d36236637c7f22a1b4df5611a6175b`,
 retain schema v9/ledger `[1..9]`, and report `byte_exact_mismatches=[]` for
 SQLite, CAS, Vault, workspace, Catalog, and P10 Evidence.
+
+### 21.1 Provider boundary hardening
+
+Owner: Workflow. Phase: post-P10 D-040 maintenance. The generator accepts only
+a complete JSON document, permits at most one provider repair, and checks
+ordinary task check/acceptance arrays without coercion or local filling.
+The registered real-development-loop tests are additive; API v2, schema v9,
+the existing command inventory and Catalog status are unchanged. GS-001 through
+GS-007 review reuses existing Catalog test/Evidence references and keeps new
+diagnostics outside formal Evidence. Protected Critic and Gate changes are
+reviewed and committed separately from this generator correction.

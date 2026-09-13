@@ -13,6 +13,97 @@ import { canonicalJson, sha256Hex } from '../../apps/api/src/clean/canonical.mjs
 import { taskContract, treeManifest } from '../../apps/api/src/clean/runner-input-provider.mjs';
 import { assertSource, resolveRunRoot } from '../../scripts/v3-clean-real-development-loop.mjs';
 
+const hardGraph = () => ({ nodes: [{
+  id: 'write', kind: 'task', config: { execution: {
+    argv: ['node', '-e', 'process.exit(0)'], cwd_role: 'task', mode: 'write',
+    input_paths: ['README.md'], output_paths: ['result.txt'], check_ids: ['node_test', 'git_diff_check'],
+    capabilities: ['network:none'], resource_profile: 'light', deadline_seconds: 30
+  } }, contract: { acceptance: ['result'] }
+}] });
+const hardTurn = content => ({ events: [
+  { sequence: 1, method: 'turn/started', params: {} },
+  { sequence: 2, method: 'item/completed', params: { role: 'assistant', content } },
+  { sequence: 3, method: 'turn/completed', params: {} }
+] });
+function hardProvider(answers) {
+  const credential = Buffer.from('fixture-only-lease');
+  const messages = []; let closed = 0;
+  const generator = new ProcessWorkflowGenerator({
+    credentialResolver: () => ({ credential }),
+    adapter: {
+      async startThread() { return { thread_id: 'fixture' }; },
+      async startTurn(input) { messages.push(input.message); return typeof answers[0] === 'function' ? answers[0]() : hardTurn(answers[Math.min(messages.length - 1, answers.length - 1)]); },
+      async close() { closed++; }
+    }
+  });
+  return { generator, messages, credential, closed: () => closed };
+}
+const hardAssessment = (status = 'passed') => ({
+  status, issues: [], coverage: {
+    requirement_to_task: [{ requirement: 'result', task: 'write' }],
+    task_to_acceptance: [{ task: 'write', check: 'node_test' }, { task: 'write', check: 'git_diff_check' }],
+    missing: []
+  }
+});
+async function hardCritic(receipt) {
+  let calls = 0;
+  const critic = new ProcessWorkflowCritic({ generator: { async generate() { calls++; return { candidate: receipt }; } } });
+  const result = await critic.evaluate({ candidate: hardGraph(), brief: { acceptance: ['result'] } });
+  assert.equal(calls, 1, 'exercise the provider Critic, not structural rejection');
+  return result;
+}
+
+test('hard limits: strict provider JSON rejects wrappers and trailing objects after one repair', async () => {
+  for (const answer of [JSON.stringify(hardGraph()) + ' {}', '```json\n' + JSON.stringify(hardGraph()) + '\n```', 'prefix ' + JSON.stringify(hardGraph())]) {
+    const fixture = hardProvider([answer]);
+    await assert.rejects(fixture.generator.generate(), { code: 'provider_output_invalid_json', status: 502 });
+    assert.equal(fixture.messages.length, 2);
+    assert.equal(fixture.closed(), 1);
+    assert.ok(fixture.credential.every(value => value === 0));
+  }
+});
+test('hard limits: valid JSON and one contract repair preserve the provider candidate', async () => {
+  const invalid = hardGraph(); invalid.nodes[0].contract.acceptance = [];
+  const valid = hardGraph(); valid.nodes.unshift({ id: 'group', kind: 'workstream' });
+  const before = structuredClone(invalid);
+  const fixture = hardProvider([JSON.stringify(invalid), JSON.stringify(valid)]);
+  const result = await fixture.generator.generate();
+  assert.deepEqual(result.candidate, valid);
+  assert.deepEqual(invalid, before);
+  assert.equal(fixture.messages.length, 2);
+  assert.match(fixture.messages[1], /execution.check_ids.*contract.acceptance/);
+  assert.ok(fixture.credential.every(value => value === 0));
+  assert.equal(fixture.closed(), 1);
+});
+test('hard limits: missing or ill-typed task fields fail with 422 without local repair', async () => {
+  for (const field of ['checks', 'acceptance']) for (const value of [[], [''], [' '], [null], [{}], [1], null]) {
+    const graph = hardGraph();
+    if (field === 'checks') graph.nodes[0].config.execution.check_ids = value;
+    else graph.nodes[0].contract.acceptance = value;
+    const fixture = hardProvider([JSON.stringify(graph)]);
+    await assert.rejects(fixture.generator.generate(), { code: 'provider_workflow_invalid', status: 422 });
+    assert.equal(fixture.messages.length, 2);
+    assert.ok(fixture.credential.every(value => value === 0));
+    assert.equal(fixture.closed(), 1);
+  }
+});
+test('hard limits: JSON repair accepts a complete valid second response only', async () => {
+  const fixture = hardProvider(['invalid', JSON.stringify(hardGraph())]);
+  assert.deepEqual((await fixture.generator.generate()).candidate, hardGraph());
+  assert.equal(fixture.messages.length, 2);
+  assert.equal(fixture.closed(), 1);
+});
+test('hard limits: provider protocol errors retain stable codes and clear the lease', async () => {
+  for (const [value, code] of [[{ events: [] }, 'provider_turn_incomplete'], [hardTurn(''), 'provider_output_empty'],
+    [{ events: [{ sequence: 9, method: 'turn/completed' }] }, 'provider_protocol_drift']]) {
+    const fixture = hardProvider([() => value]);
+    await assert.rejects(fixture.generator.generate(), { code });
+    assert.equal(fixture.messages.length, 1);
+    assert.equal(fixture.closed(), 1);
+    assert.ok(fixture.credential.every(value => value === 0));
+  }
+});
+
 // Owner: Workflow/Repository/Runner/Evidence. Phase: post-P10; explicit provider fixtures.
 const task = (extra = {}) => ({ id:'write', mode:'write', argv:['node','-e',"require('node:fs').writeFileSync('result.txt','verified\\n')"], cwd_role:'task', input_paths:['README.md'], output_paths:['result.txt'], check_ids:['node_test'], capabilities:['network:none'], resource_profile:'light', deadline_seconds:30, ...extra });
 const candidate = (value = task()) => ({ nodes:[{ id:value.id, kind:'task', config:{execution:value}, contract:{acceptance:['result']} }] });

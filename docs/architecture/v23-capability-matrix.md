@@ -555,3 +555,9 @@ v3 receipt, and R5 immutable blob proof. Operations adds only the read-only
 | R5 Historical replay | MCP/Platform | extraction-base identity, fixed descendant raw blob proof, current `source_drift`, unchanged fixture/checksum/privacy/six behavior contracts | `tests/unit/recovery-golden.test.mjs`, `tests/integration/mcp-stdio-r5.test.mjs` | Historical pass/advisory does not promote or demote Clean |
 | development receipt | Operations | read-only snapshot, schema v9 and ledger `[1..9]`, single command owner, persisted execution/retry/replay/context/human/failure/duration metrics, canonical SHA and state byte identity | `scripts/development-receipt.mjs`, `tests/p10/development-reliability.test.mjs`; maintenance verification | preserves `REC-D11-OPS-022=released` |
 | maintenance rollback | Platform/Operations | four artifact roles, dry-run, isolated actual code/state restore, P10 Evidence and Catalog byte comparison | maintenance `rollback.ps1` and `verification.json` | no P10 Evidence mutation and no release claim |
+
+Provider boundary hardening (Workflow owner, post-P10 D-040) retains
+`REC-D6-GENERATION-007` and its registered
+`tests/p10/real-development-loop.test.mjs` reference. Complete JSON, bounded
+repair, nonempty typed task contracts and zeroed leases are additive behavior
+checks, not a status promotion or a new Evidence reference.
