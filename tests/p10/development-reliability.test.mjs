@@ -161,8 +161,7 @@ test('formal verification uses immutable P5-P9 Evidence and only current P10 pro
   assert.equal(plan.filter((entry) => entry.id === 'test-p31').length, 1);
   assert.equal(plan.find((entry) => entry.id === 'check').env.AIWS_CHECK_SKIP_WEB_TYPECHECK, '1');
   assert.equal(plan.find((entry) => entry.id === 'unit-test').env.AIWS_TEST_UNIT_ONLY, '1');
-  assert.deepEqual(plan.filter((entry) => entry.parallel_group === 'integration-security').map((entry) => entry.id), ['integration', 'security']);
-  assert.deepEqual(plan.filter((entry) => entry.parallel_group === 'local-validation').map((entry) => entry.id), ['web-test', 'unit-test', 'build']);
+  assert.deepEqual(plan.filter((entry) => entry.parallel_group === 'local-validation').map((entry) => entry.id), ['web-test', 'unit-test', 'integration', 'security', 'build']);
   assert.equal(plan.find((entry) => entry.id === 'security').env.AIWS_SECURITY_DEFER_DOCKER, '1');
   assert.equal(new Set(plan.map((entry) => entry.id)).size, plan.length);
 });
