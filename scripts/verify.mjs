@@ -97,6 +97,13 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
   let blockingFailure = formalInputFailure(argv);
   const plan = createFormalVerificationPlan({ skipP1Evidence });
   if (prePushHead) plan.find((entry) => entry.id === 'evidence-p10').env.AIWS_PRE_PUSH_HEAD = prePushHead;
+  // Start the independent release probe once at process start so cold Docker
+  // work overlaps deterministic gates; its receipt remains at plan position.
+  const releaseSpec = plan.find((entry) => entry.id === 'p10-release-probe');
+  const releasePromise = !blockingFailure && releaseSpec
+    ? executeSpecification(releaseSpec, root, true, gateBudget('formal', 0).limit_ms)
+    : null;
+  let releaseRecorded = false;
   for (let index = 0; !blockingFailure && index < plan.length;) {
     const budget = gateBudget('formal', Date.now() - started);
     if (budget.remaining_ms <= 0) { blockingFailure = 'formal_time_budget_exceeded'; break; }
@@ -105,16 +112,25 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
       ? plan.slice(index).filter((entry) => entry.parallel_group === specification.parallel_group)
       : [specification];
     for (const entry of group) process.stdout.write(`\n== ${entry.id} ==\n`);
-    const executed = specification.parallel_group
+    const executed = specification.id === 'p10-release-probe' && releasePromise
+      ? [await releasePromise]
+      : specification.parallel_group
       ? await Promise.all(group.map((entry) => executeSpecification(entry, root, true, budget.remaining_ms)))
       : [await executeSpecification(specification, root, false, budget.remaining_ms)];
     for (const record of executed) {
       records.push(record);
+      if (record.id === 'p10-release-probe') releaseRecorded = true;
       if (record.advisory) advisoryFailures.push(record.id);
       if (!record.ok || record.layered_status === 'failed') blockingFailure ||= record.id;
     }
     index += group.length;
     if (blockingFailure) break;
+  }
+  if (releasePromise && !releaseRecorded) {
+    const record = await releasePromise;
+    records.push(record);
+    if (record.advisory) advisoryFailures.push(record.id);
+    if (!record.ok || record.layered_status === 'failed') blockingFailure ||= record.id;
   }
 
   const budget = gateBudget('formal', Date.now() - started);

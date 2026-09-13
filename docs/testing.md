@@ -1005,3 +1005,9 @@ exclusive creation and SHA-256 manifests. Local hashes detect subsequent edits;
 they are not an independent signature. Git can skip local hooks, so remote
 required checks and protected branches, administered outside the editing
 process, remain the independent publication boundary.
+
+The formal runner starts the independent P10 release probe once at process
+start and reaps its redacted receipt at its declared plan position. This
+overlaps cold Docker/image work with deterministic gates while preserving the
+same command, failure semantics and fixed 360000 ms total budget. An earlier
+blocking gate still reaps the probe before returning.
