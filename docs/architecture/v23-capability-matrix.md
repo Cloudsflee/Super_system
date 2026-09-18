@@ -522,3 +522,21 @@ yielding `27/0/27`.
 | complete Web and offline | Frontend | hash router, scoped Query keys, six-command IndexedDB FIFO outbox, explicit rebase/discard, NetworkOnly protected routes, complete workflow and management chains | Web 37-test suite, `scripts/e2e.mjs`, three viewport and offline receipts | `REC-D10-FRONTEND-024` released |
 | real release | Release + Delivery + Deployment | real GitHub/Codex/Gateway/Runner/Bridge/Parser probes, two identical production image builds, SPDX SBOM, fresh-volume dynamic-port publish, health and app shell | `scripts/v3-clean-p9-github-delivery-probe.mjs`, `scripts/v3-clean-p9-release-probe.mjs`, P9 external probe receipt | all external gates verified |
 | immutable Evidence and rollback | Evidence + Operations | original hashes, release bundle, patch, literal command record, runnable dry-run and actual restore of SQLite/CAS/Vault/workspace/Broker/Bridge/Parser/Web, schema v8 ledger 1-8 | `docs/evidence/v3-clean-p9-web-release-20260826/verification.json`, `rollback.ps1` | `byte_exact_mismatches=[]`; Catalog `27/0/27` |
+
+## P10 final business parity
+
+The immutable V2.3 source at `e18dc0b616fa7ab2b00a6c05db23890ccd940175` is
+captured in `docs/architecture/p10-parity/v23-input.json` with Git blob hashes:
+14 L0-L7 cases, 360 route declarations, 98 collections, 11 Web routes, and
+seven optimization packages. `business-parity-map.json` maps each entry once
+to one of 19 fixed business groups and records one Clean command, test, and
+rationale. `retired-interface-manifest.json` explains every retired address;
+no business capability is marked retired. `design-retention.json` records the
+five Quality dimensions, advice/human separation, selection exclusions, stale
+history, Assist fork/side-thread/review, Brief snapshots, and confirmed
+Project/Repository deletion.
+
+P10 implementation rows are validated by `pnpm audit:parity` and
+`pnpm test:p10`; final status is bound only to
+`docs/evidence/v3-clean-p10-final-governance-20260829/verification.json`.
+Production cutover is explicitly non-business parity and remains excluded.
