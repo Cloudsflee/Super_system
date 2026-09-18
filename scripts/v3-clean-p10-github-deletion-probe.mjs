@@ -57,6 +57,9 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
     const head = await waitForHead(created.full_name, created.default_branch, token);
     if (!/^[a-f0-9]{40}$/.test(head)) throw new Error('github_fixture_head_missing');
 
+    stage = 'installation-bind';
+    await bindRepositoryToInstallation(fixture.installation_id, created.id, token);
+
     stage = 'app-discovery';
     const discovery = await waitForAppDiscovery(adapter, auth, created);
 
@@ -88,6 +91,7 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
         repository: created.full_name,
         generated_repository_id: created.id,
         repository_selection: discovery.repository_selection,
+        installation_repository_bound: true,
         preexisting_check: 'absent'
       },
       deletion: {
@@ -176,6 +180,11 @@ async function waitForAppDiscovery(adapter, auth, repository) {
     await delay(500);
   }
   throw new Error('github_fixture_not_discovered_by_app');
+}
+
+async function bindRepositoryToInstallation(installationId, repositoryId, token) {
+  const result = await githubJson(`/user/installations/${encodeURIComponent(String(installationId))}/repositories/${encodeURIComponent(String(repositoryId))}`, token, { method: 'PUT' });
+  if (![204, 304].includes(result.status)) throw new Error(`github_fixture_installation_bind_${result.status}`);
 }
 
 async function cleanupCreatedRepository(created, token) {
