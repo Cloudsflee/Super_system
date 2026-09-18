@@ -117,7 +117,7 @@ route omitted it.
 
 | ID / capability | API v2 | Command | Event / state | Clean tables (historical source) | UI | External | Tests / Evidence | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| C-19 REC-D7 Repository | /api/v2/projects/{id}/repository-connections, /repository-lines, /repository-workspaces, /api/v2/repository-connections/{id}, /targets, /api/v2/repository-lines/{id}/reconcile, /api/v2/repository-workspaces/{id}/refresh, /lock, /release | repository.connection/target create/update, line.reconcile, workspace.create/refresh/lock/release | connection pending -> ready/faulted -> archived; line pending -> ready/faulted <-> recovering -> removed; workspace requested -> ready <-> locked -> released/orphaned | repository_connections, repository_targets, repository_lines, repository_workspaces, repository_locks | Repository, Worktree, `ProjectWorkflowPage` | deterministic repository fixture; source drift and fencing probes | `tests/p3/project-workflow.test.mjs`, `tests/p3/migration.test.mjs`, `tests/p10/remote-workspace-auth.test.mjs`, `apps/web/src/test/project-workflow-clean.test.tsx`; `docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json` | verified; clean path policy, lease fencing, restart, and rollback receipts passed |
+| C-19 REC-D7 Repository | /api/v2/projects/{id}/repository-connections, /repository-lines, /repository-workspaces, /api/v2/repository-connections/{id}, /targets, /api/v2/repository-lines/{id}/reconcile, /api/v2/repository-workspaces/{id}/refresh, /lock, /release | repository.connection/target create/update, line.reconcile, workspace.create/refresh/lock/release | connection pending -> ready/faulted -> archived; line pending -> ready/faulted <-> recovering -> removed; workspace requested -> ready <-> locked -> released/orphaned | repository_connections, repository_targets, repository_lines, repository_workspaces, repository_locks | Repository, Worktree, `ProjectWorkflowPage` | deterministic repository fixture; source drift and fencing probes | `tests/p3/project-workflow.test.mjs`, `tests/p3/migration.test.mjs`, `apps/web/src/test/project-workflow-clean.test.tsx`; `docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json` | verified; clean path policy, lease fencing, restart, and rollback receipts passed |
 | C-20 REC-D7 Delivery | /api/v2/deliveries, /api/v2/deliveries/{id}/pull-request, /api/v2/pull-request-intents/{id}/* | delivery.submit, delivery.retry, pr.create, pr.ready, pr.merge, delivery.reconcile | delivery.submitted, delivery.merged; planned -> staging -> checks_pending -> draft_pr -> ready -> merged/needs_reconcile | deliveries, delivery_policies, pull_request_intents, delivery_events (deliveries, delivery_policies, delivery_events, pull_request_intents) | Delivery, Draft PR, Merge Review | GitHub App, checks, webhook, repository head SHA | api-flow, v19 delivery/PR/webhook suites; target GitHub external receipt | scaffolded; real GitHub App, merge race, and recovery receipts required |
 | C-21 REC-D4 Scope/Exchange | /api/v2/projects/{id}/exchange-requests, /api/v2/exchange-requests/{id}/approve, /reject, /api/v2/exchange-grants/{id}/revoke, /context-packs, /api/v2/gateway/forward | exchange.request.create/approve/reject, exchange.grant.revoke/pack.create, gateway.forward | exchange_request.*, exchange_grant.*, gateway.*; requested -> partially_approved -> active -> revoked/expired, with rejected terminal | exchange_requests, exchange_grants, mcp_clients, gateway_forward_receipts | MCP Settings, project member permissions | actor/team ACL, MCP client, signed stateless Gateway | `tests/p4/mcp-exchange-gateway.test.mjs`, `tests/p4/transport-parity.test.mjs`, `scripts/v3-clean-p4-gateway-probe.mjs`, `scripts/e2e.mjs`; `docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json` | verified; dual approval, immediate expiry/revoke recheck, allowlists, nonce replay, and destination ACL narrowing passed |
 | C-22 REC-D9 Context | /api/v2/projects/{id}/context/sources, /map, /search, /read, /nodes/{id}, /nodes/{id}/versions, /policy, /selections, /packs | context.source.create, context.map/search/read, context.policy.update, context.selection.create, context.pack.create | context_source.*, context_policy.*, context_selection.*, context_pack.*; source -> projected -> selected -> sealed | context_sources, context_nodes, context_document_versions, context_edges, context_selections, context_packs, context_policies, aggregate_revisions | Context Map, document history, Context Pack | MiniSearch worker, Clean CAS, retrieval policy | `tests/p4/context-projection.test.mjs`, `tests/p4/mcp-exchange-gateway.test.mjs`, `scripts/v3-clean-p4-performance.mjs`, Web context tests, `scripts/e2e.mjs`; `docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json` | verified; deterministic projection, policy CAS, sensitivity/freshness filtering, budget, and sealed Pack checks passed |
@@ -522,54 +522,3 @@ yielding `27/0/27`.
 | complete Web and offline | Frontend | hash router, scoped Query keys, six-command IndexedDB FIFO outbox, explicit rebase/discard, NetworkOnly protected routes, complete workflow and management chains | Web 37-test suite, `scripts/e2e.mjs`, three viewport and offline receipts | `REC-D10-FRONTEND-024` released |
 | real release | Release + Delivery + Deployment | real GitHub/Codex/Gateway/Runner/Bridge/Parser probes, two identical production image builds, SPDX SBOM, fresh-volume dynamic-port publish, health and app shell | `scripts/v3-clean-p9-github-delivery-probe.mjs`, `scripts/v3-clean-p9-release-probe.mjs`, P9 external probe receipt | all external gates verified |
 | immutable Evidence and rollback | Evidence + Operations | original hashes, release bundle, patch, literal command record, runnable dry-run and actual restore of SQLite/CAS/Vault/workspace/Broker/Bridge/Parser/Web, schema v8 ledger 1-8 | `docs/evidence/v3-clean-p9-web-release-20260826/verification.json`, `rollback.ps1` | `byte_exact_mismatches=[]`; Catalog `27/0/27` |
-
-## P10 final business parity
-
-The immutable V2.3 source at `e18dc0b616fa7ab2b00a6c05db23890ccd940175` is
-captured in `docs/architecture/p10-parity/v23-input.json` with Git blob hashes:
-14 L0-L7 cases, 360 route declarations, 98 collections, 11 Web routes, and
-seven optimization packages. `business-parity-map.json` maps each entry once
-to one of 19 fixed business groups and records one Clean command, test, and
-rationale. `retired-interface-manifest.json` explains every retired address;
-no business capability is marked retired. `design-retention.json` records the
-five Quality dimensions, advice/human separation, selection exclusions, stale
-history, Assist fork/side-thread/review, Brief snapshots, and confirmed
-Project/Repository deletion.
-
-P10 implementation rows are validated by `pnpm audit:parity` and
-`pnpm test:p10`; final status is bound only to
-`docs/evidence/v3-clean-p10-final-governance-20260829/verification.json`.
-Production cutover is explicitly non-business parity and remains excluded.
-
-## Post-P10 development reliability synchronization
-
-Decision D-040 is a maintenance decision, not P11. It keeps all 27 capability
-rows released and does not change the fixed V2.3 parity input. Governance adds
-the Catalog-driven development planner, no-Shell process executor, formal Gate
-v3 receipt, and R5 immutable blob proof. Operations adds only the read-only
-`aiws.development-receipt.v1` projection over existing v9 records.
-
-| Maintenance surface | Owner | Contract and behavior | Test and Evidence | Status effect |
-| --- | --- | --- | --- | --- |
-| development and formal Gates | Platform/Governance | `verify:dev` changed-path union and classification; formal P5-P9 immutable Evidence validation; bounded local-validation wave; one production-image boundary check in the current P10 release probe; D-032 failure/advisory receipts | `tests/p10/development-reliability.test.mjs`, `tests/p31/layered-gates.test.mjs`; `docs/evidence/post-p10-development-reliability-20260905/verification.json` | preserves `REC-D0-GOVERNANCE-000=released` |
-| R5 Historical replay | MCP/Platform | extraction-base identity, fixed descendant raw blob proof, current `source_drift`, unchanged fixture/checksum/privacy/six behavior contracts | `tests/unit/recovery-golden.test.mjs`, `tests/integration/mcp-stdio-r5.test.mjs` | Historical pass/advisory does not promote or demote Clean |
-| development receipt | Operations | read-only snapshot, schema v9 and ledger `[1..9]`, single command owner, persisted execution/retry/replay/context/human/failure/duration metrics, canonical SHA and state byte identity | `scripts/development-receipt.mjs`, `tests/p10/development-reliability.test.mjs`; maintenance verification | preserves `REC-D11-OPS-022=released` |
-| maintenance rollback | Platform/Operations | four artifact roles, dry-run, isolated actual code/state restore, P10 Evidence and Catalog byte comparison | maintenance `rollback.ps1` and `verification.json` | no P10 Evidence mutation and no release claim |
-| remote Repository/Workspace transport | Repository/Platform | shared GitHub App JWT/Installation transport; actor-owned profile and Vault lease; API/tree/blob pin verification; shell-free shallow clone; atomic Workspace publish/refresh, lock/execution conflict, old-copy retention, and retry lineage | `tests/p10/remote-workspace-auth.test.mjs`; `docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/verification.json` | preserves `C-19= released`; no Catalog status or formal Evidence change |
-
-Provider boundary hardening (Workflow owner, post-P10 D-040) retains
-`REC-D6-GENERATION-007` and its registered
-`tests/p10/real-development-loop.test.mjs` reference. Complete JSON, bounded
-repair, nonempty typed task contracts and zeroed leases are additive behavior
-checks, not a status promotion or a new Evidence reference.
-
-The same generation row also binds the separately reviewed Critic correction:
-complete task/check coverage, rejection of malformed/duplicate/stale/orphan
-rows, and provider receipt immutability. Regression owner: Workflow/Critic;
-test link remains `tests/p10/real-development-loop.test.mjs`; status is frozen.
-
-Gate hardening (Platform/Testing, post-P10 D-040) retains
-`REC-D0-GOVERNANCE-000`: fixed 120000/360000 ms limits, literal exit checks,
-complete untruncated capture, redaction and pre-push input checks. Its test link
-remains `tests/p10/development-reliability.test.mjs`; no Catalog/Evidence
-reference or status is added. Local diagnostic hashes are not release proof.
