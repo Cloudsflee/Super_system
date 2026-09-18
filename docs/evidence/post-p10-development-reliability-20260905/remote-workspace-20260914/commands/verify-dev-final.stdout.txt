@@ -1,0 +1,4262 @@
+
+> ai-workspace-system@3.0.0 verify:dev <WORKSPACE>
+> node scripts/verify-dev.mjs "--base" "0fd9eb91a14dc53ac944e8ada608c8d958728ff8"
+
+
+== dev:p4-performance ==
+
+== dev:check ==
+(node:35788) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+
+> ai-workspace-system@3.0.0 check <WORKSPACE>
+> node scripts/check.mjs
+
+check passed: 512 source files, 17 syntax files, 60 scripts
+
+== dev:scan-clean ==
+
+> ai-workspace-system@3.0.0 scan:clean <WORKSPACE>
+> node scripts/v3-clean-architecture-scan.mjs
+(node:19164) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+
+{
+  "schema_version": "aiws.v3-clean.architecture-scan.v10",
+  "entrypoints": [
+    "apps/api/server.mjs",
+    "apps/gateway/server.mjs",
+    "apps/runner-broker/clean-server.mjs",
+    "apps/windows-native-bridge/server.mjs"
+  ],
+  "files": [
+    "apps/api/server.mjs",
+    "apps/api/clean-server.mjs",
+    "apps/api/src/clean/runtime.mjs",
+    "apps/api/src/clean/config.mjs",
+    "apps/api/src/clean/database.mjs",
+    "apps/api/src/clean/canonical.mjs",
+    "apps/api/src/clean/migrations/001-clean-baseline.mjs",
+    "apps/api/src/clean/migrations/002-identity-acl.mjs",
+    "apps/api/src/clean/migrations/003-project-workflow.mjs",
+    "apps/api/src/clean/migrations/004-context-projection-mcp.mjs",
+    "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs",
+    "apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs",
+    "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+    "apps/api/src/clean/migrations/008-delivery-deployment-importer-operations.mjs",
+    "apps/api/src/clean/migrations/009-final-business-parity-governance.mjs",
+    "apps/api/src/clean/redaction.mjs",
+    "apps/api/src/clean/cas.mjs",
+    "apps/api/src/clean/events.mjs",
+    "apps/api/src/clean/cursor.mjs",
+    "apps/api/src/clean/operations.mjs",
+    "apps/api/src/clean/platform.mjs",
+    "apps/api/src/clean/principal.mjs",
+    "apps/api/src/clean/platform-error.mjs",
+    "apps/api/src/clean/registry.mjs",
+    "apps/api/src/clean/receipts.mjs",
+    "apps/api/src/clean/ownership.mjs",
+    "apps/api/src/clean/authorization.mjs",
+    "apps/api/src/clean/identity.mjs",
+    "apps/api/src/clean/actor-service.mjs",
+    "apps/api/src/clean/identity-helpers.mjs",
+    "apps/api/src/clean/session-service.mjs",
+    "apps/api/src/clean/team-access-service.mjs",
+    "apps/api/src/clean/credential-profile-service.mjs",
+    "apps/api/src/clean/vault.mjs",
+    "apps/api/src/clean/provider-adapters.mjs",
+    "apps/api/src/clean/app-server-adapter.mjs",
+    "apps/api/src/clean/p8/github-adapter.mjs",
+    "apps/api/src/clean/project-workflow.mjs",
+    "apps/api/src/clean/runner-input-provider.mjs",
+    "apps/api/src/clean/project-domain-helpers.mjs",
+    "apps/api/src/clean/project-service.mjs",
+    "apps/api/src/clean/repository-service.mjs",
+    "apps/api/src/clean/workflow-service.mjs",
+    "apps/api/src/clean/outcome-service.mjs",
+    "apps/api/src/clean/context-service.mjs",
+    "apps/api/src/clean/mcp-service.mjs",
+    "apps/api/src/clean/gateway-service.mjs",
+    "apps/api/src/clean/command-dispatcher.mjs",
+    "apps/api/src/clean/assist-service.mjs",
+    "apps/api/src/clean/p5-domain-helpers.mjs",
+    "apps/api/src/clean/files-service.mjs",
+    "apps/api/src/clean/terminal-service.mjs",
+    "apps/api/src/clean/bridge-service.mjs",
+    "apps/api/src/clean/windows-bridge-adapter.mjs",
+    "apps/api/src/clean/runner-service.mjs",
+    "apps/api/src/clean/runner-protocol.mjs",
+    "apps/api/src/clean/execution-service.mjs",
+    "apps/api/src/clean/candidate-workspace.mjs",
+    "apps/api/src/clean/runner-adapters.mjs",
+    "apps/api/src/clean/workflow-adapters.mjs",
+    "apps/api/src/clean/evidence-service.mjs",
+    "apps/api/src/clean/parser-service.mjs",
+    "apps/api/src/clean/parser-protocol.mjs",
+    "apps/api/src/clean/parser-limits.mjs",
+    "apps/api/src/clean/quality-service.mjs",
+    "apps/api/src/clean/outcome-evaluation-service.mjs",
+    "apps/api/src/clean/parser-adapters.mjs",
+    "apps/api/src/clean/parser-docker.mjs",
+    "apps/api/src/clean/p8-service.mjs",
+    "apps/api/src/clean/p8/repository.mjs",
+    "apps/api/src/clean/p8/artifact-operations.mjs",
+    "apps/api/src/clean/p10-service.mjs",
+    "apps/api/src/clean/local-setup-service.mjs",
+    "apps/api/src/clean/github-setup-service.mjs",
+    "apps/api/src/clean/github-repository-adapter.mjs",
+    "apps/api/src/clean/http.mjs",
+    "apps/api/src/clean/web-static.mjs"
+  ],
+  "registry": {
+    "valid": true,
+    "mismatches": [],
+    "rest_count": 293,
+    "mcp_count": 293,
+    "web_count": 293
+  },
+  "ownership": {
+    "valid": true,
+    "missing_tables": [],
+    "unexpected_tables": [],
+    "missing_commands": [],
+    "mismatched_commands": [],
+    "missing_events": [],
+    "mismatched_events": []
+  },
+  "phase_metadata": {
+    "baseline_phase": "P1",
+    "active_phase": "P10",
+    "migration_registry": [
+      {
+        "id": "001-clean-baseline",
+        "version": 1
+      },
+      {
+        "id": "002-identity-acl",
+        "version": 2
+      },
+      {
+        "id": "003-project-workflow",
+        "version": 3
+      },
+      {
+        "id": "004-context-projection-mcp",
+        "version": 4
+      },
+      {
+        "id": "005-assist-files-terminal-bridge",
+        "version": 5
+      },
+      {
+        "id": "006-runner-execution-checkpoint-replay",
+        "version": 6
+      },
+      {
+        "id": "007-evidence-quality-parser-outcome",
+        "version": 7
+      },
+      {
+        "id": "008-delivery-deployment-importer-operations",
+        "version": 8
+      },
+      {
+        "id": "009-final-business-parity-governance",
+        "version": 9
+      }
+    ],
+    "p10_table_owners": [
+      "actors",
+      "aggregate_heads",
+      "aggregate_revisions",
+      "asset_attestations",
+      "asset_blobs",
+      "asset_relations",
+      "asset_versions",
+      "assets",
+      "assist_configurations",
+      "assist_goals",
+      "assist_messages",
+      "assist_references",
+      "assist_review_comments",
+      "assist_sessions",
+      "assist_turns",
+      "attachments",
+      "audit_events",
+      "backup_manifests",
+      "bridge_devices",
+      "bridge_transfers",
+      "brief_revisions",
+      "brief_template_revisions",
+      "brief_templates",
+      "briefs",
+      "cas_objects",
+      "code_changes",
+      "context_document_versions",
+      "context_edges",
+      "context_index_snapshots",
+      "context_nodes",
+      "context_packs",
+      "context_policies",
+      "context_projection_jobs",
+      "context_selections",
+      "context_sources",
+      "credential_refs",
+      "deliveries",
+      "delivery_events",
+      "delivery_policies",
+      "deployment_candidates",
+      "deployment_verifications",
+      "digests",
+      "event_cursors",
+      "events",
+      "exchange_grants",
+      "exchange_requests",
+      "execution_events",
+      "execution_inputs",
+      "execution_stage_checkpoints",
+      "executions",
+      "file_change_batches",
+      "file_change_items",
+      "file_refs",
+      "gateway_forward_receipts",
+      "human_reviews",
+      "idempotency_keys",
+      "import_batches",
+      "import_checkpoints",
+      "import_conflicts",
+      "import_id_map",
+      "job_specs",
+      "mcp_clients",
+      "node_contracts",
+      "operation_links",
+      "operations",
+      "outcome_evaluations",
+      "outcome_requirements",
+      "outcome_waivers",
+      "parser_formats",
+      "parser_runs",
+      "project_acl_entries",
+      "project_deletion_intents",
+      "project_intakes",
+      "project_invitations",
+      "project_memberships",
+      "projects",
+      "provider_profiles",
+      "pull_request_intents",
+      "quality_review_advices",
+      "quality_review_asset_selections",
+      "quality_review_events",
+      "quality_review_reports",
+      "quality_review_runs",
+      "receipt_manifests",
+      "repository_connections",
+      "repository_deletion_intents",
+      "repository_lines",
+      "repository_locks",
+      "repository_targets",
+      "repository_workspaces",
+      "runner_profiles",
+      "runner_receipts",
+      "runtime_approvals",
+      "runtime_user_inputs",
+      "schema_meta",
+      "schema_migrations",
+      "semantic_proposals",
+      "sessions",
+      "task_attempts",
+      "team_memberships",
+      "teams",
+      "terminal_events",
+      "terminal_sessions",
+      "test_results",
+      "traces",
+      "workflow_critic_receipts",
+      "workflow_generation_proposals",
+      "workflow_generations",
+      "workflow_nodes",
+      "workflow_quality_policies",
+      "workflow_revisions",
+      "workflows"
+    ],
+    "authorization_predicate": "authorize(principal, action, project, resource, policy_revision)",
+    "evidence_directory": "docs/evidence/v3-clean-p10-final-governance-20260829",
+    "evidence_present": true
+  },
+  "workspace": {
+    "schema_version": "aiws.v3-clean.workspace-audit.v3",
+    "phase": "P1",
+    "active": {
+      "runtime_entrypoint": "apps/api/server.mjs",
+      "http_composition": "apps/api/clean-server.mjs",
+      "process_scripts": [
+        "dev",
+        "dev:api",
+        "dev:broker",
+        "dev:clean",
+        "start",
+        "start:clean"
+      ]
+    },
+    "deferred": {
+      "package_scripts": [
+        "archive:v23",
+        "audit:parity",
+        "build",
+        "dev:broker",
+        "development:receipt",
+        "evidence:p10",
+        "evidence:p3",
+        "evidence:p31",
+        "evidence:p4",
+        "evidence:p5",
+        "evidence:p6",
+        "evidence:p7",
+        "evidence:p8",
+        "evidence:p9",
+        "fixture:legacy:acceptance",
+        "fixture:legacy:dev-broker",
+        "fixture:legacy:e2e",
+        "fixture:legacy:integration",
+        "fixture:legacy:release-build",
+        "fixture:legacy:release-promote",
+        "fixture:legacy:release-rehearse",
+        "fixture:legacy:security",
+        "fixture:seed-demo",
+        "github:seed-fixture",
+        "probe:development",
+        "test",
+        "test:development",
+        "test:e2e",
+        "test:integration",
+        "test:integration:clean",
+        "test:p10",
+        "test:p2",
+        "test:p3",
+        "test:p31",
+        "test:p4",
+        "test:p5",
+        "test:p6",
+        "test:p7",
+        "test:p8",
+        "test:p9",
+        "test:release",
+        "test:runner-real",
+        "test:security",
+        "test:security:clean",
+        "typecheck",
+        "verify:dev"
+      ],
+      "package_script_roles": {
+        "dev:broker": {
+          "role": "active_process",
+          "phase": "P6"
+        },
+        "fixture:legacy:dev-broker": {
+          "role": "deferred_fixture",
+          "phase": "P6"
+        },
+        "build": {
+          "role": "characterization_gate",
+          "phase": "P9"
+        },
+        "typecheck": {
+          "role": "characterization_gate",
+          "phase": "P9"
+        },
+        "test": {
+          "role": "characterization_gate",
+          "phase": "P2-P10"
+        },
+        "test:p2": {
+          "role": "characterization_gate",
+          "phase": "P2"
+        },
+        "test:p3": {
+          "role": "p3_gate",
+          "phase": "P3"
+        },
+        "test:p31": {
+          "role": "p31_gate",
+          "phase": "P3.1"
+        },
+        "test:p4": {
+          "role": "p4_gate",
+          "phase": "P4"
+        },
+        "test:p5": {
+          "role": "p5_gate",
+          "phase": "P5"
+        },
+        "test:p6": {
+          "role": "p6_gate",
+          "phase": "P6"
+        },
+        "test:p7": {
+          "role": "p7_gate",
+          "phase": "P7"
+        },
+        "test:p8": {
+          "role": "p8_gate",
+          "phase": "P8"
+        },
+        "test:p9": {
+          "role": "p9_gate",
+          "phase": "P9"
+        },
+        "test:p10": {
+          "role": "p10_gate",
+          "phase": "P10"
+        },
+        "audit:parity": {
+          "role": "p10_gate",
+          "phase": "P10"
+        },
+        "evidence:p3": {
+          "role": "p3_evidence",
+          "phase": "P3"
+        },
+        "evidence:p31": {
+          "role": "p31_evidence",
+          "phase": "P3.1"
+        },
+        "evidence:p4": {
+          "role": "p4_evidence",
+          "phase": "P4"
+        },
+        "evidence:p5": {
+          "role": "p5_evidence",
+          "phase": "P5"
+        },
+        "evidence:p6": {
+          "role": "p6_evidence",
+          "phase": "P6"
+        },
+        "evidence:p7": {
+          "role": "p7_evidence",
+          "phase": "P7"
+        },
+        "evidence:p8": {
+          "role": "p8_evidence",
+          "phase": "P8"
+        },
+        "evidence:p9": {
+          "role": "p9_evidence",
+          "phase": "P9"
+        },
+        "evidence:p10": {
+          "role": "p10_evidence",
+          "phase": "P10"
+        },
+        "test:integration": {
+          "role": "layered_gate",
+          "phase": "P3.1"
+        },
+        "test:integration:clean": {
+          "role": "p31_gate",
+          "phase": "P3.1"
+        },
+        "fixture:legacy:integration": {
+          "role": "deferred_fixture",
+          "phase": "historical"
+        },
+        "test:e2e": {
+          "role": "characterization_gate",
+          "phase": "P9"
+        },
+        "test:security": {
+          "role": "layered_gate",
+          "phase": "P3.1"
+        },
+        "test:security:clean": {
+          "role": "p31_gate",
+          "phase": "P3.1"
+        },
+        "fixture:legacy:security": {
+          "role": "deferred_fixture",
+          "phase": "historical"
+        },
+        "test:release": {
+          "role": "characterization_gate",
+          "phase": "P8-P9"
+        },
+        "test:runner-real": {
+          "role": "characterization_gate",
+          "phase": "P6"
+        },
+        "test:development": {
+          "role": "development_gate",
+          "phase": "P10+"
+        },
+        "probe:development": {
+          "role": "development_probe",
+          "phase": "P10+"
+        },
+        "github:seed-fixture": {
+          "role": "deferred_fixture",
+          "phase": "P7"
+        },
+        "verify:dev": {
+          "role": "development_gate",
+          "phase": "P10+"
+        },
+        "development:receipt": {
+          "role": "operations_receipt",
+          "phase": "P10+"
+        },
+        "fixture:seed-demo": {
+          "role": "deferred_fixture",
+          "phase": "P3"
+        },
+        "archive:v23": {
+          "role": "historical_maintenance",
+          "phase": "historical"
+        },
+        "fixture:legacy:acceptance": {
+          "role": "deferred_fixture",
+          "phase": "P2-P9"
+        },
+        "fixture:legacy:e2e": {
+          "role": "deferred_fixture",
+          "phase": "historical"
+        },
+        "fixture:legacy:release-build": {
+          "role": "deferred_fixture",
+          "phase": "P8-P9"
+        },
+        "fixture:legacy:release-rehearse": {
+          "role": "deferred_fixture",
+          "phase": "P8-P9"
+        },
+        "fixture:legacy:release-promote": {
+          "role": "deferred_fixture",
+          "phase": "P8-P9"
+        }
+      },
+      "retired_route_references": {
+        "P1:p1": 1,
+        "P10:clean": 2,
+        "P2-P8:historical domain/runtime input": 2,
+        "P2-P9:historical behavior or future-phase tool": 681,
+        "P2-P9:pre-clean shared contract": 1,
+        "P4:clean": 4,
+        "P5:clean": 2,
+        "P6:clean": 3,
+        "P7:clean": 3,
+        "P8:clean": 1,
+        "P9:clean": 8,
+        "P9:pre-clean Web characterization": 3
+      }
+    },
+    "evidence": {
+      "directory": "docs/evidence/v3-clean-p1-gate-contract-complete-20260819",
+      "verified": true,
+      "workspace_comparison": false
+    },
+    "scope_inventory": {
+      "files": 4190,
+      "classifications": {
+        "governance:P0-P10": 35,
+        "clean:P7": 37,
+        "p1:P1": 65,
+        "fixture:P2-P9": 106,
+        "fixture:P2-P8": 85,
+        "clean:P5": 36,
+        "clean:P4": 23,
+        "clean:P6": 28,
+        "clean:P10": 58,
+        "clean:P8": 31,
+        "clean:P9": 33,
+        "fixture:P6": 6,
+        "fixture:P9": 21,
+        "fixture:P8-P9": 4,
+        "non_product:unscoped research": 88,
+        "archive:historical": 8,
+        "evidence:P0-P10": 3525,
+        "supporting_document:P0-P10": 1
+      },
+      "unclassified": []
+    },
+    "checks": [
+      {
+        "id": "package-process-surface",
+        "valid": true
+      },
+      {
+        "id": "runtime-entrypoints",
+        "valid": true
+      },
+      {
+        "id": "legacy-server-containment",
+        "valid": true
+      },
+      {
+        "id": "retired-route-containment",
+        "valid": true
+      },
+      {
+        "id": "active-document-contracts",
+        "valid": true
+      },
+      {
+        "id": "gate-sync-contract",
+        "valid": true
+      },
+      {
+        "id": "p1-evidence-synchronization",
+        "valid": true
+      },
+      {
+        "id": "workspace-inventory",
+        "valid": true
+      }
+    ],
+    "findings": [],
+    "valid": true
+  },
+  "forbidden_findings": [],
+  "valid": true
+}
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+== dev:git-diff-check ==
+warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/architecture/v23-capability-matrix.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/architecture/v3-clean-development-plan.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/testing.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.clean.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it
+
+== dev:audit-p1 ==
+
+> ai-workspace-system@3.0.0 audit:p1 <WORKSPACE>
+> node scripts/v3-clean-workspace-audit.mjs
+
+{
+  "schema_version": "aiws.v3-clean.workspace-audit.v3",
+  "phase": "P1",
+  "active": {
+    "runtime_entrypoint": "apps/api/server.mjs",
+    "http_composition": "apps/api/clean-server.mjs",
+    "process_scripts": [
+      "dev",
+      "dev:api",
+      "dev:broker",
+      "dev:clean",
+      "start",
+      "start:clean"
+    ]
+  },
+  "deferred": {
+    "package_scripts": [
+      "archive:v23",
+      "audit:parity",
+      "build",
+      "dev:broker",
+      "development:receipt",
+      "evidence:p10",
+      "evidence:p3",
+      "evidence:p31",
+      "evidence:p4",
+      "evidence:p5",
+      "evidence:p6",
+      "evidence:p7",
+      "evidence:p8",
+      "evidence:p9",
+      "fixture:legacy:acceptance",
+      "fixture:legacy:dev-broker",
+      "fixture:legacy:e2e",
+      "fixture:legacy:integration",
+      "fixture:legacy:release-build",
+      "fixture:legacy:release-promote",
+      "fixture:legacy:release-rehearse",
+      "fixture:legacy:security",
+      "fixture:seed-demo",
+      "github:seed-fixture",
+      "probe:development",
+      "test",
+      "test:development",
+      "test:e2e",
+      "test:integration",
+      "test:integration:clean",
+      "test:p10",
+      "test:p2",
+      "test:p3",
+      "test:p31",
+      "test:p4",
+      "test:p5",
+      "test:p6",
+      "test:p7",
+      "test:p8",
+      "test:p9",
+      "test:release",
+      "test:runner-real",
+      "test:security",
+      "test:security:clean",
+      "typecheck",
+      "verify:dev"
+    ],
+    "package_script_roles": {
+      "dev:broker": {
+        "role": "active_process",
+        "phase": "P6"
+      },
+      "fixture:legacy:dev-broker": {
+        "role": "deferred_fixture",
+        "phase": "P6"
+      },
+      "build": {
+        "role": "characterization_gate",
+        "phase": "P9"
+      },
+      "typecheck": {
+        "role": "characterization_gate",
+        "phase": "P9"
+      },
+      "test": {
+        "role": "characterization_gate",
+        "phase": "P2-P10"
+      },
+      "test:p2": {
+        "role": "characterization_gate",
+        "phase": "P2"
+      },
+      "test:p3": {
+        "role": "p3_gate",
+        "phase": "P3"
+      },
+      "test:p31": {
+        "role": "p31_gate",
+        "phase": "P3.1"
+      },
+      "test:p4": {
+        "role": "p4_gate",
+        "phase": "P4"
+      },
+      "test:p5": {
+        "role": "p5_gate",
+        "phase": "P5"
+      },
+      "test:p6": {
+        "role": "p6_gate",
+        "phase": "P6"
+      },
+      "test:p7": {
+        "role": "p7_gate",
+        "phase": "P7"
+      },
+      "test:p8": {
+        "role": "p8_gate",
+        "phase": "P8"
+      },
+      "test:p9": {
+        "role": "p9_gate",
+        "phase": "P9"
+      },
+      "test:p10": {
+        "role": "p10_gate",
+        "phase": "P10"
+      },
+      "audit:parity": {
+        "role": "p10_gate",
+        "phase": "P10"
+      },
+      "evidence:p3": {
+        "role": "p3_evidence",
+        "phase": "P3"
+      },
+      "evidence:p31": {
+        "role": "p31_evidence",
+        "phase": "P3.1"
+      },
+      "evidence:p4": {
+        "role": "p4_evidence",
+        "phase": "P4"
+      },
+      "evidence:p5": {
+        "role": "p5_evidence",
+        "phase": "P5"
+      },
+      "evidence:p6": {
+        "role": "p6_evidence",
+        "phase": "P6"
+      },
+      "evidence:p7": {
+        "role": "p7_evidence",
+        "phase": "P7"
+      },
+      "evidence:p8": {
+        "role": "p8_evidence",
+        "phase": "P8"
+      },
+      "evidence:p9": {
+        "role": "p9_evidence",
+        "phase": "P9"
+      },
+      "evidence:p10": {
+        "role": "p10_evidence",
+        "phase": "P10"
+      },
+      "test:integration": {
+        "role": "layered_gate",
+        "phase": "P3.1"
+      },
+      "test:integration:clean": {
+        "role": "p31_gate",
+        "phase": "P3.1"
+      },
+      "fixture:legacy:integration": {
+        "role": "deferred_fixture",
+        "phase": "historical"
+      },
+      "test:e2e": {
+        "role": "characterization_gate",
+        "phase": "P9"
+      },
+      "test:security": {
+        "role": "layered_gate",
+        "phase": "P3.1"
+      },
+      "test:security:clean": {
+        "role": "p31_gate",
+        "phase": "P3.1"
+      },
+      "fixture:legacy:security": {
+        "role": "deferred_fixture",
+        "phase": "historical"
+      },
+      "test:release": {
+        "role": "characterization_gate",
+        "phase": "P8-P9"
+      },
+      "test:runner-real": {
+        "role": "characterization_gate",
+        "phase": "P6"
+      },
+      "test:development": {
+        "role": "development_gate",
+        "phase": "P10+"
+      },
+      "probe:development": {
+        "role": "development_probe",
+        "phase": "P10+"
+      },
+      "github:seed-fixture": {
+        "role": "deferred_fixture",
+        "phase": "P7"
+      },
+      "verify:dev": {
+        "role": "development_gate",
+        "phase": "P10+"
+      },
+      "development:receipt": {
+        "role": "operations_receipt",
+        "phase": "P10+"
+      },
+      "fixture:seed-demo": {
+        "role": "deferred_fixture",
+        "phase": "P3"
+      },
+      "archive:v23": {
+        "role": "historical_maintenance",
+        "phase": "historical"
+      },
+      "fixture:legacy:acceptance": {
+        "role": "deferred_fixture",
+        "phase": "P2-P9"
+      },
+      "fixture:legacy:e2e": {
+        "role": "deferred_fixture",
+        "phase": "historical"
+      },
+      "fixture:legacy:release-build": {
+        "role": "deferred_fixture",
+        "phase": "P8-P9"
+      },
+      "fixture:legacy:release-rehearse": {
+        "role": "deferred_fixture",
+        "phase": "P8-P9"
+      },
+      "fixture:legacy:release-promote": {
+        "role": "deferred_fixture",
+        "phase": "P8-P9"
+      }
+    },
+    "retired_route_references": {
+      "P1:p1": 1,
+      "P10:clean": 2,
+      "P2-P8:historical domain/runtime input": 2,
+      "P2-P9:historical behavior or future-phase tool": 681,
+      "P2-P9:pre-clean shared contract": 1,
+      "P4:clean": 4,
+      "P5:clean": 2,
+      "P6:clean": 3,
+      "P7:clean": 3,
+      "P8:clean": 1,
+      "P9:clean": 8,
+      "P9:pre-clean Web characterization": 3
+    }
+  },
+  "evidence": {
+    "directory": "docs/evidence/v3-clean-p1-gate-contract-complete-20260819",
+    "verified": true,
+    "workspace_comparison": false
+  },
+  "scope_inventory": {
+    "files": 4190,
+    "classifications": {
+      "governance:P0-P10": 35,
+      "clean:P7": 37,
+      "p1:P1": 65,
+      "fixture:P2-P9": 106,
+      "fixture:P2-P8": 85,
+      "clean:P5": 36,
+      "clean:P4": 23,
+      "clean:P6": 28,
+      "clean:P10": 58,
+      "clean:P8": 31,
+      "clean:P9": 33,
+      "fixture:P6": 6,
+      "fixture:P9": 21,
+      "fixture:P8-P9": 4,
+      "non_product:unscoped research": 88,
+      "archive:historical": 8,
+      "evidence:P0-P10": 3525,
+      "supporting_document:P0-P10": 1
+    },
+    "unclassified": []
+  },
+  "checks": [
+    {
+      "id": "package-process-surface",
+      "valid": true
+    },
+    {
+      "id": "runtime-entrypoints",
+      "valid": true
+    },
+    {
+      "id": "legacy-server-containment",
+      "valid": true
+    },
+    {
+      "id": "retired-route-containment",
+      "valid": true
+    },
+    {
+      "id": "active-document-contracts",
+      "valid": true
+    },
+    {
+      "id": "gate-sync-contract",
+      "valid": true
+    },
+    {
+      "id": "p1-evidence-synchronization",
+      "valid": true
+    },
+    {
+      "id": "workspace-inventory",
+      "valid": true
+    }
+  ],
+  "findings": [],
+  "valid": true
+}
+
+== dev:audit-parity ==
+
+> ai-workspace-system@3.0.0 audit:parity <WORKSPACE>
+> node scripts/v3-clean-p10-parity.mjs
+
+{
+  "schema_version": "aiws.v3-clean.p10-parity-audit.v1",
+  "phase": "P10",
+  "status": "passed",
+  "counts": {
+    "cases": 14,
+    "routes": 360,
+    "collections": 98,
+    "web_routes": 11,
+    "optimization_packages": 7
+  },
+  "business_groups": 19,
+  "gaps": 0,
+  "findings": []
+}
+
+== dev:recovery-plan ==
+
+> ai-workspace-system@3.0.0 recovery:plan <WORKSPACE>
+> node scripts/recovery-governance.mjs plan
+
+{
+  "documents": [
+    "docs/architecture/v3-clean-development-plan.md",
+    "docs/testing.md"
+  ],
+  "domains": [
+    "assist",
+    "bridge",
+    "context",
+    "contracts",
+    "delivery",
+    "evidence",
+    "execution",
+    "frontend",
+    "governance",
+    "identity",
+    "mcp",
+    "operations",
+    "outcome",
+    "project",
+    "quality",
+    "repository",
+    "runner",
+    "setup",
+    "terminal",
+    "workflow"
+  ],
+  "feature_count": 27,
+  "phases": 10,
+  "phase_prefix": "P",
+  "workspace_sync": {
+    "schema_version": "aiws.v3-clean.workspace-audit.v3",
+    "phase": "P1",
+    "valid": true,
+    "checks": [
+      {
+        "id": "package-process-surface",
+        "valid": true
+      },
+      {
+        "id": "runtime-entrypoints",
+        "valid": true
+      },
+      {
+        "id": "legacy-server-containment",
+        "valid": true
+      },
+      {
+        "id": "retired-route-containment",
+        "valid": true
+      },
+      {
+        "id": "active-document-contracts",
+        "valid": true
+      },
+      {
+        "id": "gate-sync-contract",
+        "valid": true
+      },
+      {
+        "id": "p1-evidence-synchronization",
+        "valid": true
+      },
+      {
+        "id": "workspace-inventory",
+        "valid": true
+      }
+    ],
+    "deferred_route_references": {
+      "P1:p1": 1,
+      "P10:clean": 2,
+      "P2-P8:historical domain/runtime input": 2,
+      "P2-P9:historical behavior or future-phase tool": 681,
+      "P2-P9:pre-clean shared contract": 1,
+      "P4:clean": 4,
+      "P5:clean": 2,
+      "P6:clean": 3,
+      "P7:clean": 3,
+      "P8:clean": 1,
+      "P9:clean": 8,
+      "P9:pre-clean Web characterization": 3
+    },
+    "evidence_directory": "docs/evidence/v3-clean-p1-gate-contract-complete-20260819"
+  },
+  "receipt": ".ai-workspace/recovery/plan.json"
+}
+
+== dev:recovery-catalog ==
+
+> ai-workspace-system@3.0.0 recovery:catalog <WORKSPACE>
+> node scripts/recovery-governance.mjs catalog
+
+{
+  "feature_count": 27,
+  "statuses": {
+    "planned": 0,
+    "scaffolded": 0,
+    "implemented": 0,
+    "verified": 0,
+    "released": 27
+  },
+  "module_count": 19,
+  "owned_tables": 103,
+  "owned_commands": 107,
+  "unique_ids": 27,
+  "workspace_sync": {
+    "schema_version": "aiws.v3-clean.workspace-audit.v3",
+    "phase": "P1",
+    "valid": true,
+    "checks": [
+      {
+        "id": "package-process-surface",
+        "valid": true
+      },
+      {
+        "id": "runtime-entrypoints",
+        "valid": true
+      },
+      {
+        "id": "legacy-server-containment",
+        "valid": true
+      },
+      {
+        "id": "retired-route-containment",
+        "valid": true
+      },
+      {
+        "id": "active-document-contracts",
+        "valid": true
+      },
+      {
+        "id": "gate-sync-contract",
+        "valid": true
+      },
+      {
+        "id": "p1-evidence-synchronization",
+        "valid": true
+      },
+      {
+        "id": "workspace-inventory",
+        "valid": true
+      }
+    ],
+    "deferred_route_references": {
+      "P1:p1": 1,
+      "P10:clean": 2,
+      "P2-P8:historical domain/runtime input": 2,
+      "P2-P9:historical behavior or future-phase tool": 681,
+      "P2-P9:pre-clean shared contract": 1,
+      "P4:clean": 4,
+      "P5:clean": 2,
+      "P6:clean": 3,
+      "P7:clean": 3,
+      "P8:clean": 1,
+      "P9:clean": 8,
+      "P9:pre-clean Web characterization": 3
+    },
+    "evidence_directory": "docs/evidence/v3-clean-p1-gate-contract-complete-20260819"
+  },
+  "receipt": ".ai-workspace/recovery/catalog.json"
+}
+
+== dev:recovery-coverage ==
+
+> ai-workspace-system@3.0.0 recovery:coverage <WORKSPACE>
+> node scripts/recovery-governance.mjs coverage
+
+{
+  "feature_count": 27,
+  "covered_features": 27,
+  "behavior_covered": 27,
+  "ui_covered": 27,
+  "gates": {
+    "T0": 2,
+    "T1": 2,
+    "T2": 2,
+    "T3": 3,
+    "T4": 5,
+    "T5": 6,
+    "T6": 5,
+    "T7": 2,
+    "T8": 5
+  },
+  "receipt": ".ai-workspace/recovery/coverage.json"
+}
+
+== dev:recovery-impact ==
+
+> ai-workspace-system@3.0.0 recovery:impact <WORKSPACE>
+> node scripts/recovery-governance.mjs impact "--" "--audit"
+
+{
+  "audit": true,
+  "changed_files": [
+    {
+      "file": "apps/api/src/clean/config.mjs",
+      "features": [
+        "REC-D2-SETUP-002"
+      ],
+      "classification": "p1",
+      "phase": "P1",
+      "phase_rows": [
+        "P1-PLATFORM-001",
+        "P1-PLATFORM-002"
+      ]
+    },
+    {
+      "file": "apps/api/src/clean/context-service.mjs",
+      "features": [
+        "REC-D9-CONTEXT-017",
+        "REC-D9-PROJECTION-018"
+      ],
+      "classification": "clean",
+      "phase": "P4",
+      "phase_rows": []
+    },
+    {
+      "file": "apps/api/src/clean/files-service.mjs",
+      "features": [
+        "REC-D8-ATTACHMENTS-011",
+        "REC-D8-FILES-012"
+      ],
+      "classification": "clean",
+      "phase": "P5",
+      "phase_rows": []
+    },
+    {
+      "file": "apps/api/src/clean/github-repository-adapter.mjs",
+      "features": [
+        "REC-D7-REPOSITORY-014"
+      ],
+      "classification": "p1",
+      "phase": "P1",
+      "phase_rows": [
+        "P1-PLATFORM-001",
+        "P1-PLATFORM-002"
+      ]
+    },
+    {
+      "file": "apps/api/src/clean/http.mjs",
+      "features": [
+        "REC-D2-IDENTITY-001",
+        "REC-D2-SETUP-002",
+        "REC-D4-MCP-004",
+        "REC-D5-PROJECT-005",
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-EXECUTION-008",
+        "REC-D6-GENERATION-007",
+        "REC-D6-OUTCOME-009",
+        "REC-D7-REPOSITORY-014",
+        "REC-D9-CONTEXT-017",
+        "REC-D9-EVIDENCE-019",
+        "REC-D9-PROJECTION-018",
+        "REC-D1-CONTRACTS-023"
+      ],
+      "classification": "p1",
+      "phase": "P1",
+      "phase_rows": [
+        "P1-PLATFORM-001",
+        "P1-PLATFORM-002"
+      ]
+    },
+    {
+      "file": "apps/api/src/clean/p10-service.mjs",
+      "features": [
+        "REC-D5-PROJECT-005",
+        "REC-D7-REPOSITORY-014",
+        "REC-D8-ASSIST-010",
+        "REC-D1-CONTRACTS-023"
+      ],
+      "classification": "clean",
+      "phase": "P10",
+      "phase_rows": []
+    },
+    {
+      "file": "apps/api/src/clean/p8/github-adapter.mjs",
+      "features": [
+        "REC-D2-SETUP-002",
+        "REC-D7-DELIVERY-015"
+      ],
+      "classification": "clean",
+      "phase": "P8",
+      "phase_rows": []
+    },
+    {
+      "file": "apps/api/src/clean/p8/repository.mjs",
+      "features": [
+        "REC-D11-OPS-022",
+        "REC-D2-SETUP-002",
+        "REC-D7-DELIVERY-015",
+        "REC-D9-DEPLOYMENT-021"
+      ],
+      "classification": "clean",
+      "phase": "P8",
+      "phase_rows": []
+    },
+    {
+      "file": "apps/api/src/clean/project-workflow.mjs",
+      "features": [
+        "REC-D5-PROJECT-005",
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-GENERATION-007",
+        "REC-D7-REPOSITORY-014"
+      ],
+      "classification": "p1",
+      "phase": "P1",
+      "phase_rows": [
+        "P1-PLATFORM-001",
+        "P1-PLATFORM-002"
+      ]
+    },
+    {
+      "file": "apps/api/src/clean/runtime.mjs",
+      "features": [
+        "REC-D2-SETUP-002"
+      ],
+      "classification": "p1",
+      "phase": "P1",
+      "phase_rows": [
+        "P1-PLATFORM-001",
+        "P1-PLATFORM-002"
+      ]
+    },
+    {
+      "file": "apps/api/src/clean/workflow-adapters.mjs",
+      "features": [
+        "REC-D6-GENERATION-007"
+      ],
+      "classification": "p1",
+      "phase": "P1",
+      "phase_rows": [
+        "P1-PLATFORM-001",
+        "P1-PLATFORM-002"
+      ]
+    },
+    {
+      "file": "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+      "features": [
+        "REC-D5-PROJECT-005",
+        "REC-D5-WORKFLOW-006",
+        "REC-D6-GENERATION-007",
+        "REC-D7-REPOSITORY-014"
+      ],
+      "classification": "fixture",
+      "phase": "P9",
+      "phase_rows": []
+    },
+    {
+      "file": "apps/web/src/features/projects/index.ts",
+      "features": [
+        "REC-D10-FRONTEND-024"
+      ],
+      "classification": "clean",
+      "phase": "P10",
+      "phase_rows": []
+    },
+    {
+      "file": "apps/web/src/features/projects/preparation/index.tsx",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D9-CONTEXT-017"
+      ],
+      "classification": "clean",
+      "phase": "P10",
+      "phase_rows": []
+    },
+    {
+      "file": "apps/web/src/test/project-preparation.test.tsx",
+      "features": [
+        "REC-D10-FRONTEND-024",
+        "REC-D9-CONTEXT-017"
+      ],
+      "classification": "fixture",
+      "phase": "P9",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/architecture/decision-log.md",
+      "features": [],
+      "classification": "governance",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/architecture/v23-capability-matrix.md",
+      "features": [],
+      "classification": "governance",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/architecture/v3-clean-development-plan.md",
+      "features": [],
+      "classification": "governance",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/apps__api__src__clean__github-repository-adapter.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/apps__api__src__clean__p8__github-adapter.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/apps__api__src__clean__project-workflow.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/apps__api__src__clean__runtime.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/feature-catalog.clean.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/feature-catalog.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/packages__contracts__src__clean-v2.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/change.patch",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified-artifact.tgz",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified-files.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/apps__api__src__clean__github-repository-adapter.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/apps__api__src__clean__p8__github-adapter.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/apps__api__src__clean__project-workflow.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/apps__api__src__clean__runtime.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/feature-catalog.clean.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/feature-catalog.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/packages__contracts__src__clean-v2.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/rollback.ps1",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/verification.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__config.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__p10-service.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__p8__github-adapter.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__p8__repository.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__project-workflow.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__runtime.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/docs__architecture__decision-log.md",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/docs__architecture__v23-capability-matrix.md",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/docs__architecture__v3-clean-development-plan.md",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/docs__testing.md",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/feature-catalog.clean.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/feature-catalog.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/packages__contracts__src__clean-v2.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/change.patch",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/command-results.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/artifact-reopen.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/audit-p1.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/audit-p1.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/audit-parity.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/audit-parity.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/baseline-worktree-status.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/build.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/build.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/check.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/check.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/formal-verify.receipt.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/formal-verify.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/formal-verify.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/integration-clean.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/integration-clean.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/patch-reopen.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/rollback-reopen.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/scan-clean.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/scan-clean.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/security-clean.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/security-clean.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p10.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p10.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p3.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p3.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p8.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p8.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verification-reopen.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev-final.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev-final.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev.receipt.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/web-test.stderr.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/web-test.stdout.txt",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/gate-impact.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified-artifact.tgz",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified-files.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__config.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__github-repository-adapter.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__p10-service.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__p8__github-adapter.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__p8__repository.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__project-workflow.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__runtime.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/docs__architecture__decision-log.md",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/docs__architecture__v23-capability-matrix.md",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/docs__architecture__v3-clean-development-plan.md",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/docs__testing.md",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/feature-catalog.clean.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/feature-catalog.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/packages__contracts__src__clean-v2.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/tests__p10__remote-workspace-auth.test.mjs",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/remote-probe.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/rollback.ps1",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/verification.json",
+      "features": [],
+      "classification": "evidence",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "docs/testing.md",
+      "features": [],
+      "classification": "governance",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "feature-catalog.clean.json",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ],
+      "classification": "governance",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "feature-catalog.json",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ],
+      "classification": "governance",
+      "phase": "P0-P10",
+      "phase_rows": []
+    },
+    {
+      "file": "packages/contracts/src/clean-v2.mjs",
+      "features": [
+        "REC-D2-SETUP-002",
+        "REC-D1-CONTRACTS-023"
+      ],
+      "classification": "clean",
+      "phase": "P7",
+      "phase_rows": []
+    },
+    {
+      "file": "scripts/lib/v3-clean-p1-scope.mjs",
+      "features": [],
+      "classification": "p1",
+      "phase": "P1",
+      "phase_rows": [
+        "P1-GOVERNANCE-003"
+      ]
+    },
+    {
+      "file": "scripts/production-lifecycle.mjs",
+      "features": [],
+      "classification": "fixture",
+      "phase": "P2-P9",
+      "phase_rows": []
+    },
+    {
+      "file": "scripts/v3-clean-p4-performance.mjs",
+      "features": [
+        "REC-D9-PROJECTION-018"
+      ],
+      "classification": "clean",
+      "phase": "P4",
+      "phase_rows": []
+    },
+    {
+      "file": "scripts/verify-dev.mjs",
+      "features": [
+        "REC-D0-GOVERNANCE-000"
+      ],
+      "classification": "p1",
+      "phase": "P1",
+      "phase_rows": [
+        "P1-GOVERNANCE-003"
+      ]
+    },
+    {
+      "file": "tests/p10/remote-workspace-auth.test.mjs",
+      "features": [
+        "REC-D7-REPOSITORY-014"
+      ],
+      "classification": "clean",
+      "phase": "P10",
+      "phase_rows": []
+    }
+  ],
+  "unmapped_files": [],
+  "selected_tests": [
+    "T0",
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6",
+    "T7",
+    "T8",
+    "apps/web/src/test/assist.test.tsx",
+    "apps/web/src/test/context.test.tsx",
+    "apps/web/src/test/evidence-p7.test.tsx",
+    "apps/web/src/test/execution-p6.test.tsx",
+    "apps/web/src/test/execution-p7.test.tsx",
+    "apps/web/src/test/files-p5.test.tsx",
+    "apps/web/src/test/identity-access.test.tsx",
+    "apps/web/src/test/operations-p8.test.tsx",
+    "apps/web/src/test/p10-business-parity.test.tsx",
+    "apps/web/src/test/post-closure-restoration.test.tsx",
+    "apps/web/src/test/project-workflow-clean.test.tsx",
+    "apps/web/src/test/workflow.test.tsx",
+    "scripts/development-receipt.mjs",
+    "scripts/e2e.mjs",
+    "scripts/v3-clean-p10-release-probe.mjs",
+    "scripts/v3-clean-p5-assist-probe.mjs",
+    "scripts/v3-clean-p5-performance.mjs",
+    "scripts/v3-clean-p6-performance.mjs",
+    "scripts/v3-clean-p7-cas-tamper-probe.mjs",
+    "scripts/v3-clean-p7-parser-probe.mjs",
+    "scripts/v3-clean-p7-performance.mjs",
+    "scripts/v3-clean-p7-quality-outcome-probe.mjs",
+    "scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+    "scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+    "scripts/v3-clean-p8-github-delivery-probe.mjs",
+    "scripts/v3-clean-p8-importer-probe.mjs",
+    "scripts/v3-clean-p9-release-probe.mjs",
+    "tests/integration/mcp-stdio-r5.test.mjs",
+    "tests/p10/business-parity.test.mjs",
+    "tests/p10/development-reliability.test.mjs",
+    "tests/p10/http-contract.test.mjs",
+    "tests/p10/migration.test.mjs",
+    "tests/p10/parity-governance.test.mjs",
+    "tests/p10/post-closure-restoration.test.mjs",
+    "tests/p10/real-development-loop.test.mjs",
+    "tests/p2/identity-acl-security.test.mjs",
+    "tests/p2/identity-acl.test.mjs",
+    "tests/p3/active-entrypoint.test.mjs",
+    "tests/p3/http-contract.test.mjs",
+    "tests/p3/migration.test.mjs",
+    "tests/p3/project-workflow.test.mjs",
+    "tests/p4/active-entrypoint.test.mjs",
+    "tests/p4/context-projection.test.mjs",
+    "tests/p4/governance-sync.test.mjs",
+    "tests/p4/mcp-exchange-gateway.test.mjs",
+    "tests/p4/migration.test.mjs",
+    "tests/p4/transport-parity.test.mjs",
+    "tests/p5/assist-files.test.mjs",
+    "tests/p5/http-contract.test.mjs",
+    "tests/p5/mutation-recovery.test.mjs",
+    "tests/p5/provider-probe.test.mjs",
+    "tests/p6/execution-recovery.test.mjs",
+    "tests/p6/governance-sync.test.mjs",
+    "tests/p6/http-security.test.mjs",
+    "tests/p6/migration.test.mjs",
+    "tests/p6/runner-execution.test.mjs",
+    "tests/p6/transport-parity.test.mjs",
+    "tests/p7/governance-sync.test.mjs",
+    "tests/p7/http-contract.test.mjs",
+    "tests/p7/parser-evidence.test.mjs",
+    "tests/p7/quality-outcome.test.mjs",
+    "tests/p8/delivery-operations.test.mjs",
+    "tests/p8/deployment-backup.test.mjs",
+    "tests/p8/governance.test.mjs",
+    "tests/p8/http-contract.test.mjs",
+    "tests/p8/importer.test.mjs",
+    "tests/p9/web-governance.test.mjs",
+    "tests/unit/contracts.test.mjs",
+    "tests/unit/database.test.mjs",
+    "tests/unit/migrations.test.mjs",
+    "tests/unit/recovery-golden.test.mjs",
+    "tests/unit/recovery-governance.test.mjs"
+  ],
+  "workspace_sync": {
+    "schema_version": "aiws.v3-clean.workspace-audit.v3",
+    "phase": "P1",
+    "valid": true,
+    "checks": [
+      {
+        "id": "package-process-surface",
+        "valid": true
+      },
+      {
+        "id": "runtime-entrypoints",
+        "valid": true
+      },
+      {
+        "id": "legacy-server-containment",
+        "valid": true
+      },
+      {
+        "id": "retired-route-containment",
+        "valid": true
+      },
+      {
+        "id": "active-document-contracts",
+        "valid": true
+      },
+      {
+        "id": "gate-sync-contract",
+        "valid": true
+      },
+      {
+        "id": "p1-evidence-synchronization",
+        "valid": true
+      },
+      {
+        "id": "workspace-inventory",
+        "valid": true
+      }
+    ],
+    "deferred_route_references": {
+      "P1:p1": 1,
+      "P10:clean": 2,
+      "P2-P8:historical domain/runtime input": 2,
+      "P2-P9:historical behavior or future-phase tool": 681,
+      "P2-P9:pre-clean shared contract": 1,
+      "P4:clean": 4,
+      "P5:clean": 2,
+      "P6:clean": 3,
+      "P7:clean": 3,
+      "P8:clean": 1,
+      "P9:clean": 8,
+      "P9:pre-clean Web characterization": 3
+    },
+    "evidence_directory": "docs/evidence/v3-clean-p1-gate-contract-complete-20260819"
+  },
+  "receipt": ".ai-workspace/recovery/impact.json"
+}
+
+== dev:test-p1 ==
+
+> ai-workspace-system@3.0.0 test:p1 <WORKSPACE>
+> node --test tests/p1/*.test.mjs tests/integration/v3-clean-p1.test.mjs tests/security/v3-clean-p1.test.mjs
+
+(node:21868) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ clean restart preserves terminal operation and SSE/JSON replay parity (245.924ms)
+✔ clean boundary validates readiness, aggregate CAS, cursors, and live SSE heartbeat (165.7139ms)
+✔ CAS manifest drift keeps probes alive but blocks readiness (135.7345ms)
+✔ non-terminal SSE follows committed events and closes on terminal state (135.7939ms)
+(node:27624) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ canonical JSON and SHA-256 are stable (1.4183ms)
+✔ clean baseline is idempotent and has one bootstrap actor (92.7568ms)
+✔ historical schema is held for importer and emits a receipt (45.4485ms)
+✔ nonzero user_version without a clean family is held for importer (29.7678ms)
+✔ baseline DDL and ledger faults roll back as one transaction (297.2134ms)
+✔ operation transitions atomically update head, revision, event and audit (94.5791ms)
+✔ operation state machine requires queued before running (78.2123ms)
+✔ startup rejects a tampered aggregate head semantic hash (93.7309ms)
+✔ checksum drift leaves the process live but not ready (93.6347ms)
+✔ concurrent duplicate idempotency requests produce one operation (67.3687ms)
+✔ expired idempotency keys can be reused after retention (68.0336ms)
+✔ expired aggregate idempotency keys are replaced before replay (77.7123ms)
+✔ operation executor emits durable progress before terminal success (78.722ms)
+✔ cancel is accepted once and the worker writes the terminal event (76.7746ms)
+✔ retry creates a linked operation without rewriting the failed receipt (81.2774ms)
+✔ cursor scope, expiry and redaction are enforced (0.8758ms)
+✔ event replay authorization and durable cursor expiry are stable (70.1927ms)
+✔ 1000-event replay is complete, ordered, and duplicate-free (162.3548ms)
+✔ CAS promotion and tamper verification use content hashes (130.3065ms)
+✔ download receipts bind actor, project, hash, expiry, and single use (113.4623ms)
+✔ download receipt expiry uses the injected platform clock (118.8083ms)
+✔ API v2 probes, retired route, replay and cancel use one envelope (186.8733ms)
+✔ registry metadata, ownership, and transaction callback contract are enforced (58.0623ms)
+✔ CAS content scanner blocks secrets and missing manifests never self-heal (100.2568ms)
+✔ expired cursors return a scope-bound restart cursor (0.3723ms)
+✔ process-level startup failure remains probeable and blocks API v2 (14.553ms)
+✔ global P1 audit classifies active and deferred surfaces without Evidence recursion (221.1117ms)
+✔ gate synchronization contract is present in every governing surface (1.7762ms)
+✔ gate synchronization parser rejects duplicate ids and rule text drift (1.1219ms)
+✔ pre-push runs the outer verify once and suppresses only nested probe hooks (0.4272ms)
+✔ completion baseline records the remaining pre-fix synchronization gaps (41.2229ms)
+✔ gate complete baseline records the task-start synchronization gap (42.2498ms)
+✔ workspace path classifier keeps later phases separate from P1 (0.7658ms)
+✔ every package script has one exact P1 or deferred classification (0.4663ms)
+✔ Evidence completion requires final state and an applied byte-exact rollback (0.3516ms)
+(node:36496) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ clean boundary rejects stale metadata and removes restricted values (262.1132ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3041.6108
+
+== dev:test-p2 ==
+
+> ai-workspace-system@3.0.0 test:p2 <WORKSPACE>
+> node --test tests/p2/*.test.mjs
+
+(node:44328) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ actor and team administration cannot cross tenant or revive terminal memberships (166.577ms)
+✔ project resolver, policy head, invitation membership and project boundaries are enforced (319.7241ms)
+✔ session expiry and revoke remain effective after restart with the injected clock (227.7481ms)
+✔ provider failure is terminal and retryable, and a later probe can succeed (151.1286ms)
+✔ restart recovery marks an externally unknown pending probe failed without guessing success (135.9049ms)
+✔ concurrent credential idempotency creates one operation and one encrypted entry (232.6637ms)
+✔ service delegation requires a Vault proof, same-team target, and credential scopes (182.397ms)
+✔ operation JSON and SSE endpoints reauthorize project access after membership revoke (181.4474ms)
+(node:41976) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ migration registry applies 001 then 002 and upgrades a P1 volume without rewriting baseline (123.2581ms)
+✔ 002 DDL, ledger, receipt and commit faults roll back atomically (302.6763ms)
+✔ setup atomically creates user, team, owner membership and a keyed-hash session (111.5851ms)
+✔ actor switch keeps the subject and only targets a managed service actor (149.1563ms)
+✔ project role ceiling, explicit deny and exchange narrowing share one predicate (121.1575ms)
+✔ credential rebind stores AES-GCM ciphertext only and profile probe uses fake contract (187.3415ms)
+✔ Vault adapter uses authenticated atomic files and rejects a tampered entry (10.6065ms)
+✔ HTTP requires a session, ignores spoof headers and returns proof only as a strict cookie (212.9218ms)
+✔ P2 registry, REST/MCP/Web metadata and ownership remain bidirectional (77.1207ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2305.5586
+
+== dev:test-p3 ==
+
+> ai-workspace-system@3.0.0 test:p3 <WORKSPACE>
+> node --test tests/p3/http-contract.test.mjs tests/p3/migration.test.mjs tests/p3/project-workflow.test.mjs
+
+(node:11128) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P3 HTTP uses the session cookie, closed contracts, and equivalent operation replay (593.2116ms)
+✔ P3 project access remains resolver- and ACL-scoped (139.0252ms)
+(node:18332) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 003 registry upgrades empty, P1 and P2 volumes without rewriting prior ledgers (301.3494ms)
+✔ 003 DDL, ledger, receipt and commit faults roll back and restart cleanly (1049.7528ms)
+✔ 003 checksum and latest schema snapshot drift stop restart before serving (189.9831ms)
+(node:6940) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P3 complete project workflow keeps every aggregate head and audit aligned (718.8508ms)
+✔ P3 stale proposal is committed before conflict and retry paths honor supplied revisions (512.7649ms)
+✔ P3 domain cancellation propagates to a delayed generator operation (235.788ms)
+✔ P3 project archive and restore replay exactly one mutation per idempotency key (121.4753ms)
+✔ P3 intake drift is retryable with CAS and cancellation reaches the operation (305.1435ms)
+✔ P3 repository source, target, line recovery and repeated workspace leases preserve CAS heads (192.2139ms)
+✔ P3 generator failures become retryable domain state with explicit lineage (268.0347ms)
+✔ P3 restart resumes a running generation only after recovery settles (247.2158ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3205.1237
+
+== dev:test-p31 ==
+
+> ai-workspace-system@3.0.0 test:p31 <WORKSPACE>
+> node --test tests/p31/*.test.mjs
+
+✔ Clean and historical catalogs are disjoint and bidirectionally validated (108.7502ms)
+✔ catalog files exist and matrix references remain available (0.2434ms)
+✔ default Web entrypoint is Clean-only and uses v2 setup/project requests (1.8931ms)
+✔ failed receipts are immutable and resume appends an attempt (10.0937ms)
+✔ a fully successful layered gate emits only the structured summary (620.4445ms)
+✔ a Historical failure writes a local advisory receipt and keeps the wrapper successful (371.2455ms)
+✔ a Clean failure writes a local blocking receipt and exits non-zero (217.2643ms)
+✔ failure receipts append without overwriting and retain complete redacted output (710.884ms)
+(node:17716) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ one ledger preserves terminal operation, replay, idempotency, links, audit, and redaction (129.5575ms)
+✔ idempotency conflict remains explicit and redacted (112.2328ms)
+(node:46804) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ facades expose complete owner inventories and command routing (128.794ms)
+✔ owner modules contain no direct SQL writes and facades retain public methods (0.7833ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2001.6632
+
+== dev:test-p4 ==
+
+> ai-workspace-system@3.0.0 test:p4 <WORKSPACE>
+> node --test tests/p4/*.test.mjs
+
+(node:50516) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+V3-Clean listening on http://127.0.0.1:63763
+✔ active API entrypoint boots schema v9 with the complete P10 owner surface (405.0244ms)
+✔ active HTTP wrapper serves schema v9 health and keeps API v1 retired (382.9269ms)
+(node:40792) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Context projection is deterministic, budgeted, CAS-backed and pack snapshots reject drift (687.8737ms)
+✔ Projection leases fence concurrent workers and retry records lineage with a new operation (422.1507ms)
+✔ Clean domain adapters project Project, Brief, Repository, Workflow and Node Contract with acyclic edges (353.4605ms)
+✔ Projection rejects contains cycles without publishing edges (209.7378ms)
+✔ Projection cancellation HTTP returns the canonical operation receipt (162.0713ms)
+(node:3992) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P4 migration, ownership, registry and package gate inventories are synchronized (3.2054ms)
+✔ P4 Catalog promotion is disjoint, complete and backed by final Evidence (66.5549ms)
+✔ Gateway remains an independently classified stateless forwarding process (0.6072ms)
+✔ P4 final manifest is hash-complete and rejects unlisted SQLite sidecars (201.1193ms)
+(node:2032) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ production startup requires explicit MCP pepper and Gateway secret (1.9904ms)
+✔ MCP client tokens are one-time, HMAC-only and constrained by project and tool allowlists (344.9625ms)
+✔ Exchange requires both approvals, creates a narrowing grant and rechecks revoke immediately (363.1662ms)
+✔ Gateway verifies canonical signatures, blocks replay and stores only hashes and decisions (136.0725ms)
+(node:47948) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 004 upgrades Clean versions 0 through 3 without rewriting prior migration rows (1081.0059ms)
+✔ 004 DDL, ledger, receipt and commit faults leave the v3 volume byte-logically unchanged (617.6351ms)
+✔ 004 checksum and live schema snapshot drift stop startup (225.7677ms)
+(node:50212) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ REST, MCP HTTP, stdio and Gateway share command schemas and normalized results (615.2817ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2694.7138
+
+== dev:test-p5 ==
+
+> ai-workspace-system@3.0.0 test:p5 <WORKSPACE>
+> node --test tests/p5/*.test.mjs
+
+(node:13700) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Assist persists opaque provider lineage and enforces completion, interaction and retry invariants (1037.9727ms)
+✔ Attachments enforce bounded previews and file batches apply and undo under Repository fencing (460.1338ms)
+(node:18180) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P5 HTTP uses one v2 envelope, strict mutation headers and operation receipts (695.7526ms)
+✔ P5 attachment content supports negotiated binary and JSON representations (233.9305ms)
+V3-Clean listening on http://127.0.0.1:50975
+✔ P5 terminal HTTP route keeps revision and replay cursor contracts (254.8049ms)
+✔ P5 terminal WebSocket upgrades, replays cursor and acknowledges sequenced input (310.7182ms)
+(node:19748) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 005 upgrades Clean versions 0 through 4 without rewriting prior migration rows (637.2745ms)
+✔ 005 DDL, ledger, receipt and commit faults preserve the v4 logical volume (562.3718ms)
+✔ 005 checksum and live schema snapshot drift stop startup (297.9259ms)
+✔ verification gate checks immutable P5 Evidence without publishing a rerun (2.1412ms)
+(node:42516) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P5 resource mutations persist one operation receipt and replay without duplicate rows (642.6709ms)
+✔ Files recovery completes a partially replaced batch from before and after hashes (343.5996ms)
+✔ Bridge transfer replay does not invoke bundle verification twice (139.2596ms)
+(node:26324) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ isolated provider configuration uses an environment lease and rejects inline credentials (4.388ms)
+✔ isolated provider configuration supplies a name for discovered providers that omit one (0.1646ms)
+✔ process adapter does not inherit parent session or provider credentials (0.6065ms)
+✔ process provider request failures preserve diagnostic RPC fields without credentials (0.2185ms)
+✔ redaction failures expose only bounded field reasons (180.8163ms)
+✔ isolated provider cleanup removes read-only Git pack files (6.733ms)
+✔ Codex login credential is leased into a zeroable Buffer and host inline auth is not copied (9.6112ms)
+✔ real turn validation requires contiguous events, an assistant response and terminal tools (0.3616ms)
+✔ P5 receipt validation rejects a skipped or provisional provider turn (0.3008ms)
+{
+  "schema_version": "aiws.v3-clean.p4-performance.v1",
+  "status": "passed",
+  "fixture_nodes": 1000,
+  "metrics": {
+    "map_p95_ms": 15.77,
+    "search_p95_ms": 24.43,
+    "selection_p95_ms": 53.62,
+    "rebuild_ms": 592.94,
+    "mcp_reads": 100,
+    "mcp_reads_total_ms": 778.31,
+    "projected_nodes": 1001
+  },
+  "thresholds": {
+    "map_p95_ms": 150,
+    "search_p95_ms": 250,
+    "selection_p95_ms": 500
+  },
+  "failures": []
+}
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Assist passes the bound profile configuration without retaining credential bytes (435.314ms)
+(node:11164) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Terminal consumes one approval, replays by idempotency and persists redacted cursor output (357.9319ms)
+✔ Windows Bridge pairing shares one secret, rejects nonce replay, rotates and revokes both stores (3951.0321ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5324.3847
+
+== dev:test-p6 ==
+
+> ai-workspace-system@3.0.0 test:p6 <WORKSPACE>
+> node --test tests/p6/*.test.mjs
+
+(node:35600) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ pause waits for a runner boundary and resume completes without duplicate attempts (1006.4295ms)
+✔ review approval resumes the paused stage operation and preserves one checkpoint (1214.807ms)
+✔ cancelled runner attempts use operation cancellation acknowledgement (511.1128ms)
+✔ replan and successful later-stage replay retain lineage and effective receipts (636.5206ms)
+✔ restart reconciliation commits a terminal runner receipt before resuming the run stage (593.9778ms)
+✔ restart reconciliation pauses unknown external jobs and their stage and parent operations (451.455ms)
+(node:30988) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P6 migration, ownership, registry, paths and package gates are synchronized (6.4773ms)
+✔ P6 Catalog promotion is disjoint, complete and Evidence-gated (68.4864ms)
+✔ P4, P5 and P6 Evidence policies are declarative and final P6 artifacts reopen (8.0588ms)
+(node:54124) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P6 HTTP exposes strict Runner and Execution v2 contracts with operation receipts (1173.5025ms)
+✔ P6 transport inventory keeps Runner mutations REST/Web-only and redacts fixture payloads and host paths (989.6247ms)
+(node:39080) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 006 migrates every Clean version forward once and keeps immutable guards (745.5719ms)
+✔ 006 DDL, ledger, receipt and commit faults preserve closed v5 database bytes (407.1689ms)
+✔ 006 checksum and snapshot drift block startup (282.9487ms)
+(node:53596) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ runner protocol rejects path, deadline, digest, capability and receipt tampering (3.1163ms)
+✔ P6 completes stable seven-stage execution with read concurrency, write serialization and immutable receipts (1019.558ms)
+✔ execution rejects DAG cycles and stale checkpoint replay inputs (1219.0973ms)
+✔ Clean Broker authenticates transport, rejects nonce replay and signs a Docker receipt (56.8704ms)
+✔ Windows Bridge validates the shared spec and returns signed terminal and cancellation receipts (1848.9667ms)
+(node:1708) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P6 REST, MCP HTTP, stdio and Gateway share Execution schemas and receipts (1102.1121ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5337.1793
+
+== dev:test-p7 ==
+
+> ai-workspace-system@3.0.0 test:p7 <WORKSPACE>
+> node --test tests/p7/*.test.mjs
+
+✔ Clean Broker verifies parser envelopes, persists signed receipts and rehashes public outputs (67.0627ms)
+✔ Clean Broker crash restart reconciles an unprovable parser result without retrying it (37.4263ms)
+(node:6348) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P7 registry, ownership and transport inventory are bidirectional (8.3695ms)
+✔ REST-only P7 commands are rejected at MCP and Gateway dispatch boundaries (164.0601ms)
+✔ Parser job and receipt signatures bind digest, input, limits, checkpoint and manifest (2.5767ms)
+(node:3028) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P7 migration, ownership, registry, package gates and paths are synchronized (6.439ms)
+✔ P7 Catalog promotion is disjoint, complete and bound to a staging or final receipt (61.072ms)
+✔ P7 parser digest, dependencies, Evidence roles and architecture documents are synchronized (2.3793ms)
+(node:25396) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P7 HTTP exposes Evidence, Parser, Quality and Outcome through strict v2 receipts (1021.8491ms)
+(node:33532) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 007 migrates every Clean version forward once and seeds the bounded format inventory (968.1343ms)
+✔ 007 DDL, ledger, receipt and commit faults preserve closed v6 database bytes (403.2063ms)
+✔ 007 checksum and snapshot drift block startup (236.942ms)
+(node:49636) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Evidence capture and Parser receipt create an immutable verified lineage (257.0021ms)
+✔ Parser engine rejects malformed, external-entity and quota inputs deterministically (0.919ms)
+✔ Evidence idempotency, CAS tamper and tombstone boundaries are enforced (226.7728ms)
+(node:6016) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Quality report, complete human scoring and Outcome replay share pinned hashes (906.6232ms)
+✔ Outcome waiver and revocation are immutable generations bound to approval proof (457.5378ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2267.966
+
+== dev:test-p8 ==
+
+> ai-workspace-system@3.0.0 test:p8 <WORKSPACE>
+> node --test tests/p8/*.test.mjs
+
+(node:32440) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Delivery executes immutable Draft, ready and merge intents and synchronizes Repository baseline (1432.3686ms)
+✔ unknown GitHub result enters needs_reconcile and a later reconcile resolves without replaying merge (1061.5131ms)
+✔ raw GitHub webhook HMAC is deduplicated by provider delivery id (873.7544ms)
+✔ physical CAS GC revalidates protection, moves bytes to recoverable trash and rolls back (805.7438ms)
+(node:39768) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Deployment candidate verification requires owner approval and creates an immutable receipt (1322.0197ms)
+✔ Backup, restore.prepare and reset.prepare operate on new isolated artifacts without switching a pointer (1395.7134ms)
+✔ GitHub App ready transition falls back to the supported GraphQL mutation on REST 404 (93.1019ms)
+(node:30040) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P8 migration, ownership and 25-route inventories are bidirectional (6.2052ms)
+✔ Importer mutations are CLI-only and runtime registry contains sealed queries (0.6509ms)
+✔ P8 Evidence is hash-complete and synchronized with the layered Catalog promotion (70.2691ms)
+✔ P8 package, testing policy, plan, matrix and Evidence references stay synchronized (0.8749ms)
+(node:51812) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P8 HTTP uses the shared dispatcher with closed route-specific contracts (394.2755ms)
+✔ P8 registry, REST, MCP and Gateway publish the same closed command schemas (160.8714ms)
+(node:45812) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ offline importer preserves schema v7 and maps schema 23 business rows with omitted secrets (2137.1494ms)
+✔ resume verifies signed checkpoint target hash and continues after a domain boundary interruption (1991.5043ms)
+✔ unknown schema 23 table blocks before target creation (164.1761ms)
+(node:51084) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ forward-only migration upgrades every supported version to v8 (1734.2652ms)
+✔ each v8 migration fault preserves v7 bytes and leaves all 11 tables absent (462.8871ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4986.7948
+
+== dev:test-p9 ==
+
+> ai-workspace-system@3.0.0 test:p9 <WORKSPACE>
+> node --test tests/p9/*.test.mjs
+
+(node:53044) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ project JSON replay is scoped, redacted, continuous and cursor-bound (210.4764ms)
+✔ SSE uses global ids, Last-Event-ID precedence and disconnects after ACL revocation (4159.9711ms)
+✔ credentialed CORS echoes only an exact configured origin and preflight skips authentication (111.5355ms)
+✔ P9 final Evidence, rollback and 27 release rows are bidirectional (66.7825ms)
+✔ P9 final governance documents name the published boundary (0.8894ms)
+(node:24668) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P9 runtime phase is separate from the immutable schema v8 ledger (127.5768ms)
+✔ P9 registry adds one REST/Web Operations query and corrects selection write scope (1.1681ms)
+✔ P9 exact-origin parser rejects wildcard, null and non-origin URL forms (0.4591ms)
+✔ P9 Web foundation, dependencies and retired files are synchronized (1.9316ms)
+✔ P9 active Web has a hash router, scoped Query cache and no v1 request helper (0.4735ms)
+✔ P9 Service Worker precaches only shell and keeps protected routes NetworkOnly (0.2955ms)
+✔ P9 governance files declare Clean phase ownership (0.7642ms)
+✔ post-P10 verify validates immutable P9 Evidence without replaying retired P9 probes (1.1879ms)
+✔ P9 static handler serves only app-shell files with bounded cache policy (3043.9936ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5171.0012
+
+== dev:test-p10 ==
+
+> ai-workspace-system@3.0.0 test:p10 <WORKSPACE>
+> node --test tests/p10/*.test.mjs
+
+(node:12200) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Provider lifecycle and Brief templates preserve revision CAS and immutable snapshots (418.712ms)
+✔ real Provider probing passes the bound credential only as a zeroable lease (334.6719ms)
+✔ draft onboarding pins Brief before generation and activates only after proposal apply and confirmation (415.0942ms)
+✔ proposal apply marks a draft-Brief generation stale when the source revision drifts (383.4189ms)
+✔ Project deletion rechecks blockers and tombstones only after confirmation (690.865ms)
+✔ Repository deletion requires name, HEAD, revision, and two independent session proofs (307.1777ms)
+✔ Assist metadata, fork, side-thread, review comments, and reversible deletion reuse the shared ledger (883.3548ms)
+(node:50920) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ hard gate limits are fixed and over-budget success is rejected (1.2952ms)
+✔ a self-reported ok flag never masks nonzero exit, signal, truncation or redaction failure (0.1966ms)
+✔ real process output truncation fails while retaining the literal zero process exit (65.5624ms)
+✔ pre-push verification rejects evidence-skip inputs and unknown bypass arguments (0.3588ms)
+✔ development orchestration freezes successful commands after the fixed time limit (8.332ms)
+✔ Gate process preserves Windows-sensitive arguments without shell parsing (63.3622ms)
+✔ Gate process exposes bounded redacted capture and stable failure codes (538.3754ms)
+✔ Pnpm resolves through Corepack JavaScript and active Gate files contain no shell:true (1.0459ms)
+✔ formal verification uses immutable P5-P9 Evidence and only current P10 probes (1.9793ms)
+✔ Historical security excludes Clean duplicates while formal release owns the deferred image boundary (0.4438ms)
+✔ incremental selector covers Web, Golden, shared core, governance, and unclassified paths without external probes (3.6444ms)
+✔ standalone test retains Web while formal verify switches its nested run to Unit-only (0.681ms)
+✔ Pnpm script separators are accepted by development commands (0.2391ms)
+✔ development receipt reports persisted execution metrics and leaves SQLite, CAS, and Vault byte-exact (2465.4173ms)
+✔ development receipt failure classes are fixed and unknown operation owners block generation (279.6947ms)
+✔ generation attempts count rows once and time windows exclude later retries (810.2614ms)
+✔ combined development layers preserve advisory status and receipts omit raw invocations (9.4593ms)
+✔ changed Git paths preserve Chinese names and include both sides of a rename (628.9658ms)
+(node:39764) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P10 HTTP routes expose strict v2 envelopes and reject offline/destructive MCP bypasses (899.6459ms)
+(node:9892) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ forward-only migration upgrades v0-v8 to schema v9 and ledger 1..9 (2383.1995ms)
+✔ v9 DDL, ledger, receipt, and commit faults preserve byte-exact v8 (749.1631ms)
+✔ v9 immutable revision, selection, advice, comment, and terminal intent triggers reject mutation (178.6269ms)
+✔ fixed V2.3 inventories map bidirectionally to 19 business groups with zero gaps (1906.3729ms)
+✔ P10 registry is API v2-only and preserves synchronized transport contracts (2.8551ms)
+✔ P10 verify orders parity, external adapters, Web, build, E2E, release, and Evidence (1.1496ms)
+✔ P10 Evidence patch excludes its append-only tree and enforces a publishable size bound (0.4592ms)
+(node:1600) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ loopback same-origin session recovery returns a persistent strict cookie and audits the real owner (341.3275ms)
+✔ session recovery can replace an expired or revoked browser proof without changing account scope (312.3137ms)
+✔ Codex host discovery is prioritized, HMAC-bound, stale-safe, path-free, and imports both config and API-key auth through Vault (343.5512ms)
+✔ Codex discovery rejects oversized and symlinked files and directs keyring-only auth to Device Login (335.9792ms)
+✔ Codex discovery HTTP keeps availability metadata, binds API keys, and stays path-free (331.797ms)
+✔ Device Login publishes only structured status, binds a ChatGPT bundle, probes it, and removes the isolated home (363.8111ms)
+✔ Device Login cancellation and restart recovery terminate through the shared operation ledger (298.8941ms)
+✔ GitHub setup restores the bundled V2.3 public App identity and completes hosted installation through Vault, Probe, and repository discovery (382.3196ms)
+✔ GitHub Manifest callback binds returned secrets server-side, is replayable without a second conversion, and leaks no credential material (285.1731ms)
+✔ GitHub setup automatically binds a unique existing App installation before opening GitHub (388.5122ms)
+✔ GitHub setup HTTP contracts expose public metadata and callback receipts without secrets or host paths (365.2624ms)
+✔ GitHub hosted private-key discovery rejects symlinks without exposing the configured path (221.1076ms)
+warning: in the working copy of 'AGENTS.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/clean/migrations/009.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/evidence/p10/verification.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.clean.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.historical.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it
+To <PATH>
+ * [new branch]      main -> main
+ * [new tag]         p10-final-governance-20260829 -> p10-final-governance-20260829
+warning: in the working copy of 'AGENTS.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/clean/migrations/009.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/evidence/p10/verification.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.clean.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.historical.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/web/src/product.ts', LF will be replaced by CRLF the next time Git touches it
+To <PATH>
+   beda3f5..935bd4f  main -> main
+warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/evidence/post-p10-development-reliability-20260905/README.md', LF will be replaced by CRLF the next time Git touches it
+To <PATH>
+   935bd4f..b76f11a  main -> main
+warning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it
+To <PATH>
+   b76f11a..023380f  main -> main
+warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it
+To <PATH>
+   023380f..13361ff  main -> main
+✔ P10 post-closure verification accepts pushed product descendants and freezes governance bytes (7206.1312ms)
+(node:9220) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Quality policy, readiness, selections, closed advice, human scoring, supersession, and stale history are separate (1843.9088ms)
+✔ invalid or unavailable Quality advice never blocks the human review state (2701.841ms)
+✔ default Quality policy restores all five dimensions without a configured reviewer (1565.2281ms)
+(node:2552) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+✔ hard limits: strict provider JSON rejects wrappers and trailing objects after one repair (1.9599ms)
+✔ hard limits: valid JSON and one contract repair preserve the provider candidate (0.9032ms)
+✔ hard limits: missing or ill-typed task fields fail with 422 without local repair (1.5005ms)
+✔ hard limits: JSON repair accepts a complete valid second response only (0.2779ms)
+✔ hard limits: provider protocol errors retain stable codes and clear the lease (0.2951ms)
+✔ hard limits: provider rejected stays rejected with complete coverage and no findings (1.1097ms)
+✔ hard limits: every task check requires its own immutable coverage row (0.3804ms)
+✔ hard limits: complete coverage passes and critical issues still reject (0.544ms)
+✔ hard limits: malformed, duplicate, stale and orphan Critic rows fail closed (1.9923ms)
+✔ task contracts bind complete execution fields and reject commands, paths and cycles (0.9761ms)
+✔ provider JSON repair extracts one balanced object without accepting trailing objects (0.1795ms)
+✔ real loop preflight requires a clean, real Git worktree (566.1782ms)
+✔ real loop rejects Git subdirectories and explicit run roots inside the source (349.8471ms)
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+✔ local Git reads commit blobs, verifies drift and materializes without touching the source (1140.2873ms)
+✔ local Git accepts clean autocrlf worktrees while rejecting real content drift (704.0264ms)
+✔ provider JSON gets one repair and zeroizes its lease after a separate critic turn (1.1173ms)
+✔ provider incomplete events and empty output are failed rather than candidates (0.3243ms)
+✔ Critic rejects duplicate ownership and unknown missing markers (0.3763ms)
+✔ real Host task stays in candidate until finalize, binds CAS outputs and captures Evidence (1251.4999ms)
+✔ zero exit with missing output fails and leaves managed bytes unchanged (1387.3655ms)
+✔ local repository, leased Generation, independent Critic, Proposal, Host, Check and Evidence form one loop (1649.1082ms)
+(node:50900) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ GitHub repository transport mints an RS256 JWT and validates the complete API manifest (28.424ms)
+▶ GitHub repository transport rejects identity, branch, tree, blob and source feature drift with stable codes
+  ✔ repository id (28.4777ms)
+  ✔ full name (77.4669ms)
+  ✔ branch head (73.6943ms)
+  ✔ tree truncated (21.5625ms)
+  ✔ symlink (15.1491ms)
+  ✔ submodule (43.0021ms)
+  ✔ LFS pointer (35.81ms)
+  ✔ malformed blob (43.9934ms)
+  ✔ file quota (38.2645ms)
+  ✔ byte quota (23.9199ms)
+✔ GitHub repository transport rejects identity, branch, tree, blob and source feature drift with stable codes (403.0225ms)
+✔ materialization uses shell-free shallow clone, keeps token out of argv/config, removes .git, and clears key material (53.6576ms)
+✔ materialization reports source_drift and removes a mismatching clone (54.1874ms)
+▶ Repository auth resolver enforces actor, provider, lifecycle, credential and Vault reference boundaries
+  ✔ other actor (0.8167ms)
+  ✔ wrong provider (0.1508ms)
+  ✔ disabled (0.0917ms)
+  ✔ unavailable (0.0697ms)
+  ✔ revoked credential (0.1342ms)
+  ✔ non-Vault credential (0.0983ms)
+✔ Repository auth resolver enforces actor, provider, lifecycle, credential and Vault reference boundaries (2.1568ms)
+✔ Repository adapter router preserves fixture/local routing and selects GitHub only for explicit App sources (0.2162ms)
+✔ remote Workspace create/refresh publishes atomically, preserves failed bytes, and links retries (493.4001ms)
+ℹ tests 93
+ℹ suites 0
+ℹ pass 93
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8396.5161
+
+== dev:web-test ==
+
+> @aiws/web@3.0.0 test apps\web
+> vitest run
+
+
+ RUN  v3.2.7 apps/web
+
+ ✓ src/test/project-workflow-clean.test.tsx (10 tests) 3816ms
+   ✓ ProjectWorkflowPage clean slice > refreshes generation events independently, preserving a dirty graph and stopping terminal polling  3307ms
+ ✓ src/test/execution-p6.test.tsx (4 tests) 3603ms
+   ✓ P6 Execution workspace > selects the query Execution and polls only its detail until terminal state  3267ms
+ ✓ src/test/workflow.test.tsx (22 tests) 529ms
+ ✓ src/test/shell-navigation.test.tsx (4 tests) 456ms
+   ✓ keeps the six-entry drawer closed by default and traps, closes, and restores keyboard focus  357ms
+ ✓ src/test/project-onboarding.test.tsx (4 tests) 405ms
+ ✓ src/test/identity-access.test.tsx (6 tests) 362ms
+ ✓ src/test/setup-flow.test.tsx (5 tests) 341ms
+ ✓ src/test/execution-p7.test.tsx (1 test) 258ms
+ ✓ src/test/context.test.tsx (2 tests) 181ms
+ ✓ src/test/offline-p9.test.ts (7 tests) 177ms
+ ✓ src/test/connections-p5.test.tsx (1 test) 145ms
+ ✓ src/test/p10-business-parity.test.tsx (1 test) 154ms
+ ✓ src/test/operations-p8.test.tsx (1 test) 130ms
+ ✓ src/test/evidence-p7.test.tsx (1 test) 151ms
+ ✓ src/test/assist.test.tsx (2 tests) 147ms
+ ✓ src/test/workflows-p9.test.tsx (2 tests) 133ms
+ ✓ src/test/connections-p6.test.tsx (1 test) 133ms
+ ✓ src/test/approvals-p5.test.tsx (1 test) 148ms
+ ✓ src/test/files-p5.test.tsx (1 test) 149ms
+ ✓ src/test/terminal.test.tsx (1 test) 101ms
+ ✓ src/test/project-preparation.test.tsx (2 tests) 79ms
+ ✓ src/test/post-closure-restoration.test.tsx (3 tests) 39ms
+ ✓ src/test/events-p9.test.ts (2 tests) 32ms
+
+ Test Files  23 passed (23)
+      Tests  84 passed (84)
+   Start at  22:15:04
+   Duration  29.45s (transform 670ms, setup 4.09s, collect 3.33s, tests 11.67s, environment 6.70s, prepare 1.23s)
+
+
+== dev:integration-clean ==
+
+> ai-workspace-system@3.0.0 test:integration:clean <WORKSPACE>
+> node scripts/layered-gate.mjs integration --clean
+
+{
+  "schema_version": "aiws.v3-clean.layered-gate-result.v2",
+  "suite": "integration",
+  "status": "passed",
+  "blocking_layer": null,
+  "commands": [
+    {
+      "layer": "clean",
+      "command": "<NODE> --test tests/integration/v3-clean-p1.test.mjs tests/p3/http-contract.test.mjs tests/p3/migration.test.mjs tests/p3/project-workflow.test.mjs tests/p4/*.test.mjs",
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "summary": "ℹ tests 36\nℹ suites 0\nℹ pass 36\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3158.6358",
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      }
+    }
+  ],
+  "clean_exit": 0,
+  "historical_exit": null,
+  "advisory_failures": [],
+  "redaction": [
+    {
+      "layer": "clean",
+      "passed": true,
+      "removed": 0
+    }
+  ],
+  "receipt": null
+}
+
+== dev:security-clean ==
+
+> ai-workspace-system@3.0.0 test:security:clean <WORKSPACE>
+> node scripts/layered-gate.mjs security --clean
+
+{
+  "schema_version": "aiws.v3-clean.layered-gate-result.v2",
+  "suite": "security",
+  "status": "passed",
+  "blocking_layer": null,
+  "commands": [
+    {
+      "layer": "clean",
+      "command": "<NODE> --test --test-concurrency=1 tests/security/v3-clean-p1.test.mjs tests/security/boundary.test.mjs tests/p4/mcp-exchange-gateway.test.mjs",
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "summary": "ℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 18879.3355",
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      }
+    }
+  ],
+  "clean_exit": 0,
+  "historical_exit": null,
+  "advisory_failures": [],
+  "redaction": [
+    {
+      "layer": "clean",
+      "passed": true,
+      "removed": 0
+    }
+  ],
+  "receipt": null
+}
+
+{
+  "schema_version": "aiws.v3-clean.dev-verification.v1",
+  "mode": "incremental",
+  "base": "0fd9eb91a14dc53ac944e8ada608c8d958728ff8",
+  "base_source": "requested:0fd9eb91a14dc53ac944e8ada608c8d958728ff8",
+  "head": "0fd9eb91a14dc53ac944e8ada608c8d958728ff8",
+  "changed_paths": [
+    "apps/api/src/clean/config.mjs",
+    "apps/api/src/clean/context-service.mjs",
+    "apps/api/src/clean/files-service.mjs",
+    "apps/api/src/clean/github-repository-adapter.mjs",
+    "apps/api/src/clean/http.mjs",
+    "apps/api/src/clean/p10-service.mjs",
+    "apps/api/src/clean/p8/github-adapter.mjs",
+    "apps/api/src/clean/p8/repository.mjs",
+    "apps/api/src/clean/project-workflow.mjs",
+    "apps/api/src/clean/runtime.mjs",
+    "apps/api/src/clean/workflow-adapters.mjs",
+    "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+    "apps/web/src/features/projects/index.ts",
+    "apps/web/src/features/projects/preparation/index.tsx",
+    "apps/web/src/test/project-preparation.test.tsx",
+    "docs/architecture/decision-log.md",
+    "docs/architecture/v23-capability-matrix.md",
+    "docs/architecture/v3-clean-development-plan.md",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/apps__api__src__clean__github-repository-adapter.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/apps__api__src__clean__p8__github-adapter.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/apps__api__src__clean__project-workflow.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/apps__api__src__clean__runtime.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/feature-catalog.clean.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/feature-catalog.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/baseline/packages__contracts__src__clean-v2.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/change.patch",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified-artifact.tgz",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified-files.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/apps__api__src__clean__github-repository-adapter.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/apps__api__src__clean__p8__github-adapter.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/apps__api__src__clean__project-workflow.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/apps__api__src__clean__runtime.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/feature-catalog.clean.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/feature-catalog.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/modified/packages__contracts__src__clean-v2.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/rollback.ps1",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/verification.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__config.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__p10-service.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__p8__github-adapter.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__p8__repository.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__project-workflow.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/apps__api__src__clean__runtime.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/docs__architecture__decision-log.md",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/docs__architecture__v23-capability-matrix.md",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/docs__architecture__v3-clean-development-plan.md",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/docs__testing.md",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/feature-catalog.clean.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/feature-catalog.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/baseline/packages__contracts__src__clean-v2.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/change.patch",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/command-results.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/artifact-reopen.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/audit-p1.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/audit-p1.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/audit-parity.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/audit-parity.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/baseline-worktree-status.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/build.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/build.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/check.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/check.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/formal-verify.receipt.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/formal-verify.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/formal-verify.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/integration-clean.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/integration-clean.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/patch-reopen.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/rollback-reopen.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/scan-clean.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/scan-clean.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/security-clean.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/security-clean.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p10.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p10.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p3.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p3.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p8.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/test-p8.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verification-reopen.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev-final.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev-final.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev.receipt.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/verify-dev.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/web-test.stderr.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/commands/web-test.stdout.txt",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/gate-impact.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified-artifact.tgz",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified-files.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__config.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__github-repository-adapter.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__p10-service.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__p8__github-adapter.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__p8__repository.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__project-workflow.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/apps__api__src__clean__runtime.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/docs__architecture__decision-log.md",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/docs__architecture__v23-capability-matrix.md",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/docs__architecture__v3-clean-development-plan.md",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/docs__testing.md",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/feature-catalog.clean.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/feature-catalog.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/packages__contracts__src__clean-v2.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/modified/tests__p10__remote-workspace-auth.test.mjs",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/remote-probe.json",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/rollback.ps1",
+    "docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260914/verification.json",
+    "docs/testing.md",
+    "feature-catalog.clean.json",
+    "feature-catalog.json",
+    "packages/contracts/src/clean-v2.mjs",
+    "scripts/lib/v3-clean-p1-scope.mjs",
+    "scripts/production-lifecycle.mjs",
+    "scripts/v3-clean-p4-performance.mjs",
+    "scripts/verify-dev.mjs",
+    "tests/p10/remote-workspace-auth.test.mjs"
+  ],
+  "catalog_ids": [
+    "REC-D0-GOVERNANCE-000",
+    "REC-D1-CONTRACTS-023",
+    "REC-D10-FRONTEND-024",
+    "REC-D11-OPS-022",
+    "REC-D2-IDENTITY-001",
+    "REC-D2-SETUP-002",
+    "REC-D4-MCP-004",
+    "REC-D5-PROJECT-005",
+    "REC-D5-WORKFLOW-006",
+    "REC-D6-EXECUTION-008",
+    "REC-D6-GENERATION-007",
+    "REC-D6-OUTCOME-009",
+    "REC-D7-DELIVERY-015",
+    "REC-D7-REPOSITORY-014",
+    "REC-D8-ASSIST-010",
+    "REC-D8-ATTACHMENTS-011",
+    "REC-D8-FILES-012",
+    "REC-D9-CONTEXT-017",
+    "REC-D9-DEPLOYMENT-021",
+    "REC-D9-EVIDENCE-019",
+    "REC-D9-PROJECTION-018"
+  ],
+  "owners": [
+    "assist",
+    "cas",
+    "context",
+    "critic",
+    "delivery",
+    "deployment",
+    "evidence",
+    "execution",
+    "files",
+    "identity",
+    "importer",
+    "mcp",
+    "operations",
+    "outcome",
+    "parser",
+    "platform",
+    "project",
+    "projection",
+    "repository",
+    "setup",
+    "workflow"
+  ],
+  "selected_commands": [
+    {
+      "id": "check",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm check",
+        "pnpm --filter @aiws/web typecheck"
+      ],
+      "reasons": [
+        "always"
+      ],
+      "historical": false,
+      "command": "pnpm check"
+    },
+    {
+      "id": "scan-clean",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm scan:clean"
+      ],
+      "reasons": [
+        "always"
+      ],
+      "historical": false,
+      "command": "pnpm scan:clean"
+    },
+    {
+      "id": "git-diff-check",
+      "owner": "platform",
+      "satisfies": [
+        "git diff --check"
+      ],
+      "reasons": [
+        "always"
+      ],
+      "historical": false,
+      "command": "git diff --check"
+    },
+    {
+      "id": "audit-p1",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm audit:p1"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "command": "pnpm audit:p1"
+    },
+    {
+      "id": "audit-parity",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm audit:parity"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "command": "pnpm audit:parity"
+    },
+    {
+      "id": "recovery-plan",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm recovery:plan"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "command": "pnpm recovery:plan"
+    },
+    {
+      "id": "recovery-catalog",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm recovery:catalog"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "command": "pnpm recovery:catalog"
+    },
+    {
+      "id": "recovery-coverage",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm recovery:coverage"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "command": "pnpm recovery:coverage"
+    },
+    {
+      "id": "recovery-impact",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm recovery:impact -- --audit"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "command": "pnpm recovery:impact -- --audit"
+    },
+    {
+      "id": "test-p1",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p1",
+        "tests/p1/workspace-sync.test.mjs"
+      ],
+      "reasons": [
+        "governance",
+        "shared-core"
+      ],
+      "historical": false,
+      "command": "pnpm test:p1"
+    },
+    {
+      "id": "test-p2",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p2",
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "command": "pnpm test:p2"
+    },
+    {
+      "id": "test-p3",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p3",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p3/active-entrypoint.test.mjs",
+        "tests/p3/http-contract.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "command": "pnpm test:p3"
+    },
+    {
+      "id": "test-p31",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p31",
+        "tests/p31/catalog-split.test.mjs",
+        "tests/p31/layered-gates.test.mjs",
+        "tests/p31/evidence-immutability.test.mjs"
+      ],
+      "reasons": [
+        "governance",
+        "shared-core"
+      ],
+      "historical": false,
+      "command": "pnpm test:p31"
+    },
+    {
+      "id": "test-p4",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p4",
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "command": "pnpm test:p4"
+    },
+    {
+      "id": "test-p5",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/http-contract.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p5/provider-probe.test.mjs",
+        "tests/p5/migration.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "command": "pnpm test:p5"
+    },
+    {
+      "id": "test-p6",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p6",
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/execution-recovery.test.mjs",
+        "tests/p6/http-security.test.mjs",
+        "tests/p6/transport-parity.test.mjs",
+        "tests/p6/migration.test.mjs",
+        "tests/p6/governance-sync.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "command": "pnpm test:p6"
+    },
+    {
+      "id": "test-p7",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p7",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/governance-sync.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "command": "pnpm test:p7"
+    },
+    {
+      "id": "test-p8",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p8",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "tests/p8/importer.test.mjs",
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/governance.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "command": "pnpm test:p8"
+    },
+    {
+      "id": "test-p9",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p9",
+        "tests/p9/web-governance.test.mjs",
+        "tests/p9/foundation.test.mjs",
+        "tests/p9/events-cors.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "command": "pnpm test:p9"
+    },
+    {
+      "id": "test-p10",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p10",
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/remote-workspace-auth.test.mjs",
+        "tests/p10/real-development-loop.test.mjs",
+        "tests/p10/http-contract.test.mjs",
+        "tests/p10/migration.test.mjs",
+        "tests/p10/development-reliability.test.mjs",
+        "tests/p10/parity-governance.test.mjs",
+        "tests/p10/post-closure.test.mjs"
+      ],
+      "reasons": [
+        "governance",
+        "shared-core",
+        "post-p10-maintenance",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "command": "pnpm test:p10"
+    },
+    {
+      "id": "web-test",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm --filter @aiws/web test",
+        "apps/web/src/test/identity-access.test.tsx",
+        "apps/web/src/test/setup-flow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx",
+        "apps/web/src/test/context.test.tsx",
+        "apps/web/src/test/files-p5.test.tsx",
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "apps/web/src/test/project-onboarding.test.tsx",
+        "apps/web/src/test/execution-p6.test.tsx",
+        "apps/web/src/test/execution-p7.test.tsx",
+        "apps/web/src/test/offline-p9.test.ts",
+        "apps/web/src/test/workflows-p9.test.tsx",
+        "apps/web/src/test/assist.test.tsx",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "apps/web/src/test/p10-business-parity.test.tsx",
+        "apps/web/src/test/shell-navigation.test.tsx"
+      ],
+      "reasons": [
+        "web"
+      ],
+      "historical": false,
+      "command": "pnpm --filter @aiws/web test"
+    },
+    {
+      "id": "integration-clean",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:integration:clean"
+      ],
+      "reasons": [
+        "shared-core"
+      ],
+      "historical": false,
+      "command": "pnpm test:integration:clean"
+    },
+    {
+      "id": "security-clean",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:security:clean"
+      ],
+      "reasons": [
+        "shared-core"
+      ],
+      "historical": false,
+      "command": "pnpm test:security:clean"
+    },
+    {
+      "id": "p4-performance",
+      "owner": "testing",
+      "satisfies": [
+        "node scripts/v3-clean-p4-performance.mjs"
+      ],
+      "reasons": [
+        "context-mcp"
+      ],
+      "historical": false,
+      "command": "node scripts/v3-clean-p4-performance.mjs"
+    }
+  ],
+  "unclassified_paths": [],
+  "status": "passed",
+  "duration_ms": 111994,
+  "budget": {
+    "limit_ms": 120000,
+    "elapsed_ms": 111994,
+    "remaining_ms": 8006,
+    "exceeded": false
+  },
+  "commands": [
+    {
+      "id": "check",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm check",
+        "pnpm --filter @aiws/web typecheck"
+      ],
+      "reasons": [
+        "always"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "check"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 5595,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "scan-clean",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm scan:clean"
+      ],
+      "reasons": [
+        "always"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "scan:clean"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 956,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "git-diff-check",
+      "owner": "platform",
+      "satisfies": [
+        "git diff --check"
+      ],
+      "reasons": [
+        "always"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "git",
+      "args": [
+        "diff",
+        "--check"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 56,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      }
+    },
+    {
+      "id": "audit-p1",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm audit:p1"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "audit:p1"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 409,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "audit-parity",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm audit:parity"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "audit:parity"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 2176,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "recovery-plan",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm recovery:plan"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "recovery:plan"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 430,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "recovery-catalog",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm recovery:catalog"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "recovery:catalog"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 491,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "recovery-coverage",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm recovery:coverage"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "recovery:coverage"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 440,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "recovery-impact",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm recovery:impact -- --audit"
+      ],
+      "reasons": [
+        "governance"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "recovery:impact",
+        "--",
+        "--audit"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 593,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p1",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p1",
+        "tests/p1/workspace-sync.test.mjs"
+      ],
+      "reasons": [
+        "governance",
+        "shared-core"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p1"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 3325,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p2",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p2",
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p2"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 2580,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p3",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p3",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p3/active-entrypoint.test.mjs",
+        "tests/p3/http-contract.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p3"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 3478,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p31",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p31",
+        "tests/p31/catalog-split.test.mjs",
+        "tests/p31/layered-gates.test.mjs",
+        "tests/p31/evidence-immutability.test.mjs"
+      ],
+      "reasons": [
+        "governance",
+        "shared-core"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p31"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 2275,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p4",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p4",
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p4"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 2973,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p5",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/http-contract.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p5/provider-probe.test.mjs",
+        "tests/p5/migration.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p5"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 5603,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p6",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p6",
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/execution-recovery.test.mjs",
+        "tests/p6/http-security.test.mjs",
+        "tests/p6/transport-parity.test.mjs",
+        "tests/p6/migration.test.mjs",
+        "tests/p6/governance-sync.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p6"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 5611,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p7",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p7",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/governance-sync.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p7"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 2532,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p8",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p8",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "tests/p8/importer.test.mjs",
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/governance.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p8"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 5283,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p9",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p9",
+        "tests/p9/web-governance.test.mjs",
+        "tests/p9/foundation.test.mjs",
+        "tests/p9/events-cors.test.mjs"
+      ],
+      "reasons": [
+        "shared-core",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p9"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 5428,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "test-p10",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p10",
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/remote-workspace-auth.test.mjs",
+        "tests/p10/real-development-loop.test.mjs",
+        "tests/p10/http-contract.test.mjs",
+        "tests/p10/migration.test.mjs",
+        "tests/p10/development-reliability.test.mjs",
+        "tests/p10/parity-governance.test.mjs",
+        "tests/p10/post-closure.test.mjs"
+      ],
+      "reasons": [
+        "governance",
+        "shared-core",
+        "post-p10-maintenance",
+        "catalog-implementation-impact"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p10"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 8659,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 7
+      }
+    },
+    {
+      "id": "web-test",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm --filter @aiws/web test",
+        "apps/web/src/test/identity-access.test.tsx",
+        "apps/web/src/test/setup-flow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx",
+        "apps/web/src/test/context.test.tsx",
+        "apps/web/src/test/files-p5.test.tsx",
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "apps/web/src/test/project-onboarding.test.tsx",
+        "apps/web/src/test/execution-p6.test.tsx",
+        "apps/web/src/test/execution-p7.test.tsx",
+        "apps/web/src/test/offline-p9.test.ts",
+        "apps/web/src/test/workflows-p9.test.tsx",
+        "apps/web/src/test/assist.test.tsx",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "apps/web/src/test/p10-business-parity.test.tsx",
+        "apps/web/src/test/shell-navigation.test.tsx"
+      ],
+      "reasons": [
+        "web"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "--filter",
+        "@aiws/web",
+        "test"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 30168,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 3
+      }
+    },
+    {
+      "id": "integration-clean",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:integration:clean"
+      ],
+      "reasons": [
+        "shared-core"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:integration:clean"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 3473,
+      "error_code": null,
+      "ok": true,
+      "layered_status": "passed",
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "security-clean",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:security:clean"
+      ],
+      "reasons": [
+        "shared-core"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:security:clean"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 19184,
+      "error_code": null,
+      "ok": true,
+      "layered_status": "passed",
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      }
+    },
+    {
+      "id": "p4-performance",
+      "owner": "testing",
+      "satisfies": [
+        "node scripts/v3-clean-p4-performance.mjs"
+      ],
+      "reasons": [
+        "context-mcp"
+      ],
+      "historical": false,
+      "advisory": false,
+      "command": "<NODE>",
+      "args": [
+        "scripts/v3-clean-p4-performance.mjs"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "duration_ms": 29310,
+      "error_code": null,
+      "ok": true,
+      "layered_status": null,
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      }
+    }
+  ],
+  "clean_blocking": [],
+  "historical_advisory": [],
+  "receipt": null
+}

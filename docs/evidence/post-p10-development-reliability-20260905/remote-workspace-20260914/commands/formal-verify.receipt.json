@@ -1,0 +1,996 @@
+{
+  "schema_version": "aiws.v3-clean.verify-receipt.v3",
+  "status": "failed",
+  "blocking_command": "p10-github-deletion-probe",
+  "advisory_failures": [],
+  "generated_at": "2026-09-14T14:00:44.893Z",
+  "duration_ms": 78895,
+  "budget": {
+    "limit_ms": 360000,
+    "elapsed_ms": 78895,
+    "remaining_ms": 281105,
+    "exceeded": false
+  },
+  "policy": {
+    "publication_check": "pushed-upstream-head",
+    "current_phase": "P10",
+    "prior_phase_validation": "immutable-evidence-only",
+    "current_probe_failure_blocks": true,
+    "historical_failure_advisory": true,
+    "successful_receipt": "stdout-only",
+    "p10_catalog_status": "27/0/27"
+  },
+  "commands": [
+    {
+      "id": "check",
+      "owner": "platform",
+      "satisfies": [
+        "pnpm check"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "check"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:26.001Z",
+      "completed_at": "2026-09-14T13:59:44.673Z",
+      "duration_ms": 18673,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 check <WORKSPACE>\n> node scripts/check.mjs\n\ncheck passed: 512 source files, 405 syntax files, 60 scripts\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "audit-p1",
+      "owner": "platform",
+      "satisfies": [
+        "pnpm audit:p1"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "audit:p1"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:44.674Z",
+      "completed_at": "2026-09-14T13:59:45.327Z",
+      "duration_ms": 653,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 audit:p1 <WORKSPACE>\n> node scripts/v3-clean-workspace-audit.mjs\n\n{\n  \"schema_version\": \"aiws.v3-clean.workspace-audit.v3\",\n  \"phase\": \"P1\",\n  \"active\": {\n    \"runtime_entrypoint\": \"apps/api/server.mjs\",\n    \"http_composition\": \"apps/api/clean-server.mjs\",\n    \"process_scripts\": [\n      \"dev\",\n      \"dev:api\",\n      \"dev:broker\",\n      \"dev:clean\",\n      \"start\",\n      \"start:clean\"\n    ]\n  },\n  \"deferred\": {\n    \"package_scripts\": [\n      \"archive:v23\",\n      \"audit:parity\",\n      \"build\",\n      \"dev:broker\",\n      \"development:receipt\",\n      \"evidence:p10\",\n      \"evidence:p3\",\n      \"evidence:p31\",\n      \"evidence:p4\",\n      \"evidence:p5\",\n      \"evidence:p6\",\n      \"evidence:p7\",\n      \"evidence:p8\",\n      \"evidence:p9\",\n      \"fixture:legacy:acceptance\",\n      \"fixture:legacy:dev-broker\",\n      \"fixture:legacy:e2e\",\n      \"fixture:legacy:integration\",\n      \"fixture:legacy:release-build\",\n      \"fixture:legacy:release-promote\",\n      \"fixture:legacy:release-rehearse\",\n      \"fixture:legacy:security\",\n      \"fixture:seed-demo\",\n      \"github:seed-fixture\",\n      \"probe:development\",\n      \"test\",\n      \"test:development\",\n      \"test:e2e\",\n      \"test:integration\",\n      \"test:integration:clean\",\n      \"test:p10\",\n      \"test:p2\",\n      \"test:p3\",\n      \"test:p31\",\n      \"test:p4\",\n      \"test:p5\",\n      \"test:p6\",\n      \"test:p7\",\n      \"test:p8\",\n      \"test:p9\",\n      \"test:release\",\n      \"test:runner-real\",\n      \"test:security\",\n      \"test:security:clean\",\n      \"typecheck\",\n      \"verify:dev\"\n    ],\n    \"package_script_roles\": {\n      \"dev:broker\": {\n        \"role\": \"active_process\",\n        \"phase\": \"P6\"\n      },\n      \"fixture:legacy:dev-broker\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"P6\"\n      },\n      \"build\": {\n        \"role\": \"characterization_gate\",\n        \"phase\": \"P9\"\n      },\n      \"typecheck\": {\n        \"role\": \"characterization_gate\",\n        \"phase\": \"P9\"\n      },\n      \"test\": {\n        \"role\": \"characterization_gate\",\n        \"phase\": \"P2-P10\"\n      },\n      \"test:p2\": {\n        \"role\": \"characterization_gate\",\n        \"phase\": \"P2\"\n      },\n      \"test:p3\": {\n        \"role\": \"p3_gate\",\n        \"phase\": \"P3\"\n      },\n      \"test:p31\": {\n        \"role\": \"p31_gate\",\n        \"phase\": \"P3.1\"\n      },\n      \"test:p4\": {\n        \"role\": \"p4_gate\",\n        \"phase\": \"P4\"\n      },\n      \"test:p5\": {\n        \"role\": \"p5_gate\",\n        \"phase\": \"P5\"\n      },\n      \"test:p6\": {\n        \"role\": \"p6_gate\",\n        \"phase\": \"P6\"\n      },\n      \"test:p7\": {\n        \"role\": \"p7_gate\",\n        \"phase\": \"P7\"\n      },\n      \"test:p8\": {\n        \"role\": \"p8_gate\",\n        \"phase\": \"P8\"\n      },\n      \"test:p9\": {\n        \"role\": \"p9_gate\",\n        \"phase\": \"P9\"\n      },\n      \"test:p10\": {\n        \"role\": \"p10_gate\",\n        \"phase\": \"P10\"\n      },\n      \"audit:parity\": {\n        \"role\": \"p10_gate\",\n        \"phase\": \"P10\"\n      },\n      \"evidence:p3\": {\n        \"role\": \"p3_evidence\",\n        \"phase\": \"P3\"\n      },\n      \"evidence:p31\": {\n        \"role\": \"p31_evidence\",\n        \"phase\": \"P3.1\"\n      },\n      \"evidence:p4\": {\n        \"role\": \"p4_evidence\",\n        \"phase\": \"P4\"\n      },\n      \"evidence:p5\": {\n        \"role\": \"p5_evidence\",\n        \"phase\": \"P5\"\n      },\n      \"evidence:p6\": {\n        \"role\": \"p6_evidence\",\n        \"phase\": \"P6\"\n      },\n      \"evidence:p7\": {\n        \"role\": \"p7_evidence\",\n        \"phase\": \"P7\"\n      },\n      \"evidence:p8\": {\n        \"role\": \"p8_evidence\",\n        \"phase\": \"P8\"\n      },\n      \"evidence:p9\": {\n        \"role\": \"p9_evidence\",\n        \"phase\": \"P9\"\n      },\n      \"evidence:p10\": {\n        \"role\": \"p10_evidence\",\n        \"phase\": \"P10\"\n      },\n      \"test:integration\": {\n        \"role\": \"layered_gate\",\n        \"phase\": \"P3.1\"\n      },\n      \"test:integration:clean\": {\n        \"role\": \"p31_gate\",\n        \"phase\": \"P3.1\"\n      },\n      \"fixture:legacy:integration\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"historical\"\n      },\n      \"test:e2e\": {\n        \"role\": \"characterization_gate\",\n        \"phase\": \"P9\"\n      },\n      \"test:security\": {\n        \"role\": \"layered_gate\",\n        \"phase\": \"P3.1\"\n      },\n      \"test:security:clean\": {\n        \"role\": \"p31_gate\",\n        \"phase\": \"P3.1\"\n      },\n      \"fixture:legacy:security\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"historical\"\n      },\n      \"test:release\": {\n        \"role\": \"characterization_gate\",\n        \"phase\": \"P8-P9\"\n      },\n      \"test:runner-real\": {\n        \"role\": \"characterization_gate\",\n        \"phase\": \"P6\"\n      },\n      \"test:development\": {\n        \"role\": \"development_gate\",\n        \"phase\": \"P10+\"\n      },\n      \"probe:development\": {\n        \"role\": \"development_probe\",\n        \"phase\": \"P10+\"\n      },\n      \"github:seed-fixture\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"P7\"\n      },\n      \"verify:dev\": {\n        \"role\": \"development_gate\",\n        \"phase\": \"P10+\"\n      },\n      \"development:receipt\": {\n        \"role\": \"operations_receipt\",\n        \"phase\": \"P10+\"\n      },\n      \"fixture:seed-demo\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"P3\"\n      },\n      \"archive:v23\": {\n        \"role\": \"historical_maintenance\",\n        \"phase\": \"historical\"\n      },\n      \"fixture:legacy:acceptance\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"P2-P9\"\n      },\n      \"fixture:legacy:e2e\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"historical\"\n      },\n      \"fixture:legacy:release-build\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"P8-P9\"\n      },\n      \"fixture:legacy:release-rehearse\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"P8-P9\"\n      },\n      \"fixture:legacy:release-promote\": {\n        \"role\": \"deferred_fixture\",\n        \"phase\": \"P8-P9\"\n      }\n    },\n    \"retired_route_references\": {\n      \"P1:p1\": 1,\n      \"P10:clean\": 2,\n      \"P2-P8:historical domain/runtime input\": 2,\n      \"P2-P9:historical behavior or future-phase tool\": 681,\n      \"P2-P9:pre-clean shared contract\": 1,\n      \"P4:clean\": 4,\n      \"P5:clean\": 2,\n      \"P6:clean\": 3,\n      \"P7:clean\": 3,\n      \"P8:clean\": 1,\n      \"P9:clean\": 8,\n      \"P9:pre-clean Web characterization\": 3\n    }\n  },\n  \"evidence\": {\n    \"directory\": \"docs/evidence/v3-clean-p1-gate-contract-complete-20260819\",\n    \"verified\": true,\n    \"workspace_comparison\": false\n  },\n  \"scope_inventory\": {\n    \"files\": 4188,\n    \"classifications\": {\n      \"governance:P0-P10\": 35,\n      \"clean:P7\": 37,\n      \"p1:P1\": 65,\n      \"fixture:P2-P9\": 106,\n      \"fixture:P2-P8\": 85,\n      \"clean:P5\": 36,\n      \"clean:P4\": 23,\n      \"clean:P6\": 28,\n      \"clean:P10\": 58,\n      \"clean:P8\": 31,\n      \"clean:P9\": 33,\n      \"fixture:P6\": 6,\n      \"fixture:P9\": 21,\n      \"fixture:P8-P9\": 4,\n      \"non_product:unscoped research\": 88,\n      \"archive:historical\": 8,\n      \"evidence:P0-P10\": 3523,\n      \"supporting_document:P0-P10\": 1\n    },\n    \"unclassified\": []\n  },\n  \"checks\": [\n    {\n      \"id\": \"package-process-surface\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"runtime-entrypoints\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"legacy-server-containment\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"retired-route-containment\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"active-document-contracts\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"gate-sync-contract\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"p1-evidence-synchronization\",\n      \"valid\": true\n    },\n    {\n      \"id\": \"workspace-inventory\",\n      \"valid\": true\n    }\n  ],\n  \"findings\": [],\n  \"valid\": true\n}\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "scan-clean",
+      "owner": "platform",
+      "satisfies": [
+        "pnpm scan:clean"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "scan:clean"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:45.327Z",
+      "completed_at": "2026-09-14T13:59:46.272Z",
+      "duration_ms": 945,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 scan:clean <WORKSPACE>\n> node scripts/v3-clean-architecture-scan.mjs\n\n{\n  \"schema_version\": \"aiws.v3-clean.architecture-scan.v10\",\n  \"entrypoints\": [\n    \"apps/api/server.mjs\",\n    \"apps/gateway/server.mjs\",\n    \"apps/runner-broker/clean-server.mjs\",\n    \"apps/windows-native-bridge/server.mjs\"\n  ],\n  \"files\": [\n    \"apps/api/server.mjs\",\n    \"apps/api/clean-server.mjs\",\n    \"apps/api/src/clean/runtime.mjs\",\n    \"apps/api/src/clean/config.mjs\",\n    \"apps/api/src/clean/database.mjs\",\n    \"apps/api/src/clean/canonical.mjs\",\n    \"apps/api/src/clean/migrations/001-clean-baseline.mjs\",\n    \"apps/api/src/clean/migrations/002-identity-acl.mjs\",\n    \"apps/api/src/clean/migrations/003-project-workflow.mjs\",\n    \"apps/api/src/clean/migrations/004-context-projection-mcp.mjs\",\n    \"apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs\",\n    \"apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs\",\n    \"apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs\",\n    \"apps/api/src/clean/migrations/008-delivery-deployment-importer-operations.mjs\",\n    \"apps/api/src/clean/migrations/009-final-business-parity-governance.mjs\",\n    \"apps/api/src/clean/redaction.mjs\",\n    \"apps/api/src/clean/cas.mjs\",\n    \"apps/api/src/clean/events.mjs\",\n    \"apps/api/src/clean/cursor.mjs\",\n    \"apps/api/src/clean/operations.mjs\",\n    \"apps/api/src/clean/platform.mjs\",\n    \"apps/api/src/clean/principal.mjs\",\n    \"apps/api/src/clean/platform-error.mjs\",\n    \"apps/api/src/clean/registry.mjs\",\n    \"apps/api/src/clean/receipts.mjs\",\n    \"apps/api/src/clean/ownership.mjs\",\n    \"apps/api/src/clean/authorization.mjs\",\n    \"apps/api/src/clean/identity.mjs\",\n    \"apps/api/src/clean/actor-service.mjs\",\n    \"apps/api/src/clean/identity-helpers.mjs\",\n    \"apps/api/src/clean/session-service.mjs\",\n    \"apps/api/src/clean/team-access-service.mjs\",\n    \"apps/api/src/clean/credential-profile-service.mjs\",\n    \"apps/api/src/clean/vault.mjs\",\n    \"apps/api/src/clean/provider-adapters.mjs\",\n    \"apps/api/src/clean/app-server-adapter.mjs\",\n    \"apps/api/src/clean/p8/github-adapter.mjs\",\n    \"apps/api/src/clean/project-workflow.mjs\",\n    \"apps/api/src/clean/runner-input-provider.mjs\",\n    \"apps/api/src/clean/project-domain-helpers.mjs\",\n    \"apps/api/src/clean/project-service.mjs\",\n    \"apps/api/src/clean/repository-service.mjs\",\n    \"apps/api/src/clean/workflow-service.mjs\",\n    \"apps/api/src/clean/outcome-service.mjs\",\n    \"apps/api/src/clean/context-service.mjs\",\n    \"apps/api/src/clean/mcp-service.mjs\",\n    \"apps/api/src/clean/gateway-service.mjs\",\n    \"apps/api/src/clean/command-dispatcher.mjs\",\n    \"apps/api/src/clean/assist-service.mjs\",\n    \"apps/api/src/clean/p5-domain-helpers.mjs\",\n    \"apps/api/src/clean/files-service.mjs\",\n    \"apps/api/src/clean/terminal-service.mjs\",\n    \"apps/api/src/clean/bridge-service.mjs\",\n    \"apps/api/src/clean/windows-bridge-adapter.mjs\",\n    \"apps/api/src/clean/runner-service.mjs\",\n    \"apps/api/src/clean/runner-protocol.mjs\",\n    \"apps/api/src/clean/execution-service.mjs\",\n    \"apps/api/src/clean/candidate-workspace.mjs\",\n    \"apps/api/src/clean/runner-adapters.mjs\",\n    \"apps/api/src/clean/workflow-adapters.mjs\",\n    \"apps/api/src/clean/evidence-service.mjs\",\n    \"apps/api/src/clean/parser-service.mjs\",\n    \"apps/api/src/clean/parser-protocol.mjs\",\n    \"apps/api/src/clean/parser-limits.mjs\",\n    \"apps/api/src/clean/quality-service.mjs\",\n    \"apps/api/src/clean/outcome-evaluation-service.mjs\",\n    \"apps/api/src/clean/parser-adapters.mjs\",\n    \"apps/api/src/clean/parser-docker.mjs\",\n    \"apps/api/src/clean/p8-service.mjs\",\n    \"apps/api/src/clean/p8/repository.mjs\",\n    \"apps/api/src/clean/p8/artifact-operations.mjs\",\n    \"apps/api/src/clean/p10-service.mjs\",\n    \"apps/api/src/clean/local-setup-service.mjs\",\n    \"apps/api/src/clean/github-setup-service.mjs\",\n    \"apps/api/src/clean/github-repository-adapter.mjs\",\n    \"apps/api/src/clean/http.mjs\",\n    \"apps/api/src/clean/web-static.mjs\"\n  ],\n  \"registry\": {\n    \"valid\": true,\n    \"mismatches\": [],\n    \"rest_count\": 293,\n    \"mcp_count\": 293,\n    \"web_count\": 293\n  },\n  \"ownership\": {\n    \"valid\": true,\n    \"missing_tables\": [],\n    \"unexpected_tables\": [],\n    \"missing_commands\": [],\n    \"mismatched_commands\": [],\n    \"missing_events\": [],\n    \"mismatched_events\": []\n  },\n  \"phase_metadata\": {\n    \"baseline_phase\": \"P1\",\n    \"active_phase\": \"P10\",\n    \"migration_registry\": [\n      {\n        \"id\": \"001-clean-baseline\",\n        \"version\": 1\n      },\n      {\n        \"id\": \"002-identity-acl\",\n        \"version\": 2\n      },\n      {\n        \"id\": \"003-project-workflow\",\n        \"version\": 3\n      },\n      {\n        \"id\": \"004-context-projection-mcp\",\n        \"version\": 4\n      },\n      {\n        \"id\": \"005-assist-files-terminal-bridge\",\n        \"version\": 5\n      },\n      {\n        \"id\": \"006-runner-execution-checkpoint-replay\",\n        \"version\": 6\n      },\n      {\n        \"id\": \"007-evidence-quality-parser-outcome\",\n        \"version\": 7\n      },\n      {\n        \"id\": \"008-delivery-deployment-importer-operations\",\n        \"version\": 8\n      },\n      {\n        \"id\": \"009-final-business-parity-governance\",\n        \"version\": 9\n      }\n    ],\n    \"p10_table_owners\": [\n      \"actors\",\n      \"aggregate_heads\",\n      \"aggregate_revisions\",\n      \"asset_attestations\",\n      \"asset_blobs\",\n      \"asset_relations\",\n      \"asset_versions\",\n      \"assets\",\n      \"assist_configurations\",\n      \"assist_goals\",\n      \"assist_messages\",\n      \"assist_references\",\n      \"assist_review_comments\",\n      \"assist_sessions\",\n      \"assist_turns\",\n      \"attachments\",\n      \"audit_events\",\n      \"backup_manifests\",\n      \"bridge_devices\",\n      \"bridge_transfers\",\n      \"brief_revisions\",\n      \"brief_template_revisions\",\n      \"brief_templates\",\n      \"briefs\",\n      \"cas_objects\",\n      \"code_changes\",\n      \"context_document_versions\",\n      \"context_edges\",\n      \"context_index_snapshots\",\n      \"context_nodes\",\n      \"context_packs\",\n      \"context_policies\",\n      \"context_projection_jobs\",\n      \"context_selections\",\n      \"context_sources\",\n      \"credential_refs\",\n      \"deliveries\",\n      \"delivery_events\",\n      \"delivery_policies\",\n      \"deployment_candidates\",\n      \"deployment_verifications\",\n      \"digests\",\n      \"event_cursors\",\n      \"events\",\n      \"exchange_grants\",\n      \"exchange_requests\",\n      \"execution_events\",\n      \"execution_inputs\",\n      \"execution_stage_checkpoints\",\n      \"executions\",\n      \"file_change_batches\",\n      \"file_change_items\",\n      \"file_refs\",\n      \"gateway_forward_receipts\",\n      \"human_reviews\",\n      \"idempotency_keys\",\n      \"import_batches\",\n      \"import_checkpoints\",\n      \"import_conflicts\",\n      \"import_id_map\",\n      \"job_specs\",\n      \"mcp_clients\",\n      \"node_contracts\",\n      \"operation_links\",\n      \"operations\",\n      \"outcome_evaluations\",\n      \"outcome_requirements\",\n      \"outcome_waivers\",\n      \"parser_formats\",\n      \"parser_runs\",\n      \"project_acl_entries\",\n      \"project_deletion_intents\",\n      \"project_intakes\",\n      \"project_invitations\",\n      \"project_memberships\",\n      \"projects\",\n      \"provider_profiles\",\n      \"pull_request_intents\",\n      \"quality_review_advices\",\n      \"quality_review_asset_selections\",\n      \"quality_review_events\",\n      \"quality_review_reports\",\n      \"quality_review_runs\",\n      \"receipt_manifests\",\n      \"repository_connections\",\n      \"repository_deletion_intents\",\n      \"repository_lines\",\n      \"repository_locks\",\n      \"repository_targets\",\n      \"repository_workspaces\",\n      \"runner_profiles\",\n      \"runner_receipts\",\n      \"runtime_approvals\",\n      \"runtime_user_inputs\",\n      \"schema_meta\",\n      \"schema_migrations\",\n      \"semantic_proposals\",\n      \"sessions\",\n      \"task_attempts\",\n      \"team_memberships\",\n      \"teams\",\n      \"terminal_events\",\n      \"terminal_sessions\",\n      \"test_results\",\n      \"traces\",\n      \"workflow_critic_receipts\",\n      \"workflow_generation_proposals\",\n      \"workflow_generations\",\n      \"workflow_nodes\",\n      \"workflow_quality_policies\",\n      \"workflow_revisions\",\n      \"workflows\"\n    ],\n    \"authorization_predicate\": \"authorize(principal, action, project, resource, policy_revision)\",\n    \"evidence_directory\": \"docs/evidence/v3-clean-p10-final-governance-20260829\",\n    \"evidence_present\": true\n  },\n  \"workspace\": {\n    \"schema_version\": \"aiws.v3-clean.workspace-audit.v3\",\n    \"phase\": \"P1\",\n    \"active\": {\n      \"runtime_entrypoint\": \"apps/api/server.mjs\",\n      \"http_composition\": \"apps/api/clean-server.mjs\",\n      \"process_scripts\": [\n        \"dev\",\n        \"dev:api\",\n        \"dev:broker\",\n        \"dev:clean\",\n        \"start\",\n        \"start:clean\"\n      ]\n    },\n    \"deferred\": {\n      \"package_scripts\": [\n        \"archive:v23\",\n        \"audit:parity\",\n        \"build\",\n        \"dev:broker\",\n        \"development:receipt\",\n        \"evidence:p10\",\n        \"evidence:p3\",\n        \"evidence:p31\",\n        \"evidence:p4\",\n        \"evidence:p5\",\n        \"evidence:p6\",\n        \"evidence:p7\",\n        \"evidence:p8\",\n        \"evidence:p9\",\n        \"fixture:legacy:acceptance\",\n        \"fixture:legacy:dev-broker\",\n        \"fixture:legacy:e2e\",\n        \"fixture:legacy:integration\",\n        \"fixture:legacy:release-build\",\n        \"fixture:legacy:release-promote\",\n        \"fixture:legacy:release-rehearse\",\n        \"fixture:legacy:security\",\n        \"fixture:seed-demo\",\n        \"github:seed-fixture\",\n        \"probe:development\",\n        \"test\",\n        \"test:development\",\n        \"test:e2e\",\n        \"test:integration\",\n        \"test:integration:clean\",\n        \"test:p10\",\n        \"test:p2\",\n        \"test:p3\",\n        \"test:p31\",\n        \"test:p4\",\n        \"test:p5\",\n        \"test:p6\",\n        \"test:p7\",\n        \"test:p8\",\n        \"test:p9\",\n        \"test:release\",\n        \"test:runner-real\",\n        \"test:security\",\n        \"test:security:clean\",\n        \"typecheck\",\n        \"verify:dev\"\n      ],\n      \"package_script_roles\": {\n        \"dev:broker\": {\n          \"role\": \"active_process\",\n          \"phase\": \"P6\"\n        },\n        \"fixture:legacy:dev-broker\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P6\"\n        },\n        \"build\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P9\"\n        },\n        \"typecheck\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P9\"\n        },\n        \"test\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P2-P10\"\n        },\n        \"test:p2\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P2\"\n        },\n        \"test:p3\": {\n          \"role\": \"p3_gate\",\n          \"phase\": \"P3\"\n        },\n        \"test:p31\": {\n          \"role\": \"p31_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"test:p4\": {\n          \"role\": \"p4_gate\",\n          \"phase\": \"P4\"\n        },\n        \"test:p5\": {\n          \"role\": \"p5_gate\",\n          \"phase\": \"P5\"\n        },\n        \"test:p6\": {\n          \"role\": \"p6_gate\",\n          \"phase\": \"P6\"\n        },\n        \"test:p7\": {\n          \"role\": \"p7_gate\",\n          \"phase\": \"P7\"\n        },\n        \"test:p8\": {\n          \"role\": \"p8_gate\",\n          \"phase\": \"P8\"\n        },\n        \"test:p9\": {\n          \"role\": \"p9_gate\",\n          \"phase\": \"P9\"\n        },\n        \"test:p10\": {\n          \"role\": \"p10_gate\",\n          \"phase\": \"P10\"\n        },\n        \"audit:parity\": {\n          \"role\": \"p10_gate\",\n          \"phase\": \"P10\"\n        },\n        \"evidence:p3\": {\n          \"role\": \"p3_evidence\",\n          \"phase\": \"P3\"\n        },\n        \"evidence:p31\": {\n          \"role\": \"p31_evidence\",\n          \"phase\": \"P3.1\"\n        },\n        \"evidence:p4\": {\n          \"role\": \"p4_evidence\",\n          \"phase\": \"P4\"\n        },\n        \"evidence:p5\": {\n          \"role\": \"p5_evidence\",\n          \"phase\": \"P5\"\n        },\n        \"evidence:p6\": {\n          \"role\": \"p6_evidence\",\n          \"phase\": \"P6\"\n        },\n        \"evidence:p7\": {\n          \"role\": \"p7_evidence\",\n          \"phase\": \"P7\"\n        },\n        \"evidence:p8\": {\n          \"role\": \"p8_evidence\",\n          \"phase\": \"P8\"\n        },\n        \"evidence:p9\": {\n          \"role\": \"p9_evidence\",\n          \"phase\": \"P9\"\n        },\n        \"evidence:p10\": {\n          \"role\": \"p10_evidence\",\n          \"phase\": \"P10\"\n        },\n        \"test:integration\": {\n          \"role\": \"layered_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"test:integration:clean\": {\n          \"role\": \"p31_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"fixture:legacy:integration\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"historical\"\n        },\n        \"test:e2e\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P9\"\n        },\n        \"test:security\": {\n          \"role\": \"layered_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"test:security:clean\": {\n          \"role\": \"p31_gate\",\n          \"phase\": \"P3.1\"\n        },\n        \"fixture:legacy:security\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"historical\"\n        },\n        \"test:release\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P8-P9\"\n        },\n        \"test:runner-real\": {\n          \"role\": \"characterization_gate\",\n          \"phase\": \"P6\"\n        },\n        \"test:development\": {\n          \"role\": \"development_gate\",\n          \"phase\": \"P10+\"\n        },\n        \"probe:development\": {\n          \"role\": \"development_probe\",\n          \"phase\": \"P10+\"\n        },\n        \"github:seed-fixture\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P7\"\n        },\n        \"verify:dev\": {\n          \"role\": \"development_gate\",\n          \"phase\": \"P10+\"\n        },\n        \"development:receipt\": {\n          \"role\": \"operations_receipt\",\n          \"phase\": \"P10+\"\n        },\n        \"fixture:seed-demo\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P3\"\n        },\n        \"archive:v23\": {\n          \"role\": \"historical_maintenance\",\n          \"phase\": \"historical\"\n        },\n        \"fixture:legacy:acceptance\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P2-P9\"\n        },\n        \"fixture:legacy:e2e\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"historical\"\n        },\n        \"fixture:legacy:release-build\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P8-P9\"\n        },\n        \"fixture:legacy:release-rehearse\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P8-P9\"\n        },\n        \"fixture:legacy:release-promote\": {\n          \"role\": \"deferred_fixture\",\n          \"phase\": \"P8-P9\"\n        }\n      },\n      \"retired_route_references\": {\n        \"P1:p1\": 1,\n        \"P10:clean\": 2,\n        \"P2-P8:historical domain/runtime input\": 2,\n        \"P2-P9:historical behavior or future-phase tool\": 681,\n        \"P2-P9:pre-clean shared contract\": 1,\n        \"P4:clean\": 4,\n        \"P5:clean\": 2,\n        \"P6:clean\": 3,\n        \"P7:clean\": 3,\n        \"P8:clean\": 1,\n        \"P9:clean\": 8,\n        \"P9:pre-clean Web characterization\": 3\n      }\n    },\n    \"evidence\": {\n      \"directory\": \"docs/evidence/v3-clean-p1-gate-contract-complete-20260819\",\n      \"verified\": true,\n      \"workspace_comparison\": false\n    },\n    \"scope_inventory\": {\n      \"files\": 4188,\n      \"classifications\": {\n        \"governance:P0-P10\": 35,\n        \"clean:P7\": 37,\n        \"p1:P1\": 65,\n        \"fixture:P2-P9\": 106,\n        \"fixture:P2-P8\": 85,\n        \"clean:P5\": 36,\n        \"clean:P4\": 23,\n        \"clean:P6\": 28,\n        \"clean:P10\": 58,\n        \"clean:P8\": 31,\n        \"clean:P9\": 33,\n        \"fixture:P6\": 6,\n        \"fixture:P9\": 21,\n        \"fixture:P8-P9\": 4,\n        \"non_product:unscoped research\": 88,\n        \"archive:historical\": 8,\n        \"evidence:P0-P10\": 3523,\n        \"supporting_document:P0-P10\": 1\n      },\n      \"unclassified\": []\n    },\n    \"checks\": [\n      {\n        \"id\": \"package-process-surface\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"runtime-entrypoints\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"legacy-server-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"retired-route-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"active-document-contracts\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"gate-sync-contract\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"p1-evidence-synchronization\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"workspace-inventory\",\n        \"valid\": true\n      }\n    ],\n    \"findings\": [],\n    \"valid\": true\n  },\n  \"forbidden_findings\": [],\n  \"valid\": true\n}\n",
+        "stderr": "(node:13160) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "audit-parity",
+      "owner": "platform",
+      "satisfies": [
+        "pnpm audit:parity"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "audit:parity"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:46.272Z",
+      "completed_at": "2026-09-14T13:59:48.456Z",
+      "duration_ms": 2184,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 audit:parity <WORKSPACE>\n> node scripts/v3-clean-p10-parity.mjs\n\n{\n  \"schema_version\": \"aiws.v3-clean.p10-parity-audit.v1\",\n  \"phase\": \"P10\",\n  \"status\": \"passed\",\n  \"counts\": {\n    \"cases\": 14,\n    \"routes\": 360,\n    \"collections\": 98,\n    \"web_routes\": 11,\n    \"optimization_packages\": 7\n  },\n  \"business_groups\": 19,\n  \"gaps\": 0,\n  \"findings\": []\n}\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "recovery-plan",
+      "owner": "platform",
+      "satisfies": [
+        "pnpm recovery:plan"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "recovery:plan"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:48.456Z",
+      "completed_at": "2026-09-14T13:59:48.891Z",
+      "duration_ms": 435,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 recovery:plan <WORKSPACE>\n> node scripts/recovery-governance.mjs plan\n\n{\n  \"documents\": [\n    \"docs/architecture/v3-clean-development-plan.md\",\n    \"docs/testing.md\"\n  ],\n  \"domains\": [\n    \"assist\",\n    \"bridge\",\n    \"context\",\n    \"contracts\",\n    \"delivery\",\n    \"evidence\",\n    \"execution\",\n    \"frontend\",\n    \"governance\",\n    \"identity\",\n    \"mcp\",\n    \"operations\",\n    \"outcome\",\n    \"project\",\n    \"quality\",\n    \"repository\",\n    \"runner\",\n    \"setup\",\n    \"terminal\",\n    \"workflow\"\n  ],\n  \"feature_count\": 27,\n  \"phases\": 10,\n  \"phase_prefix\": \"P\",\n  \"workspace_sync\": {\n    \"schema_version\": \"aiws.v3-clean.workspace-audit.v3\",\n    \"phase\": \"P1\",\n    \"valid\": true,\n    \"checks\": [\n      {\n        \"id\": \"package-process-surface\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"runtime-entrypoints\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"legacy-server-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"retired-route-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"active-document-contracts\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"gate-sync-contract\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"p1-evidence-synchronization\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"workspace-inventory\",\n        \"valid\": true\n      }\n    ],\n    \"deferred_route_references\": {\n      \"P1:p1\": 1,\n      \"P10:clean\": 2,\n      \"P2-P8:historical domain/runtime input\": 2,\n      \"P2-P9:historical behavior or future-phase tool\": 681,\n      \"P2-P9:pre-clean shared contract\": 1,\n      \"P4:clean\": 4,\n      \"P5:clean\": 2,\n      \"P6:clean\": 3,\n      \"P7:clean\": 3,\n      \"P8:clean\": 1,\n      \"P9:clean\": 8,\n      \"P9:pre-clean Web characterization\": 3\n    },\n    \"evidence_directory\": \"docs/evidence/v3-clean-p1-gate-contract-complete-20260819\"\n  },\n  \"receipt\": \".ai-workspace/recovery/plan.json\"\n}\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "recovery-catalog",
+      "owner": "platform",
+      "satisfies": [
+        "pnpm recovery:catalog"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "recovery:catalog"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:48.891Z",
+      "completed_at": "2026-09-14T13:59:49.443Z",
+      "duration_ms": 552,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 recovery:catalog <WORKSPACE>\n> node scripts/recovery-governance.mjs catalog\n\n{\n  \"feature_count\": 27,\n  \"statuses\": {\n    \"planned\": 0,\n    \"scaffolded\": 0,\n    \"implemented\": 0,\n    \"verified\": 0,\n    \"released\": 27\n  },\n  \"module_count\": 19,\n  \"owned_tables\": 103,\n  \"owned_commands\": 107,\n  \"unique_ids\": 27,\n  \"workspace_sync\": {\n    \"schema_version\": \"aiws.v3-clean.workspace-audit.v3\",\n    \"phase\": \"P1\",\n    \"valid\": true,\n    \"checks\": [\n      {\n        \"id\": \"package-process-surface\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"runtime-entrypoints\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"legacy-server-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"retired-route-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"active-document-contracts\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"gate-sync-contract\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"p1-evidence-synchronization\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"workspace-inventory\",\n        \"valid\": true\n      }\n    ],\n    \"deferred_route_references\": {\n      \"P1:p1\": 1,\n      \"P10:clean\": 2,\n      \"P2-P8:historical domain/runtime input\": 2,\n      \"P2-P9:historical behavior or future-phase tool\": 681,\n      \"P2-P9:pre-clean shared contract\": 1,\n      \"P4:clean\": 4,\n      \"P5:clean\": 2,\n      \"P6:clean\": 3,\n      \"P7:clean\": 3,\n      \"P8:clean\": 1,\n      \"P9:clean\": 8,\n      \"P9:pre-clean Web characterization\": 3\n    },\n    \"evidence_directory\": \"docs/evidence/v3-clean-p1-gate-contract-complete-20260819\"\n  },\n  \"receipt\": \".ai-workspace/recovery/catalog.json\"\n}\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "recovery-coverage",
+      "owner": "platform",
+      "satisfies": [
+        "pnpm recovery:coverage"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "recovery:coverage"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:49.443Z",
+      "completed_at": "2026-09-14T13:59:49.891Z",
+      "duration_ms": 448,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 recovery:coverage <WORKSPACE>\n> node scripts/recovery-governance.mjs coverage\n\n{\n  \"feature_count\": 27,\n  \"covered_features\": 27,\n  \"behavior_covered\": 27,\n  \"ui_covered\": 27,\n  \"gates\": {\n    \"T0\": 2,\n    \"T1\": 2,\n    \"T2\": 2,\n    \"T3\": 3,\n    \"T4\": 5,\n    \"T5\": 6,\n    \"T6\": 5,\n    \"T7\": 2,\n    \"T8\": 5\n  },\n  \"receipt\": \".ai-workspace/recovery/coverage.json\"\n}\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "recovery-impact",
+      "owner": "platform",
+      "satisfies": [
+        "pnpm recovery:impact -- --audit"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "recovery:impact",
+        "--",
+        "--audit"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:49.891Z",
+      "completed_at": "2026-09-14T13:59:50.443Z",
+      "duration_ms": 552,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 recovery:impact <WORKSPACE>\n> node scripts/recovery-governance.mjs impact \"--\" \"--audit\"\n\n{\n  \"audit\": true,\n  \"changed_files\": [],\n  \"unmapped_files\": [],\n  \"selected_tests\": [],\n  \"workspace_sync\": {\n    \"schema_version\": \"aiws.v3-clean.workspace-audit.v3\",\n    \"phase\": \"P1\",\n    \"valid\": true,\n    \"checks\": [\n      {\n        \"id\": \"package-process-surface\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"runtime-entrypoints\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"legacy-server-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"retired-route-containment\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"active-document-contracts\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"gate-sync-contract\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"p1-evidence-synchronization\",\n        \"valid\": true\n      },\n      {\n        \"id\": \"workspace-inventory\",\n        \"valid\": true\n      }\n    ],\n    \"deferred_route_references\": {\n      \"P1:p1\": 1,\n      \"P10:clean\": 2,\n      \"P2-P8:historical domain/runtime input\": 2,\n      \"P2-P9:historical behavior or future-phase tool\": 681,\n      \"P2-P9:pre-clean shared contract\": 1,\n      \"P4:clean\": 4,\n      \"P5:clean\": 2,\n      \"P6:clean\": 3,\n      \"P7:clean\": 3,\n      \"P8:clean\": 1,\n      \"P9:clean\": 8,\n      \"P9:pre-clean Web characterization\": 3\n    },\n    \"evidence_directory\": \"docs/evidence/v3-clean-p1-gate-contract-complete-20260819\"\n  },\n  \"receipt\": \".ai-workspace/recovery/impact.json\"\n}\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p1",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p1"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p1"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:50.443Z",
+      "completed_at": "2026-09-14T13:59:53.663Z",
+      "duration_ms": 3221,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p1 <WORKSPACE>\n> node --test tests/p1/*.test.mjs tests/integration/v3-clean-p1.test.mjs tests/security/v3-clean-p1.test.mjs\n\n(node:45924) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ clean restart preserves terminal operation and SSE/JSON replay parity (246.3781ms)\n✔ clean boundary validates readiness, aggregate CAS, cursors, and live SSE heartbeat (145.462ms)\n✔ CAS manifest drift keeps probes alive but blocks readiness (119.7264ms)\n✔ non-terminal SSE follows committed events and closes on terminal state (130.4445ms)\n(node:50164) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ canonical JSON and SHA-256 are stable (1.2497ms)\n✔ clean baseline is idempotent and has one bootstrap actor (85.2173ms)\n✔ historical schema is held for importer and emits a receipt (45.1106ms)\n✔ nonzero user_version without a clean family is held for importer (23.3102ms)\n✔ baseline DDL and ledger faults roll back as one transaction (261.1733ms)\n✔ operation transitions atomically update head, revision, event and audit (67.6577ms)\n✔ operation state machine requires queued before running (65.0111ms)\n✔ startup rejects a tampered aggregate head semantic hash (87.3342ms)\n✔ checksum drift leaves the process live but not ready (75.3533ms)\n✔ concurrent duplicate idempotency requests produce one operation (36.0493ms)\n✔ expired idempotency keys can be reused after retention (60.9187ms)\n✔ expired aggregate idempotency keys are replaced before replay (56.1782ms)\n✔ operation executor emits durable progress before terminal success (53.2932ms)\n✔ cancel is accepted once and the worker writes the terminal event (54.0887ms)\n✔ retry creates a linked operation without rewriting the failed receipt (53.0906ms)\n✔ cursor scope, expiry and redaction are enforced (0.9677ms)\n✔ event replay authorization and durable cursor expiry are stable (41.7533ms)\n✔ 1000-event replay is complete, ordered, and duplicate-free (129.9944ms)\n✔ CAS promotion and tamper verification use content hashes (88.3757ms)\n✔ download receipts bind actor, project, hash, expiry, and single use (79.4321ms)\n✔ download receipt expiry uses the injected platform clock (78.8306ms)\n✔ API v2 probes, retired route, replay and cancel use one envelope (132.2205ms)\n✔ registry metadata, ownership, and transaction callback contract are enforced (33.3171ms)\n✔ CAS content scanner blocks secrets and missing manifests never self-heal (65.3213ms)\n✔ expired cursors return a scope-bound restart cursor (0.3098ms)\n✔ process-level startup failure remains probeable and blocks API v2 (13.7654ms)\n✔ global P1 audit classifies active and deferred surfaces without Evidence recursion (256.8874ms)\n✔ gate synchronization contract is present in every governing surface (1.1365ms)\n✔ gate synchronization parser rejects duplicate ids and rule text drift (0.6238ms)\n✔ pre-push runs the outer verify once and suppresses only nested probe hooks (1.1418ms)\n✔ completion baseline records the remaining pre-fix synchronization gaps (1565.8077ms)\n✔ gate complete baseline records the task-start synchronization gap (1056.572ms)\n✔ workspace path classifier keeps later phases separate from P1 (0.1692ms)\n✔ every package script has one exact P1 or deferred classification (0.2694ms)\n✔ Evidence completion requires final state and an applied byte-exact rollback (0.2251ms)\n(node:12228) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ clean boundary rejects stale metadata and removes restricted values (238.5921ms)\nℹ tests 40\nℹ suites 0\nℹ pass 40\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2958.694\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p2",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p2"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p2"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:53.664Z",
+      "completed_at": "2026-09-14T13:59:55.801Z",
+      "duration_ms": 2137,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p2 <WORKSPACE>\n> node --test tests/p2/*.test.mjs\n\n(node:50424) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ actor and team administration cannot cross tenant or revive terminal memberships (148.4266ms)\n✔ project resolver, policy head, invitation membership and project boundaries are enforced (237.3622ms)\n✔ session expiry and revoke remain effective after restart with the injected clock (171.7779ms)\n✔ provider failure is terminal and retryable, and a later probe can succeed (129.3851ms)\n✔ restart recovery marks an externally unknown pending probe failed without guessing success (112.5631ms)\n✔ concurrent credential idempotency creates one operation and one encrypted entry (127.1095ms)\n✔ service delegation requires a Vault proof, same-team target, and credential scopes (152.504ms)\n✔ operation JSON and SSE endpoints reauthorize project access after membership revoke (124.3512ms)\n(node:18152) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ migration registry applies 001 then 002 and upgrades a P1 volume without rewriting baseline (94.7454ms)\n✔ 002 DDL, ledger, receipt and commit faults roll back atomically (231.4779ms)\n✔ setup atomically creates user, team, owner membership and a keyed-hash session (99.8147ms)\n✔ actor switch keeps the subject and only targets a managed service actor (118.1792ms)\n✔ project role ceiling, explicit deny and exchange narrowing share one predicate (99.961ms)\n✔ credential rebind stores AES-GCM ciphertext only and profile probe uses fake contract (165.9729ms)\n✔ Vault adapter uses authenticated atomic files and rejects a tampered entry (11.6501ms)\n✔ HTTP requires a session, ignores spoof headers and returns proof only as a strict cookie (141.8128ms)\n✔ P2 registry, REST/MCP/Web metadata and ownership remain bidirectional (62.3636ms)\nℹ tests 17\nℹ suites 0\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1874.3814\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p3",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p3"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p3"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:55.801Z",
+      "completed_at": "2026-09-14T13:59:58.478Z",
+      "duration_ms": 2677,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p3 <WORKSPACE>\n> node --test tests/p3/http-contract.test.mjs tests/p3/migration.test.mjs tests/p3/project-workflow.test.mjs\n\n(node:27656) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P3 HTTP uses the session cookie, closed contracts, and equivalent operation replay (210.7338ms)\n✔ P3 project access remains resolver- and ACL-scoped (92.3485ms)\n(node:10380) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ 003 registry upgrades empty, P1 and P2 volumes without rewriting prior ledgers (205.9957ms)\n✔ 003 DDL, ledger, receipt and commit faults roll back and restart cleanly (316.0677ms)\n✔ 003 checksum and latest schema snapshot drift stop restart before serving (164.4617ms)\n(node:30400) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P3 complete project workflow keeps every aggregate head and audit aligned (237.0775ms)\n✔ P3 stale proposal is committed before conflict and retry paths honor supplied revisions (626.3525ms)\n✔ P3 domain cancellation propagates to a delayed generator operation (159.9176ms)\n✔ P3 project archive and restore replay exactly one mutation per idempotency key (73.0107ms)\n✔ P3 intake drift is retryable with CAS and cancellation reaches the operation (217.8205ms)\n✔ P3 repository source, target, line recovery and repeated workspace leases preserve CAS heads (119.9318ms)\n✔ P3 generator failures become retryable domain state with explicit lineage (173.6493ms)\n✔ P3 restart resumes a running generation only after recovery settles (174.4957ms)\nℹ tests 13\nℹ suites 0\nℹ pass 13\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2408.4979\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p31",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p31"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p31"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T13:59:58.478Z",
+      "completed_at": "2026-09-14T14:00:00.786Z",
+      "duration_ms": 2308,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p31 <WORKSPACE>\n> node --test tests/p31/*.test.mjs\n\n✔ Clean and historical catalogs are disjoint and bidirectionally validated (1248.7392ms)\n✔ catalog files exist and matrix references remain available (0.2656ms)\n✔ default Web entrypoint is Clean-only and uses v2 setup/project requests (2.0595ms)\n✔ failed receipts are immutable and resume appends an attempt (5.6782ms)\n✔ a fully successful layered gate emits only the structured summary (593.7362ms)\n✔ a Historical failure writes a local advisory receipt and keeps the wrapper successful (405.3567ms)\n✔ a Clean failure writes a local blocking receipt and exits non-zero (240.5566ms)\n✔ failure receipts append without overwriting and retain complete redacted output (715.8665ms)\n(node:20216) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ one ledger preserves terminal operation, replay, idempotency, links, audit, and redaction (113.4723ms)\n✔ idempotency conflict remains explicit and redacted (88.0818ms)\n(node:38064) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ facades expose complete owner inventories and command routing (90.0929ms)\n✔ owner modules contain no direct SQL writes and facades retain public methods (0.7017ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2032.0499\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p4",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p4"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p4"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:00.786Z",
+      "completed_at": "2026-09-14T14:00:03.572Z",
+      "duration_ms": 2786,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p4 <WORKSPACE>\n> node --test tests/p4/*.test.mjs\n\n(node:27944) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nV3-Clean listening on http://127.0.0.1:52200\n✔ active API entrypoint boots schema v9 with the complete P10 owner surface (390.5662ms)\n✔ active HTTP wrapper serves schema v9 health and keeps API v1 retired (485.6562ms)\n(node:46088) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Context projection is deterministic, budgeted, CAS-backed and pack snapshots reject drift (644.5073ms)\n✔ Projection leases fence concurrent workers and retry records lineage with a new operation (494.3845ms)\n✔ Clean domain adapters project Project, Brief, Repository, Workflow and Node Contract with acyclic edges (242.4491ms)\n✔ Projection rejects contains cycles without publishing edges (156.9834ms)\n✔ Projection cancellation HTTP returns the canonical operation receipt (119.9301ms)\n(node:35304) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P4 migration, ownership, registry and package gate inventories are synchronized (3.6049ms)\n✔ P4 Catalog promotion is disjoint, complete and backed by final Evidence (89.3181ms)\n✔ Gateway remains an independently classified stateless forwarding process (0.5263ms)\n✔ P4 final manifest is hash-complete and rejects unlisted SQLite sidecars (179.665ms)\n(node:11016) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ production startup requires explicit MCP pepper and Gateway secret (7.4998ms)\n✔ MCP client tokens are one-time, HMAC-only and constrained by project and tool allowlists (339.6046ms)\n✔ Exchange requires both approvals, creates a narrowing grant and rechecks revoke immediately (326.4833ms)\n✔ Gateway verifies canonical signatures, blocks replay and stores only hashes and decisions (282.1334ms)\n(node:18920) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ 004 upgrades Clean versions 0 through 3 without rewriting prior migration rows (385.9269ms)\n✔ 004 DDL, ledger, receipt and commit faults leave the v3 volume byte-logically unchanged (461.2851ms)\n✔ 004 checksum and live schema snapshot drift stop startup (258.7198ms)\n(node:18868) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ REST, MCP HTTP, stdio and Gateway share command schemas and normalized results (589.3064ms)\nℹ tests 19\nℹ suites 0\nℹ pass 19\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2534.3139\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p5",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p5"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p5"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:03.572Z",
+      "completed_at": "2026-09-14T14:00:09.047Z",
+      "duration_ms": 5475,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p5 <WORKSPACE>\n> node --test tests/p5/*.test.mjs\n\n(node:10036) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Assist persists opaque provider lineage and enforces completion, interaction and retry invariants (1008.8541ms)\n✔ Attachments enforce bounded previews and file batches apply and undo under Repository fencing (423.9569ms)\n(node:18272) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P5 HTTP uses one v2 envelope, strict mutation headers and operation receipts (668.0793ms)\n✔ P5 attachment content supports negotiated binary and JSON representations (211.6047ms)\nV3-Clean listening on http://127.0.0.1:52221\n✔ P5 terminal HTTP route keeps revision and replay cursor contracts (250.6722ms)\n✔ P5 terminal WebSocket upgrades, replays cursor and acknowledges sequenced input (312.6599ms)\n(node:53500) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ 005 upgrades Clean versions 0 through 4 without rewriting prior migration rows (543.4607ms)\n✔ 005 DDL, ledger, receipt and commit faults preserve the v4 logical volume (539.3991ms)\n✔ 005 checksum and live schema snapshot drift stop startup (290.0426ms)\n✔ verification gate checks immutable P5 Evidence without publishing a rerun (1.6747ms)\n(node:31012) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P5 resource mutations persist one operation receipt and replay without duplicate rows (634.7632ms)\n✔ Files recovery completes a partially replaced batch from before and after hashes (334.6128ms)\n✔ Bridge transfer replay does not invoke bundle verification twice (118.2684ms)\n(node:3192) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ isolated provider configuration uses an environment lease and rejects inline credentials (17.0946ms)\n✔ isolated provider configuration supplies a name for discovered providers that omit one (0.2796ms)\n✔ process adapter does not inherit parent session or provider credentials (0.7336ms)\n✔ process provider request failures preserve diagnostic RPC fields without credentials (0.2193ms)\n✔ redaction failures expose only bounded field reasons (179.9679ms)\n✔ isolated provider cleanup removes read-only Git pack files (6.273ms)\n✔ Codex login credential is leased into a zeroable Buffer and host inline auth is not copied (6.986ms)\n✔ real turn validation requires contiguous events, an assistant response and terminal tools (0.2898ms)\n✔ P5 receipt validation rejects a skipped or provisional provider turn (0.2622ms)\n✔ Assist passes the bound profile configuration without retaining credential bytes (435.1537ms)\n(node:31128) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Terminal consumes one approval, replays by idempotency and persists redacted cursor output (362.7425ms)\n✔ Windows Bridge pairing shares one secret, rejects nonce replay, rotates and revokes both stores (3935.5952ms)\nℹ tests 25\nℹ suites 0\nℹ pass 25\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5218.5595\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p6",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p6"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p6"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:09.047Z",
+      "completed_at": "2026-09-14T14:00:14.324Z",
+      "duration_ms": 5277,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p6 <WORKSPACE>\n> node --test tests/p6/*.test.mjs\n\n(node:29960) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ pause waits for a runner boundary and resume completes without duplicate attempts (1031.3056ms)\n✔ review approval resumes the paused stage operation and preserves one checkpoint (769.3993ms)\n✔ cancelled runner attempts use operation cancellation acknowledgement (444.2961ms)\n✔ replan and successful later-stage replay retain lineage and effective receipts (602.8057ms)\n✔ restart reconciliation commits a terminal runner receipt before resuming the run stage (566.9739ms)\n✔ restart reconciliation pauses unknown external jobs and their stage and parent operations (608.6696ms)\n(node:49432) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P6 migration, ownership, registry, paths and package gates are synchronized (4.6892ms)\n✔ P6 Catalog promotion is disjoint, complete and Evidence-gated (87.57ms)\n✔ P4, P5 and P6 Evidence policies are declarative and final P6 artifacts reopen (10.5061ms)\n(node:52464) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P6 HTTP exposes strict Runner and Execution v2 contracts with operation receipts (1141.1552ms)\n✔ P6 transport inventory keeps Runner mutations REST/Web-only and redacts fixture payloads and host paths (556.1623ms)\n(node:25040) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ 006 migrates every Clean version forward once and keeps immutable guards (763.757ms)\n✔ 006 DDL, ledger, receipt and commit faults preserve closed v5 database bytes (367.8023ms)\n✔ 006 checksum and snapshot drift block startup (269.4305ms)\n(node:16600) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ runner protocol rejects path, deadline, digest, capability and receipt tampering (3.2075ms)\n✔ P6 completes stable seven-stage execution with read concurrency, write serialization and immutable receipts (975.7529ms)\n✔ execution rejects DAG cycles and stale checkpoint replay inputs (796.6588ms)\n✔ Clean Broker authenticates transport, rejects nonce replay and signs a Docker receipt (63.056ms)\n✔ Windows Bridge validates the shared spec and returns signed terminal and cancellation receipts (1995.9976ms)\n(node:44020) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P6 REST, MCP HTTP, stdio and Gateway share Execution schemas and receipts (1062.2707ms)\nℹ tests 20\nℹ suites 0\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5001.9284\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p7",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p7"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p7"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:14.324Z",
+      "completed_at": "2026-09-14T14:00:16.949Z",
+      "duration_ms": 2625,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p7 <WORKSPACE>\n> node --test tests/p7/*.test.mjs\n\n✔ Clean Broker verifies parser envelopes, persists signed receipts and rehashes public outputs (69.507ms)\n✔ Clean Broker crash restart reconciles an unprovable parser result without retrying it (38.1026ms)\n(node:52056) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P7 registry, ownership and transport inventory are bidirectional (9.9939ms)\n✔ REST-only P7 commands are rejected at MCP and Gateway dispatch boundaries (159.87ms)\n✔ Parser job and receipt signatures bind digest, input, limits, checkpoint and manifest (2.892ms)\n(node:45628) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P7 migration, ownership, registry, package gates and paths are synchronized (7.6955ms)\n✔ P7 Catalog promotion is disjoint, complete and bound to a staging or final receipt (100.559ms)\n✔ P7 parser digest, dependencies, Evidence roles and architecture documents are synchronized (2.9632ms)\n(node:46828) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P7 HTTP exposes Evidence, Parser, Quality and Outcome through strict v2 receipts (1047.9768ms)\n(node:18864) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ 007 migrates every Clean version forward once and seeds the bounded format inventory (1014.3282ms)\n✔ 007 DDL, ledger, receipt and commit faults preserve closed v6 database bytes (403.0482ms)\n✔ 007 checksum and snapshot drift block startup (256.3908ms)\n(node:35384) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Evidence capture and Parser receipt create an immutable verified lineage (301.6555ms)\n✔ Parser engine rejects malformed, external-entity and quota inputs deterministically (0.8941ms)\n✔ Evidence idempotency, CAS tamper and tombstone boundaries are enforced (224.8279ms)\n(node:12252) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Quality report, complete human scoring and Outcome replay share pinned hashes (922.7925ms)\n✔ Outcome waiver and revocation are immutable generations bound to approval proof (456.4901ms)\nℹ tests 17\nℹ suites 0\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2372.5015\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p8",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p8"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p8"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:16.949Z",
+      "completed_at": "2026-09-14T14:00:22.310Z",
+      "duration_ms": 5361,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p8 <WORKSPACE>\n> node --test tests/p8/*.test.mjs\n\n(node:52576) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Delivery executes immutable Draft, ready and merge intents and synchronizes Repository baseline (1257.6374ms)\n✔ unknown GitHub result enters needs_reconcile and a later reconcile resolves without replaying merge (1320.0194ms)\n✔ raw GitHub webhook HMAC is deduplicated by provider delivery id (921.4184ms)\n✔ physical CAS GC revalidates protection, moves bytes to recoverable trash and rolls back (732.2577ms)\n(node:15004) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Deployment candidate verification requires owner approval and creates an immutable receipt (1179.579ms)\n✔ Backup, restore.prepare and reset.prepare operate on new isolated artifacts without switching a pointer (1611.2756ms)\n✔ GitHub App ready transition falls back to the supported GraphQL mutation on REST 404 (72.4727ms)\n(node:23344) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P8 migration, ownership and 25-route inventories are bidirectional (6.7139ms)\n✔ Importer mutations are CLI-only and runtime registry contains sealed queries (0.6623ms)\n✔ P8 Evidence is hash-complete and synchronized with the layered Catalog promotion (99.5391ms)\n✔ P8 package, testing policy, plan, matrix and Evidence references stay synchronized (1.0723ms)\n(node:42632) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P8 HTTP uses the shared dispatcher with closed route-specific contracts (247.8708ms)\n✔ P8 registry, REST, MCP and Gateway publish the same closed command schemas (159.4448ms)\n(node:10816) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ offline importer preserves schema v7 and maps schema 23 business rows with omitted secrets (1665.899ms)\n✔ resume verifies signed checkpoint target hash and continues after a domain boundary interruption (2328.5441ms)\n✔ unknown schema 23 table blocks before target creation (172.9368ms)\n(node:25508) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ forward-only migration upgrades every supported version to v8 (1163.3618ms)\n✔ each v8 migration fault preserves v7 bytes and leaves all 11 tables absent (436.4104ms)\nℹ tests 18\nℹ suites 0\nℹ pass 18\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5087.8821\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p9",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p9"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p9"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:22.310Z",
+      "completed_at": "2026-09-14T14:00:27.772Z",
+      "duration_ms": 5462,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p9 <WORKSPACE>\n> node --test tests/p9/*.test.mjs\n\n(node:28280) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ project JSON replay is scoped, redacted, continuous and cursor-bound (244.4924ms)\n✔ SSE uses global ids, Last-Event-ID precedence and disconnects after ACL revocation (4162.8294ms)\n✔ credentialed CORS echoes only an exact configured origin and preflight skips authentication (109.0967ms)\n✔ P9 final Evidence, rollback and 27 release rows are bidirectional (78.0788ms)\n✔ P9 final governance documents name the published boundary (1.6245ms)\n(node:52752) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P9 runtime phase is separate from the immutable schema v8 ledger (155.2576ms)\n✔ P9 registry adds one REST/Web Operations query and corrects selection write scope (1.1629ms)\n✔ P9 exact-origin parser rejects wildcard, null and non-origin URL forms (0.9868ms)\n✔ P9 Web foundation, dependencies and retired files are synchronized (15.3354ms)\n✔ P9 active Web has a hash router, scoped Query cache and no v1 request helper (0.5701ms)\n✔ P9 Service Worker precaches only shell and keeps protected routes NetworkOnly (0.3533ms)\n✔ P9 governance files declare Clean phase ownership (0.8291ms)\n✔ post-P10 verify validates immutable P9 Evidence without replaying retired P9 probes (1.8455ms)\n✔ P9 static handler serves only app-shell files with bounded cache policy (3053.3152ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5196.2112\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "test-p10",
+      "owner": "testing",
+      "satisfies": [
+        "pnpm test:p10"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "test:p10"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:27.772Z",
+      "completed_at": "2026-09-14T14:00:36.241Z",
+      "duration_ms": 8470,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 test:p10 <WORKSPACE>\n> node --test tests/p10/*.test.mjs\n\n(node:53384) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Provider lifecycle and Brief templates preserve revision CAS and immutable snapshots (427.5144ms)\n✔ real Provider probing passes the bound credential only as a zeroable lease (362.0959ms)\n✔ draft onboarding pins Brief before generation and activates only after proposal apply and confirmation (405.5808ms)\n✔ proposal apply marks a draft-Brief generation stale when the source revision drifts (579.8832ms)\n✔ Project deletion rechecks blockers and tombstones only after confirmation (703.2286ms)\n✔ Repository deletion requires name, HEAD, revision, and two independent session proofs (324.2344ms)\n✔ Assist metadata, fork, side-thread, review comments, and reversible deletion reuse the shared ledger (917.234ms)\n(node:51012) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ hard gate limits are fixed and over-budget success is rejected (1.8089ms)\n✔ a self-reported ok flag never masks nonzero exit, signal, truncation or redaction failure (0.2153ms)\n✔ real process output truncation fails while retaining the literal zero process exit (74.6822ms)\n✔ pre-push verification rejects evidence-skip inputs and unknown bypass arguments (0.2893ms)\n✔ development orchestration freezes successful commands after the fixed time limit (7.5407ms)\n✔ Gate process preserves Windows-sensitive arguments without shell parsing (68.3878ms)\n✔ Gate process exposes bounded redacted capture and stable failure codes (531.6049ms)\n✔ Pnpm resolves through Corepack JavaScript and active Gate files contain no shell:true (0.8909ms)\n✔ formal verification uses immutable P5-P9 Evidence and only current P10 probes (1.6606ms)\n✔ Historical security excludes Clean duplicates while formal release owns the deferred image boundary (8.6466ms)\n✔ incremental selector covers Web, Golden, shared core, governance, and unclassified paths without external probes (3.7102ms)\n✔ standalone test retains Web while formal verify switches its nested run to Unit-only (0.8304ms)\n✔ Pnpm script separators are accepted by development commands (0.2376ms)\n✔ development receipt reports persisted execution metrics and leaves SQLite, CAS, and Vault byte-exact (2734.1704ms)\n✔ development receipt failure classes are fixed and unknown operation owners block generation (271.3034ms)\n✔ generation attempts count rows once and time windows exclude later retries (1001.7436ms)\n✔ combined development layers preserve advisory status and receipts omit raw invocations (9.5583ms)\n✔ changed Git paths preserve Chinese names and include both sides of a rename (600.8918ms)\n(node:20256) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ P10 HTTP routes expose strict v2 envelopes and reject offline/destructive MCP bypasses (889.8219ms)\n(node:37980) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ forward-only migration upgrades v0-v8 to schema v9 and ledger 1..9 (2286.202ms)\n✔ v9 DDL, ledger, receipt, and commit faults preserve byte-exact v8 (942.5487ms)\n✔ v9 immutable revision, selection, advice, comment, and terminal intent triggers reject mutation (191.4214ms)\n✔ fixed V2.3 inventories map bidirectionally to 19 business groups with zero gaps (1915.2084ms)\n✔ P10 registry is API v2-only and preserves synchronized transport contracts (3.486ms)\n✔ P10 verify orders parity, external adapters, Web, build, E2E, release, and Evidence (1.2557ms)\n✔ P10 Evidence patch excludes its append-only tree and enforces a publishable size bound (0.4284ms)\n(node:50520) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ loopback same-origin session recovery returns a persistent strict cookie and audits the real owner (347.9169ms)\n✔ session recovery can replace an expired or revoked browser proof without changing account scope (297.4176ms)\n✔ Codex host discovery is prioritized, HMAC-bound, stale-safe, path-free, and imports both config and API-key auth through Vault (364.3405ms)\n✔ Codex discovery rejects oversized and symlinked files and directs keyring-only auth to Device Login (339.1997ms)\n✔ Codex discovery HTTP keeps availability metadata, binds API keys, and stays path-free (523.5224ms)\n✔ Device Login publishes only structured status, binds a ChatGPT bundle, probes it, and removes the isolated home (370.5314ms)\n✔ Device Login cancellation and restart recovery terminate through the shared operation ledger (309.9725ms)\n✔ GitHub setup restores the bundled V2.3 public App identity and completes hosted installation through Vault, Probe, and repository discovery (378.231ms)\n✔ GitHub Manifest callback binds returned secrets server-side, is replayable without a second conversion, and leaks no credential material (295.0548ms)\n✔ GitHub setup automatically binds a unique existing App installation before opening GitHub (407.833ms)\n✔ GitHub setup HTTP contracts expose public metadata and callback receipts without secrets or host paths (449.0985ms)\n✔ GitHub hosted private-key discovery rejects symlinks without exposing the configured path (262.2042ms)\nwarning: in the working copy of 'AGENTS.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'apps/api/src/clean/migrations/009.mjs', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/evidence/p10/verification.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.clean.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.historical.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it\nTo <PATH>\n * [new branch]      main -> main\n * [new tag]         p10-final-governance-20260829 -> p10-final-governance-20260829\nwarning: in the working copy of 'AGENTS.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'apps/api/src/clean/migrations/009.mjs', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/evidence/p10/verification.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.clean.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.historical.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'apps/web/src/product.ts', LF will be replaced by CRLF the next time Git touches it\nTo <PATH>\n   61b2974..2d368e0  main -> main\nwarning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'docs/evidence/post-p10-development-reliability-20260905/README.md', LF will be replaced by CRLF the next time Git touches it\nTo <PATH>\n   2d368e0..fe803c7  main -> main\nwarning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it\nTo <PATH>\n   fe803c7..e795aa7  main -> main\nwarning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it\nTo <PATH>\n   e795aa7..e490828  main -> main\n✔ P10 post-closure verification accepts pushed product descendants and freezes governance bytes (6989.2517ms)\n(node:30740) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ Quality policy, readiness, selections, closed advice, human scoring, supersession, and stale history are separate (2095.3073ms)\n✔ invalid or unavailable Quality advice never blocks the human review state (2944.851ms)\n✔ default Quality policy restores all five dimensions without a configured reviewer (968.0471ms)\n(node:34952) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\nwarning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it\nwarning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it\n✔ hard limits: strict provider JSON rejects wrappers and trailing objects after one repair (2.2614ms)\n✔ hard limits: valid JSON and one contract repair preserve the provider candidate (0.9266ms)\n✔ hard limits: missing or ill-typed task fields fail with 422 without local repair (1.3663ms)\n✔ hard limits: JSON repair accepts a complete valid second response only (0.3123ms)\n✔ hard limits: provider protocol errors retain stable codes and clear the lease (0.3206ms)\n✔ hard limits: provider rejected stays rejected with complete coverage and no findings (1.0685ms)\n✔ hard limits: every task check requires its own immutable coverage row (2.4283ms)\n✔ hard limits: complete coverage passes and critical issues still reject (0.4623ms)\n✔ hard limits: malformed, duplicate, stale and orphan Critic rows fail closed (1.7896ms)\n✔ task contracts bind complete execution fields and reject commands, paths and cycles (0.8383ms)\n✔ provider JSON repair extracts one balanced object without accepting trailing objects (0.1807ms)\n✔ real loop preflight requires a clean, real Git worktree (587.2842ms)\n✔ real loop rejects Git subdirectories and explicit run roots inside the source (371.1732ms)\nwarning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it\n✔ local Git reads commit blobs, verifies drift and materializes without touching the source (1096.4344ms)\n✔ local Git accepts clean autocrlf worktrees while rejecting real content drift (723.0762ms)\n✔ provider JSON gets one repair and zeroizes its lease after a separate critic turn (0.8931ms)\n✔ provider incomplete events and empty output are failed rather than candidates (0.2425ms)\n✔ Critic rejects duplicate ownership and unknown missing markers (0.2538ms)\n✔ real Host task stays in candidate until finalize, binds CAS outputs and captures Evidence (1564.191ms)\n✔ zero exit with missing output fails and leaves managed bytes unchanged (838.2511ms)\n✔ local repository, leased Generation, independent Critic, Proposal, Host, Check and Evidence form one loop (1717.7077ms)\n(node:8532) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n✔ GitHub repository transport mints an RS256 JWT and validates the complete API manifest (28.9373ms)\n▶ GitHub repository transport rejects identity, branch, tree, blob and source feature drift with stable codes\n  ✔ repository id (58.8072ms)\n  ✔ full name (71.3493ms)\n  ✔ branch head (68.8508ms)\n  ✔ tree truncated (74.901ms)\n  ✔ symlink (30.3623ms)\n  ✔ submodule (27.135ms)\n  ✔ LFS pointer (140.0659ms)\n  ✔ malformed blob (44.9597ms)\n  ✔ file quota (20.8635ms)\n  ✔ byte quota (43.5072ms)\n✔ GitHub repository transport rejects identity, branch, tree, blob and source feature drift with stable codes (582.4794ms)\n✔ materialization uses shell-free shallow clone, keeps token out of argv/config, removes .git, and clears key material (61.1176ms)\n✔ materialization reports source_drift and removes a mismatching clone (25.8191ms)\n▶ Repository auth resolver enforces actor, provider, lifecycle, credential and Vault reference boundaries\n  ✔ other actor (0.7036ms)\n  ✔ wrong provider (0.1152ms)\n  ✔ disabled (0.0676ms)\n  ✔ unavailable (0.0582ms)\n  ✔ revoked credential (0.106ms)\n  ✔ non-Vault credential (0.1179ms)\n✔ Repository auth resolver enforces actor, provider, lifecycle, credential and Vault reference boundaries (1.7162ms)\n✔ Repository adapter router preserves fixture/local routing and selects GitHub only for explicit App sources (0.1862ms)\n✔ remote Workspace create/refresh publishes atomically, preserves failed bytes, and links retries (518.1201ms)\nℹ tests 93\nℹ suites 0\nℹ pass 93\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 8197.1474\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 7
+      },
+      "advisory": false
+    },
+    {
+      "id": "evidence-p5",
+      "owner": "evidence",
+      "satisfies": [
+        "pnpm evidence:p5 -- --verify"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "evidence:p5",
+        "--",
+        "--verify"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:36.242Z",
+      "completed_at": "2026-09-14T14:00:37.027Z",
+      "duration_ms": 785,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 evidence:p5 <WORKSPACE>\n> node scripts/v3-clean-p5-evidence.mjs \"--\" \"--verify\"\n\n{\n  \"schema_version\": \"aiws.v3-clean.p5-evidence-verify.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"run_id\": \"run-1787541952189\",\n  \"catalog\": {\n    \"clean\": 27,\n    \"historical\": 0,\n    \"total\": 27\n  },\n  \"failures\": []\n}\n",
+        "stderr": "(node:25528) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "evidence-p6",
+      "owner": "evidence",
+      "satisfies": [
+        "pnpm evidence:p6 -- --verify"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "evidence:p6",
+        "--",
+        "--verify"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:37.027Z",
+      "completed_at": "2026-09-14T14:00:37.841Z",
+      "duration_ms": 814,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 evidence:p6 <WORKSPACE>\n> node scripts/v3-clean-p6-evidence.mjs \"--\" \"--verify\"\n\n{\n  \"schema_version\": \"aiws.v3-clean.p6-evidence-verify.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"run_id\": \"run-1787564566543\",\n  \"catalog\": {\n    \"clean\": 27,\n    \"historical\": 0,\n    \"total\": 27\n  },\n  \"failures\": []\n}\n",
+        "stderr": "(node:2684) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "evidence-p7",
+      "owner": "evidence",
+      "satisfies": [
+        "pnpm evidence:p7 -- --verify"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "evidence:p7",
+        "--",
+        "--verify"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:37.841Z",
+      "completed_at": "2026-09-14T14:00:38.647Z",
+      "duration_ms": 806,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 evidence:p7 <WORKSPACE>\n> node scripts/v3-clean-p7-evidence.mjs \"--\" \"--verify\"\n\n{\n  \"schema_version\": \"aiws.v3-clean.p7-evidence-verify.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"run_id\": \"run-1787667194387\",\n  \"catalog\": {\n    \"clean\": 27,\n    \"historical\": 0,\n    \"total\": 27\n  },\n  \"failures\": []\n}\n",
+        "stderr": "(node:29008) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "evidence-p8",
+      "owner": "evidence",
+      "satisfies": [
+        "pnpm evidence:p8 -- --verify"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "evidence:p8",
+        "--",
+        "--verify"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:38.647Z",
+      "completed_at": "2026-09-14T14:00:38.956Z",
+      "duration_ms": 310,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 evidence:p8 <WORKSPACE>\n> node scripts/v3-clean-p8-evidence.mjs \"--\" \"--verify\"\n\n{\n  \"schema_version\": \"aiws.v3-clean.p8-evidence-verify.v2\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"run_id\": \"run-1787851810902\",\n  \"catalog\": {\n    \"clean\": 26,\n    \"historical\": 1,\n    \"total\": 27\n  },\n  \"failures\": []\n}\n",
+        "stderr": "(node:54040) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "evidence-p9",
+      "owner": "evidence",
+      "satisfies": [
+        "pnpm evidence:p9 -- --verify"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "<PATH>",
+        "pnpm",
+        "evidence:p9",
+        "--",
+        "--verify"
+      ],
+      "command_role": "pnpm",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:38.957Z",
+      "completed_at": "2026-09-14T14:00:39.334Z",
+      "duration_ms": 377,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "\n> ai-workspace-system@3.0.0 evidence:p9 <WORKSPACE>\n> node scripts/v3-clean-p9-evidence.mjs \"--\" \"--verify\"\n\n{\n  \"schema_version\": \"aiws.v3-clean.p9-evidence-verify.v1\",\n  \"status\": \"passed\",\n  \"failures\": [],\n  \"run_id\": \"run-1787933538303\",\n  \"catalog\": \"27/0/27\"\n}\n",
+        "stderr": "(node:41412) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 2
+      },
+      "advisory": false
+    },
+    {
+      "id": "p10-parser-probe",
+      "owner": "parser",
+      "satisfies": [
+        "node scripts/v3-clean-p10-parser-probe.mjs"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "scripts/v3-clean-p10-parser-probe.mjs"
+      ],
+      "command_role": "node",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:39.334Z",
+      "completed_at": "2026-09-14T14:00:44.835Z",
+      "duration_ms": 5502,
+      "exit_status": 0,
+      "signal": null,
+      "timed_out": false,
+      "ok": true,
+      "error_code": null,
+      "output": {
+        "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p10-parser-probe.v1\",\n  \"status\": \"passed\",\n  \"provisional\": false,\n  \"image_digest\": \"sha256:3c2c0f8f550f4c8a14c33661f1e4e85227aa02e3bd0844a8e1044ed368d202a0\",\n  \"base_image_digest\": \"sha256:bc69569bc471a27833b7f1174ac1634b5760614c6742237c443641ac5da808e4\",\n  \"image_build_count\": 2,\n  \"image_ids\": [\n    \"sha256:3c2c0f8f550f4c8a14c33661f1e4e85227aa02e3bd0844a8e1044ed368d202a0\",\n    \"sha256:3c2c0f8f550f4c8a14c33661f1e4e85227aa02e3bd0844a8e1044ed368d202a0\"\n  ],\n  \"digest_reproducible\": true,\n  \"real_container\": true,\n  \"isolation\": [\n    \"network:none\",\n    \"read-only-root\",\n    \"cap-drop-all\",\n    \"no-new-privileges\",\n    \"bounded-tmpfs\"\n  ],\n  \"formats\": [\n    {\n      \"name\": \"7z\",\n      \"format\": \"7z\",\n      \"input_sha256\": \"0eb222b0c4f95eb68dea79ff249986e8e5ff494453020475f311c66838119fe6\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"audio\",\n      \"format\": \"audio\",\n      \"input_sha256\": \"c726d333dd159a31423f3480dbb1c5c4a9dfcd30efe1f7e12ade390dc92e8908\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"csv\",\n      \"format\": \"csv\",\n      \"input_sha256\": \"468a2a4275da40a0f8c17c1a3d0facbd04aa56e52b7e03993666bdeae1f00dfc\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"docx\",\n      \"format\": \"docx\",\n      \"input_sha256\": \"ed336a3237b44a335850d1c438dfd8e29884772f06b8412d948e8d82f1c15d73\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"gif\",\n      \"format\": \"gif\",\n      \"input_sha256\": \"6d43ba5fc9f9c19deb6d84a4e14b8ba293cf2db2b91ccf2dd450393f1b204794\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"gzip\",\n      \"format\": \"gzip\",\n      \"input_sha256\": \"0fae8d4ee0ecd708438f132d30cb3085b981ccd87d73c38b8319a2aae6a46a62\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"jpeg\",\n      \"format\": \"jpeg\",\n      \"input_sha256\": \"d6edd64e6fdf02687697af66c4cb583cd2732b93e7c3e4539b42da5b89e4b2fc\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"json\",\n      \"format\": \"json\",\n      \"input_sha256\": \"1c39796903c7595de11defc159c2a7c0c5202e7b83b16435ce2a0b18004581d7\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"markdown\",\n      \"format\": \"markdown\",\n      \"input_sha256\": \"2d93c602fcb92c7cbf0959eff667110f71999b16714670a0280792b259cef433\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"pdf\",\n      \"format\": \"pdf\",\n      \"input_sha256\": \"eb9680c5279e46b6c456d0a1c6b399fdd6f610acacdd7085ee9c1224db8ce110\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"png\",\n      \"format\": \"png\",\n      \"input_sha256\": \"df022bdbf866da6af946fe06b581f2318ee4217c87d98a0e185cf23df83c7748\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"pptx\",\n      \"format\": \"pptx\",\n      \"input_sha256\": \"fc4fa6fc0780dda6e73d359be8b3a56f3c3c858d731405f4223e0e921149ee0a\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"rar\",\n      \"format\": \"rar\",\n      \"input_sha256\": \"557b325ff3b3a938d8360535406e193d974f92d955eeff45aba534b671b8b324\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"svg\",\n      \"format\": \"svg\",\n      \"input_sha256\": \"ce4ea438cf2fc26e52b15e519533cbe624ff24557017eb5a6bd5a6afa6d16687\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"tar\",\n      \"format\": \"tar\",\n      \"input_sha256\": \"9676b05a25380608b4d17c406dcd160d148d80459808dd4b21aa88f0ee88a026\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"text\",\n      \"format\": \"text\",\n      \"input_sha256\": \"b11f753925a6e65ab06f53e0975b039beca5f11fe817e835dfa56f4a78f0aa6f\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"video\",\n      \"format\": \"video\",\n      \"input_sha256\": \"14095135d944ef62cdb7e33ac90c38aab39f9d8dc4d4b14ca7e910aab7283725\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"webp\",\n      \"format\": \"webp\",\n      \"input_sha256\": \"472a9b14cd606cf69b58932fcf038e94e12c05444e95579fc32c11b6f175df2f\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"xlsx\",\n      \"format\": \"xlsx\",\n      \"input_sha256\": \"4cded4b4ba80fab37328e9742c204326b9f63d261b1bbc143ba84251bba69f29\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"xml\",\n      \"format\": \"xml\",\n      \"input_sha256\": \"de751242f1b39f2dc3387c6c449a02e9cb29b2ec4739c49f933e3683203d0916\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    },\n    {\n      \"name\": \"zip\",\n      \"format\": \"zip\",\n      \"input_sha256\": \"b2229b1f84da6fcba83ff49042512a45618e1a87e2c8356b730bd3cd85190913\",\n      \"status\": \"parsed\",\n      \"error_code\": \"\",\n      \"output_count\": 1\n    }\n  ],\n  \"format_count\": 21,\n  \"valid_samples\": 21,\n  \"negatives\": {\n    \"malformed\": {\n      \"name\": \"malformed\",\n      \"format\": \"gzip\",\n      \"input_sha256\": \"47015e5982fb94e438a450479200eba96c558ef8fb802f922c70cc2e72a688f2\",\n      \"status\": \"invalid\",\n      \"error_code\": \"parser_invalid_archive\",\n      \"output_count\": 0\n    },\n    \"signature\": {\n      \"name\": \"signature\",\n      \"format\": \"png\",\n      \"input_sha256\": \"f6340893e73ce5f7c019eeebfc6d38224824f8f7565b421b51d54c1c0d25d5c6\",\n      \"status\": \"invalid\",\n      \"error_code\": \"parser_media_signature_mismatch\",\n      \"output_count\": 0\n    },\n    \"quota\": {\n      \"name\": \"quota\",\n      \"format\": \"text\",\n      \"input_sha256\": \"84d89877f0d4041efb6bf91a16f0248f2fd573e6af05c19f96bedb9f882f7882\",\n      \"status\": \"resource_exceeded\",\n      \"error_code\": \"parser_quota_text\",\n      \"output_count\": 0\n    },\n    \"archive_traversal\": {\n      \"name\": \"archive_traversal\",\n      \"format\": \"zip\",\n      \"input_sha256\": \"509c8ef8d293de1fab46caacea65297a6ac625829c95206eb24226a0f823141f\",\n      \"status\": \"invalid\",\n      \"error_code\": \"parser_invalid_archive_path\",\n      \"output_count\": 0\n    },\n    \"encrypted_archive\": {\n      \"name\": \"encrypted_archive\",\n      \"format\": \"zip\",\n      \"input_sha256\": \"7c0b737c280d406126287628ff85fc2a0a80837b91e40e8557949c84d3a0770a\",\n      \"status\": \"invalid\",\n      \"error_code\": \"parser_invalid_encrypted_archive\",\n      \"output_count\": 0\n    },\n    \"nested_bomb\": {\n      \"name\": \"nested_bomb\",\n      \"format\": \"zip\",\n      \"input_sha256\": \"83c608e4c4827b8720499041f08832cfa5a53000d3d42ff59ed6ad2d05bb913f\",\n      \"status\": \"resource_exceeded\",\n      \"error_code\": \"parser_quota_compression_ratio\",\n      \"output_count\": 0\n    }\n  },\n  \"worker_threads\": true,\n  \"worker_path\": \"apps/parser-worker/archive-worker.mjs\",\n  \"windows_host_archive_wrapper\": {\n    \"status\": \"passed\",\n    \"formats\": [\n      {\n        \"format\": \"zip\",\n        \"status\": \"parsed\",\n        \"error_code\": \"\"\n      },\n      {\n        \"format\": \"tar\",\n        \"status\": \"parsed\",\n        \"error_code\": \"\"\n      },\n      {\n        \"format\": \"gzip\",\n        \"status\": \"parsed\",\n        \"error_code\": \"\"\n      },\n      {\n        \"format\": \"7z\",\n        \"status\": \"parsed\",\n        \"error_code\": \"\"\n      },\n      {\n        \"format\": \"rar\",\n        \"status\": \"parsed\",\n        \"error_code\": \"\"\n      }\n    ]\n  }\n}\n",
+        "stderr": ""
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      },
+      "advisory": false
+    },
+    {
+      "id": "p10-github-deletion-probe",
+      "owner": "repository",
+      "satisfies": [
+        "node scripts/v3-clean-p10-github-deletion-probe.mjs"
+      ],
+      "command": "<NODE>",
+      "args": [
+        "scripts/v3-clean-p10-github-deletion-probe.mjs"
+      ],
+      "command_role": "node",
+      "cwd_role": "repository-root",
+      "started_at": "2026-09-14T14:00:44.836Z",
+      "completed_at": "2026-09-14T14:00:44.893Z",
+      "duration_ms": 57,
+      "exit_status": 2,
+      "signal": null,
+      "timed_out": false,
+      "ok": false,
+      "error_code": "gate_command_failed",
+      "output": {
+        "stdout": "{\n  \"schema_version\": \"aiws.v3-clean.p10-github-deletion-probe.v1\",\n  \"status\": \"provisional\",\n  \"provisional\": true,\n  \"error_code\": \"Error\"\n}\n",
+        "stderr": "(node:21904) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+      },
+      "capture": {
+        "max_bytes_per_stream": 16777216,
+        "stdout_truncated": false,
+        "stderr_truncated": false
+      },
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      },
+      "advisory": false
+    }
+  ],
+  "receipt": ".ai-workspace/gate-receipts/verify-1789394444893-14404.json"
+}

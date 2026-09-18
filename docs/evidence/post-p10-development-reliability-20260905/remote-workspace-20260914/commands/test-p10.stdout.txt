@@ -1,0 +1,157 @@
+
+> ai-workspace-system@3.0.0 test:p10 <WORKSPACE>
+> node --test tests/p10/*.test.mjs
+
+(node:53016) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Provider lifecycle and Brief templates preserve revision CAS and immutable snapshots (444.0855ms)
+✔ real Provider probing passes the bound credential only as a zeroable lease (355.7728ms)
+✔ draft onboarding pins Brief before generation and activates only after proposal apply and confirmation (499.3906ms)
+✔ proposal apply marks a draft-Brief generation stale when the source revision drifts (432.8308ms)
+✔ Project deletion rechecks blockers and tombstones only after confirmation (708.313ms)
+✔ Repository deletion requires name, HEAD, revision, and two independent session proofs (320.2382ms)
+✔ Assist metadata, fork, side-thread, review comments, and reversible deletion reuse the shared ledger (909.0765ms)
+(node:52876) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ hard gate limits are fixed and over-budget success is rejected (2.0027ms)
+✔ a self-reported ok flag never masks nonzero exit, signal, truncation or redaction failure (0.239ms)
+✔ real process output truncation fails while retaining the literal zero process exit (67.6237ms)
+✔ pre-push verification rejects evidence-skip inputs and unknown bypass arguments (0.3015ms)
+✔ development orchestration freezes successful commands after the fixed time limit (16.5074ms)
+✔ Gate process preserves Windows-sensitive arguments without shell parsing (64.5939ms)
+✔ Gate process exposes bounded redacted capture and stable failure codes (521.9619ms)
+✔ Pnpm resolves through Corepack JavaScript and active Gate files contain no shell:true (1.3081ms)
+✔ formal verification uses immutable P5-P9 Evidence and only current P10 probes (2.2631ms)
+✔ Historical security excludes Clean duplicates while formal release owns the deferred image boundary (0.4924ms)
+✔ incremental selector covers Web, Golden, shared core, governance, and unclassified paths without external probes (4.4092ms)
+✔ standalone test retains Web while formal verify switches its nested run to Unit-only (1.1081ms)
+✔ Pnpm script separators are accepted by development commands (0.3629ms)
+✔ development receipt reports persisted execution metrics and leaves SQLite, CAS, and Vault byte-exact (2692.1571ms)
+✔ development receipt failure classes are fixed and unknown operation owners block generation (285.2139ms)
+✔ generation attempts count rows once and time windows exclude later retries (848.4176ms)
+✔ combined development layers preserve advisory status and receipts omit raw invocations (10.412ms)
+✔ changed Git paths preserve Chinese names and include both sides of a rename (635.7596ms)
+(node:47908) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P10 HTTP routes expose strict v2 envelopes and reject offline/destructive MCP bypasses (1064.2834ms)
+(node:51948) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ forward-only migration upgrades v0-v8 to schema v9 and ledger 1..9 (2420.8419ms)
+✔ v9 DDL, ledger, receipt, and commit faults preserve byte-exact v8 (795.2752ms)
+✔ v9 immutable revision, selection, advice, comment, and terminal intent triggers reject mutation (184.5751ms)
+✔ fixed V2.3 inventories map bidirectionally to 19 business groups with zero gaps (1893.922ms)
+✔ P10 registry is API v2-only and preserves synchronized transport contracts (3.8251ms)
+✔ P10 verify orders parity, external adapters, Web, build, E2E, release, and Evidence (1.7907ms)
+✔ P10 Evidence patch excludes its append-only tree and enforces a publishable size bound (0.5119ms)
+(node:9760) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ loopback same-origin session recovery returns a persistent strict cookie and audits the real owner (384.8541ms)
+✔ session recovery can replace an expired or revoked browser proof without changing account scope (292.1228ms)
+✔ Codex host discovery is prioritized, HMAC-bound, stale-safe, path-free, and imports both config and API-key auth through Vault (519.3053ms)
+✔ Codex discovery rejects oversized and symlinked files and directs keyring-only auth to Device Login (366.9922ms)
+✔ Codex discovery HTTP keeps availability metadata, binds API keys, and stays path-free (361.0974ms)
+✔ Device Login publishes only structured status, binds a ChatGPT bundle, probes it, and removes the isolated home (387.9632ms)
+✔ Device Login cancellation and restart recovery terminate through the shared operation ledger (314.1853ms)
+✔ GitHub setup restores the bundled V2.3 public App identity and completes hosted installation through Vault, Probe, and repository discovery (402.1677ms)
+✔ GitHub Manifest callback binds returned secrets server-side, is replayable without a second conversion, and leaks no credential material (370.9586ms)
+✔ GitHub setup automatically binds a unique existing App installation before opening GitHub (472.9579ms)
+✔ GitHub setup HTTP contracts expose public metadata and callback receipts without secrets or host paths (303.9446ms)
+✔ GitHub hosted private-key discovery rejects symlinks without exposing the configured path (231.7982ms)
+warning: in the working copy of 'AGENTS.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/clean/migrations/009.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/evidence/p10/verification.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.clean.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.historical.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\CLOUDS~1\AppData\Local\Temp\aiws-p10-post-closure-remote-ptbrh1
+ * [new branch]      main -> main
+ * [new tag]         p10-final-governance-20260829 -> p10-final-governance-20260829
+warning: in the working copy of 'AGENTS.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/clean/migrations/009.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/evidence/p10/verification.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.clean.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.historical.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/web/src/product.ts', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\CLOUDS~1\AppData\Local\Temp\aiws-p10-post-closure-remote-ptbrh1
+   c8790b3..a538322  main -> main
+warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'docs/evidence/post-p10-development-reliability-20260905/README.md', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\CLOUDS~1\AppData\Local\Temp\aiws-p10-post-closure-remote-ptbrh1
+   a538322..09c6761  main -> main
+warning: in the working copy of 'feature-catalog.json', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\CLOUDS~1\AppData\Local\Temp\aiws-p10-post-closure-remote-ptbrh1
+   09c6761..f47f67b  main -> main
+warning: in the working copy of 'docs/architecture/decision-log.md', LF will be replaced by CRLF the next time Git touches it
+To C:\Users\CLOUDS~1\AppData\Local\Temp\aiws-p10-post-closure-remote-ptbrh1
+   f47f67b..325e1e1  main -> main
+✔ P10 post-closure verification accepts pushed product descendants and freezes governance bytes (6987.1649ms)
+(node:24544) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Quality policy, readiness, selections, closed advice, human scoring, supersession, and stale history are separate (2069.7051ms)
+✔ invalid or unavailable Quality advice never blocks the human review state (2731.6216ms)
+✔ default Quality policy restores all five dimensions without a configured reviewer (1043.6511ms)
+(node:37012) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+✔ hard limits: strict provider JSON rejects wrappers and trailing objects after one repair (3.2861ms)
+✔ hard limits: valid JSON and one contract repair preserve the provider candidate (1.4533ms)
+✔ hard limits: missing or ill-typed task fields fail with 422 without local repair (2.1794ms)
+✔ hard limits: JSON repair accepts a complete valid second response only (0.3758ms)
+✔ hard limits: provider protocol errors retain stable codes and clear the lease (0.5224ms)
+✔ hard limits: provider rejected stays rejected with complete coverage and no findings (1.3957ms)
+✔ hard limits: every task check requires its own immutable coverage row (0.4052ms)
+✔ hard limits: complete coverage passes and critical issues still reject (0.5807ms)
+✔ hard limits: malformed, duplicate, stale and orphan Critic rows fail closed (1.6574ms)
+✔ task contracts bind complete execution fields and reject commands, paths and cycles (0.8294ms)
+✔ provider JSON repair extracts one balanced object without accepting trailing objects (0.1764ms)
+✔ real loop preflight requires a clean, real Git worktree (624.873ms)
+✔ real loop rejects Git subdirectories and explicit run roots inside the source (448.3581ms)
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+✔ local Git reads commit blobs, verifies drift and materializes without touching the source (1171.5428ms)
+✔ local Git accepts clean autocrlf worktrees while rejecting real content drift (700.5225ms)
+✔ provider JSON gets one repair and zeroizes its lease after a separate critic turn (1.0189ms)
+✔ provider incomplete events and empty output are failed rather than candidates (0.2345ms)
+✔ Critic rejects duplicate ownership and unknown missing markers (0.2951ms)
+✔ real Host task stays in candidate until finalize, binds CAS outputs and captures Evidence (1360.3187ms)
+✔ zero exit with missing output fails and leaves managed bytes unchanged (826.4851ms)
+✔ local repository, leased Generation, independent Critic, Proposal, Host, Check and Evidence form one loop (1617.301ms)
+(node:18868) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ GitHub repository transport mints an RS256 JWT and validates the complete API manifest (46.641ms)
+▶ GitHub repository transport rejects identity, branch, tree, blob and source feature drift with stable codes
+  ✔ repository id (57.3698ms)
+  ✔ full name (46.6682ms)
+  ✔ branch head (36.9947ms)
+  ✔ tree truncated (64.3161ms)
+  ✔ symlink (17.2738ms)
+  ✔ submodule (18.4734ms)
+  ✔ LFS pointer (47.9961ms)
+  ✔ malformed blob (102.2912ms)
+  ✔ file quota (26.8801ms)
+  ✔ byte quota (51.1607ms)
+✔ GitHub repository transport rejects identity, branch, tree, blob and source feature drift with stable codes (471.1329ms)
+✔ materialization uses shell-free shallow clone, keeps token out of argv/config, removes .git, and clears key material (79.0113ms)
+✔ materialization reports source_drift and removes a mismatching clone (70.1858ms)
+▶ Repository auth resolver enforces actor, provider, lifecycle, credential and Vault reference boundaries
+  ✔ other actor (0.8796ms)
+  ✔ wrong provider (0.1939ms)
+  ✔ disabled (0.1277ms)
+  ✔ unavailable (0.1216ms)
+  ✔ revoked credential (0.1567ms)
+  ✔ non-Vault credential (0.0969ms)
+✔ Repository auth resolver enforces actor, provider, lifecycle, credential and Vault reference boundaries (2.4275ms)
+✔ Repository adapter router preserves fixture/local routing and selects GitHub only for explicit App sources (0.3574ms)
+✔ remote Workspace create/refresh publishes atomically, preserves failed bytes, and links retries (710.3304ms)
+ℹ tests 93
+ℹ suites 0
+ℹ pass 93
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8065.7029

@@ -1,0 +1,5 @@
+
+> ai-workspace-system@3.0.0 check <WORKSPACE>
+> node scripts/check.mjs
+
+check passed: 512 source files, 405 syntax files, 60 scripts

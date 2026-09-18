@@ -1,0 +1,32 @@
+{
+  "schema_version": "aiws.post-p10.maintenance.final-receipt.v1",
+  "date": "2026-09-15",
+  "status": "verified",
+  "provisional": false,
+  "base_commit": "0fd9eb91a14dc53ac944e8ada608c8d958728ff8",
+  "head": "0fd9eb91a14dc53ac944e8ada608c8d958728ff8",
+  "supersedes": [
+    "../remote-workspace-20260913",
+    "../remote-workspace-20260914"
+  ],
+  "catalog": "27/0/27",
+  "migration": "user_version=9 ledger=[1..9] unchanged",
+  "formal_evidence": "unchanged",
+  "artifacts": {
+    "modified_artifact": "modified-artifact.tgz",
+    "patch": "change.patch",
+    "modified_files": "modified-files.json",
+    "rollback": "rollback.ps1",
+    "commands": "commands/"
+  },
+  "checks": {
+    "verify_dev": {"command": "pnpm verify:dev -- --base 0fd9eb91a14dc53ac944e8ada608c8d958728ff8", "exit_status": 0, "clean_blocking": [], "historical_advisory": [], "duration_budget_ms": 120000},
+    "patch_check": {"command": "git apply --check change.patch", "exit_status": 0},
+    "patch_apply": {"command": "git apply change.patch", "exit_status": 0},
+    "rollback_dry_run": {"command": "powershell -File rollback.ps1 -Mode dry-run", "exit_status": 0, "writes": 0, "byte_exact_mismatches": []},
+    "rollback_apply": {"command": "powershell -File rollback.ps1 -Mode apply", "exit_status": 0, "writes": 0, "byte_exact_mismatches": []},
+    "web_tests": {"tests": 84, "files": 23, "status": "passed"},
+    "p10_tests": {"tests": 93, "status": "passed"}
+  },
+  "real_probe": "../remote-workspace-20260914/attempts/real-probe-20260915/verification.json"
+}

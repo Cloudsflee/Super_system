@@ -1,0 +1,42 @@
+
+> ai-workspace-system@3.0.0 test:p8 <WORKSPACE>
+> node --test tests/p8/*.test.mjs
+
+(node:51044) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Delivery executes immutable Draft, ready and merge intents and synchronizes Repository baseline (1288.9006ms)
+✔ unknown GitHub result enters needs_reconcile and a later reconcile resolves without replaying merge (1150.1031ms)
+✔ raw GitHub webhook HMAC is deduplicated by provider delivery id (918.7715ms)
+✔ physical CAS GC revalidates protection, moves bytes to recoverable trash and rolls back (740.3079ms)
+(node:26296) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Deployment candidate verification requires owner approval and creates an immutable receipt (1161.0205ms)
+✔ Backup, restore.prepare and reset.prepare operate on new isolated artifacts without switching a pointer (1492.1896ms)
+✔ GitHub App ready transition falls back to the supported GraphQL mutation on REST 404 (29.2306ms)
+(node:9548) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P8 migration, ownership and 25-route inventories are bidirectional (6.133ms)
+✔ Importer mutations are CLI-only and runtime registry contains sealed queries (0.6506ms)
+✔ P8 Evidence is hash-complete and synchronized with the layered Catalog promotion (85.7045ms)
+✔ P8 package, testing policy, plan, matrix and Evidence references stay synchronized (1.5587ms)
+(node:54240) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P8 HTTP uses the shared dispatcher with closed route-specific contracts (239.1887ms)
+✔ P8 registry, REST, MCP and Gateway publish the same closed command schemas (145.1052ms)
+(node:51876) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ offline importer preserves schema v7 and maps schema 23 business rows with omitted secrets (1646.0607ms)
+✔ resume verifies signed checkpoint target hash and continues after a domain boundary interruption (2148.855ms)
+✔ unknown schema 23 table blocks before target creation (149.944ms)
+(node:52428) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ forward-only migration upgrades every supported version to v8 (1163.1673ms)
+✔ each v8 migration fault preserves v7 bytes and leaves all 11 tables absent (402.9289ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4955.8697

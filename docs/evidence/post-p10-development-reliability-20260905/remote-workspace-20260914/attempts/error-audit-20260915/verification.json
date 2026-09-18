@@ -1,0 +1,52 @@
+{
+  "schema_version": "aiws.post-p10.remote-workspace.error-audit.v1",
+  "date": "2026-09-15",
+  "scope": "GitHubAppAdapter auth/secret lifecycle across P8/P9/P10 probes and runtime",
+  "findings": [
+    {
+      "pattern": "reusing non-reusable auth after adapter call",
+      "locations": [
+        "scripts/v3-clean-p8-github-delivery-probe.mjs",
+        "scripts/v3-clean-p9-github-delivery-probe.mjs",
+        "scripts/v3-clean-p10-github-deletion-probe.mjs"
+      ],
+      "impact": "privateKey is intentionally zeroed by adapter finally",
+      "fix": "auth factory creates a fresh Buffer per adapter call",
+      "verified": true
+    },
+    {
+      "pattern": "runtime/service auth reuse",
+      "locations": [
+        "apps/api/src/clean/p8/repository.mjs",
+        "apps/api/src/clean/p10-service.mjs"
+      ],
+      "control": "reusable lease scoped to callback and zeroed in outer finally",
+      "verified": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "node --check scripts/v3-clean-p8-github-delivery-probe.mjs",
+      "exit_status": 0
+    },
+    {
+      "command": "node --check scripts/v3-clean-p9-github-delivery-probe.mjs",
+      "exit_status": 0
+    },
+    {
+      "command": "node --check scripts/v3-clean-p10-github-deletion-probe.mjs",
+      "exit_status": 0
+    },
+    {
+      "command": "pnpm test:p10",
+      "exit_status": 0,
+      "summary": "93/93"
+    },
+    {
+      "command": "node scripts/v3-clean-p10-github-deletion-probe.mjs",
+      "exit_status": 0,
+      "summary": "verified, provisional=false"
+    }
+  ],
+  "conclusion": "No remaining equivalent auth-buffer reuse in external probes; service leases are explicitly scoped and zeroized."
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": "aiws.post-p10.remote-workspace.probe.v1",
+  "owner": "Repository/Platform",
+  "phase": "post-P10 D-040 maintenance",
+  "status": "provisional",
+  "provisional": true,
+  "provider": "github",
+  "transport": "GitHubAppAdapter",
+  "probe_scope": "Repository inspect/materialize and authenticated Workspace lifecycle",
+  "missing_inputs": [
+    "real GitHub App identity",
+    "Installation access",
+    "Vault credential bundle",
+    "dedicated disposable repository"
+  ],
+  "fake_transport_tests": {
+    "status": "passed",
+    "suite": "tests/p10/remote-workspace-auth.test.mjs",
+    "cases": 23
+  },
+  "catalog_promotion": false,
+  "production_cutover": false
+}

@@ -40,8 +40,43 @@ export class CleanFilesService {
     assertProject(this.authorization, principal, 'read', projectId, { resource: 'files' });
     const workspaceId = input.workspace_id ? String(input.workspace_id) : null;
     const query = input.path ? safeRelative(input.path) : null;
-    const rows = this.db.query(`SELECT * FROM file_refs WHERE project_id=? ${workspaceId ? 'AND workspace_id=?' : ''} ${query ? 'AND relative_path LIKE ?' : ''} ORDER BY relative_path,id LIMIT 500`, [String(projectId), ...(workspaceId ? [workspaceId] : []), ...(query ? [`${query}%`] : [])]);
-    return { files: rows.map(fileView) };
+    const limit = Math.max(1, Math.min(500, Number(input.limit) || 100));
+    const offset = Math.max(0, Number(input.offset) || 0);
+    const params = [String(projectId), ...(workspaceId ? [workspaceId] : []), ...(query ? [`%${query}%`] : [])];
+    const where = `project_id=? ${workspaceId ? 'AND workspace_id=?' : ''} ${query ? 'AND relative_path LIKE ?' : ''}`;
+    if (workspaceId && !this.db.get('SELECT 1 AS present FROM file_refs WHERE workspace_id=? LIMIT 1', [workspaceId])) this.indexWorkspace(workspaceId, principal);
+    const total = Number(this.db.get(`SELECT COUNT(*) AS count FROM file_refs WHERE ${where}`, params)?.count || 0);
+    const rows = this.db.query(`SELECT * FROM file_refs WHERE ${where} ORDER BY relative_path,id LIMIT ? OFFSET ?`, [...params, limit, offset]);
+    return { files: rows.map(fileView), total, next_cursor: offset + rows.length < total ? offset + rows.length : null };
+  }
+
+  indexWorkspace(workspaceId, principal) {
+    const workspace = this.workspaceRow(workspaceId);
+    assertProject(this.authorization, principal, 'read', workspace.project_id, { resource: 'files' });
+    const directory = this.workspaceDirectory(workspace);
+    if (!fs.existsSync(directory)) return 0;
+    const entries = [];
+    const walk = (root, prefix = '') => {
+      for (const item of fs.readdirSync(root, { withFileTypes: true })) {
+        const relative = prefix ? `${prefix}/${item.name}` : item.name;
+        if (item.name === '.git' || item.name === 'node_modules') continue;
+        const full = path.join(root, item.name);
+        if (item.isDirectory()) walk(full, relative);
+        else if (item.isFile()) { const bytes = fs.readFileSync(full); if (bytes.byteLength <= MAX_FILE && entries.length < 10000) entries.push({ relative, bytes }); }
+      }
+    };
+    walk(directory);
+    const now = time(this.clock); let count = 0;
+    this.db.withTransaction((tx) => {
+      for (const entry of entries) {
+        const hash = sha256Hex(entry.bytes); const current = tx.get('SELECT * FROM file_refs WHERE workspace_id=? AND relative_path=?', [workspace.id, entry.relative]);
+        if (current && current.content_sha256 === hash && current.status === 'current') continue;
+        if (current) tx.run("UPDATE file_refs SET content_sha256=?,byte_length=?,media_type=?,status='current',revision=revision+1,updated_at=?,updated_by_actor_id=? WHERE id=?", [hash, entry.bytes.byteLength, detectMime(entry.relative), now, principal.actorId, current.id]);
+        else tx.run('INSERT INTO file_refs(id,project_id,workspace_id,relative_path,content_sha256,byte_length,media_type,status,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,?,?,?,?,?,1,?,?,?,?)', [opaqueId('file_ref'), workspace.project_id, workspace.id, entry.relative, hash, entry.bytes.byteLength, detectMime(entry.relative), 'current', now, now, principal.actorId, principal.actorId]);
+        count += 1;
+      }
+    });
+    return count;
   }
 
   getFile(projectId, fileId, input = {}, principal) {

@@ -1,0 +1,6 @@
+{
+  "patch_check_exit": 0,
+  "patch_apply_exit": 0,
+  "byte_exact_mismatches": [],
+  "patch_sha256": "8f20e1ad0da93764659ad41a47162c40f975df114dadc1f421bfb0734ed61f1c"
+}

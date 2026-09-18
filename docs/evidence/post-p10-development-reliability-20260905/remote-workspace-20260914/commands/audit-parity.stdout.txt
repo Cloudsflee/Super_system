@@ -1,0 +1,19 @@
+
+> ai-workspace-system@3.0.0 audit:parity <WORKSPACE>
+> node scripts/v3-clean-p10-parity.mjs
+
+{
+  "schema_version": "aiws.v3-clean.p10-parity-audit.v1",
+  "phase": "P10",
+  "status": "passed",
+  "counts": {
+    "cases": 14,
+    "routes": 360,
+    "collections": 98,
+    "web_routes": 11,
+    "optimization_packages": 7
+  },
+  "business_groups": 19,
+  "gaps": 0,
+  "findings": []
+}

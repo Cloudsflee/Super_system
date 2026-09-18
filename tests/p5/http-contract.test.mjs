@@ -68,6 +68,25 @@ test('P5 HTTP uses one v2 envelope, strict mutation headers and operation receip
     const operation = await waitForOperation(state.runtime, turn.body.data.operation_id, state.principal.actorId);
     assert.equal(operation.status, 'succeeded');
 
+    const events = await json(await fetch(`${base}/api/v2/assist/sessions/${session.id}/events?cursor=0&limit=1`, { headers: { cookie: `aiws_session=${state.proof}` } }));
+    assert.equal(events.response.status, 200);
+    assert.equal(events.body.data.events.length, 1);
+    assert.equal(typeof events.body.data.next_cursor, 'string');
+    const continued = await json(await fetch(`${base}/api/v2/assist/sessions/${session.id}/events?cursor=${encodeURIComponent(events.body.data.next_cursor)}&limit=1`, { headers: { cookie: `aiws_session=${state.proof}` } }));
+    assert.equal(continued.response.status, 200);
+    assert.ok(continued.body.data.events[0].sequence > events.body.data.events[0].sequence);
+    const completeEvents = await json(await fetch(`${base}/api/v2/assist/sessions/${session.id}/events?cursor=0&limit=500`, { headers: { cookie: `aiws_session=${state.proof}` } }));
+    const emptyEvents = await json(await fetch(`${base}/api/v2/assist/sessions/${session.id}/events?cursor=${encodeURIComponent(completeEvents.body.data.next_cursor)}&limit=500`, { headers: { cookie: `aiws_session=${state.proof}` } }));
+    assert.equal(emptyEvents.response.status, 200);
+    assert.deepEqual(emptyEvents.body.data.events, []);
+    assert.deepEqual(emptyEvents.body.data.resource, { id: session.id, type: 'assist_session', revision: state.runtime.assist.getSession(session.id, state.principal).revision });
+    const invalidLimit = await json(await fetch(`${base}/api/v2/assist/sessions/${session.id}/events?cursor=0&limit=text`, { headers: { cookie: `aiws_session=${state.proof}` } }));
+    assert.equal(invalidLimit.response.status, 400);
+    assert.equal(invalidLimit.body.error.code, 'schema_invalid');
+    const invalidCursor = await json(await fetch(`${base}/api/v2/assist/sessions/${session.id}/events?cursor=invalid&limit=1`, { headers: { cookie: `aiws_session=${state.proof}` } }));
+    assert.equal(invalidCursor.response.status, 400);
+    assert.equal(invalidCursor.body.error.code, 'cursor_invalid');
+
     const unknown = await json(await fetch(`${base}/api/v2/assist/sessions?project_id=${project.id}&unexpected=1`, { headers: { cookie: `aiws_session=${state.proof}` } }));
     assert.equal(unknown.response.status, 400);
     assert.equal(unknown.body.error.code, 'unknown_field');

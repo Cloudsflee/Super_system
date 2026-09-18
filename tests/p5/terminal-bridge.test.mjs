@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { canonicalJson } from '../../apps/api/src/clean/canonical.mjs';
 import { start as startBridge } from '../../apps/windows-native-bridge/server.mjs';
-import { close, createProject, createWorkspace, open } from './helpers.mjs';
+import { close, createAssistPrerequisites, createProject, createWorkspace, open } from './helpers.mjs';
 
 class FakePtyProcess {
   constructor() { this.dataListeners = []; this.exitListeners = []; this.writes = []; }
@@ -115,4 +115,52 @@ test('Windows Bridge pairing shares one secret, rejects nonce replay, rotates an
     await bridge.close();
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('Assist Terminal approvals bind project, workspace revision and session, then return one operation reference', async () => {
+  const children = [];
+  const state = await open({ pty: { spawn: () => { const child = new FakePtyProcess(); children.push(child); return child; } } });
+  try {
+    const project = await createProject(state, 'assist-terminal');
+    const foreignProject = await createProject(state, 'assist-terminal-foreign');
+    const { workspace } = await createWorkspace(state, project, 'assist-terminal');
+    const { pack, profile } = await createAssistPrerequisites(state, project, 'assist-terminal');
+    const { session } = await state.runtime.assist.createSession({ project_id: project.id, scope: 'project', scope_id: project.id, context_pack_id: pack.id, profile_id: profile.id, idempotency_key: 'assist-terminal-session' }, state.principal);
+    const runtime = process.platform === 'win32' ? 'windows_native' : 'linux_native';
+    const { approval } = await state.runtime.assist.createApproval({ project_id: project.id, action: 'terminal.open', request: { workspace_id: workspace.id, assist_session_id: session.id, runtime, cwd: '', cols: 120, rows: 32, command: 'echo fixture' }, expected_revision: workspace.revision, idempotency_key: 'assist-terminal-approval' }, state.principal);
+    const input = { project_id: project.id, workspace_id: workspace.id, assist_session_id: session.id, approval_id: approval.id, runtime, cwd: '', cols: 120, rows: 32, expected_revision: workspace.revision, idempotency_key: 'assist-terminal-open' };
+    await assert.rejects(() => state.runtime.terminal.open(input, state.principal), (error) => error.code === 'approval_required');
+    const decision = { decision: 'approved', expected_revision: approval.revision, idempotency_key: 'assist-terminal-approve' };
+    await state.runtime.assist.decideApproval(approval.id, decision, state.principal);
+    assert.equal((await state.runtime.assist.decideApproval(approval.id, decision, state.principal)).replayed, true);
+    await assert.rejects(() => state.runtime.terminal.open({ ...input, expected_revision: workspace.revision + 1 }, state.principal), (error) => error.code === 'revision_conflict');
+    await assert.rejects(() => state.runtime.terminal.open({ ...input, assist_session_id: null }, state.principal), (error) => error.code === 'approval_request_mismatch');
+    await assert.rejects(() => state.runtime.terminal.open({ ...input, cwd: 'other' }, state.principal), (error) => error.code === 'approval_request_mismatch');
+    const foreignApproval = await state.runtime.assist.createApproval({ project_id: foreignProject.id, action: 'terminal.open', request: { assist_session_id: session.id }, expected_revision: 0, idempotency_key: 'assist-terminal-foreign-approval' }, state.principal);
+    await state.runtime.assist.decideApproval(foreignApproval.approval.id, { decision: 'approved', expected_revision: 1, idempotency_key: 'assist-terminal-foreign-decision' }, state.principal);
+    const foreignWorkspace = await createWorkspace(state, foreignProject, 'assist-terminal-foreign');
+    await assert.rejects(() => state.runtime.terminal.open({ ...input, project_id: foreignProject.id, workspace_id: foreignWorkspace.workspace.id, approval_id: foreignApproval.approval.id, expected_revision: 0, idempotency_key: 'assist-terminal-foreign-open' }, state.principal), (error) => error.code === 'assist_session_mismatch');
+    assert.equal(children.length, 0);
+    const opened = await state.runtime.terminal.open(input, state.principal);
+    assert.equal((await state.runtime.terminal.open(input, state.principal)).replayed, true);
+    assert.equal(opened.terminal.assist_session_id, session.id);
+    assert.equal(children.length, 1);
+    assert.equal(state.runtime.db.get("SELECT aggregate_id FROM operation_links WHERE operation_id=? AND aggregate_type='assist_session'", [opened.operation.operation_id]).aggregate_id, session.id);
+    assert.equal(children[0].writes.length, 0);
+    children[0].emit(`result sk-abcdefghijklmnop ${state.root}\n`);
+    children[0].kill();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const terminal = state.runtime.terminal.get(opened.terminal.id, state.principal);
+    assert.equal(terminal.exit_code, 0);
+    assert.equal(terminal.output_preview.includes('abcdefghijklmnop'), false);
+    assert.equal(terminal.output_preview.includes(state.root), false);
+    const referenceInput = { reference_type: 'operation', reference_id: terminal.operation_id, reference_hash: terminal.output_sha256, expected_revision: session.revision, idempotency_key: 'assist-terminal-reference' };
+    await assert.rejects(() => state.runtime.assist.createReference(session.id, { ...referenceInput, reference_hash: 'invalid' }, state.principal), (error) => error.code === 'schema_invalid');
+    const linked = await state.runtime.assist.createReference(session.id, referenceInput, state.principal);
+    assert.equal(linked.references[0].reference_id, terminal.operation_id);
+    assert.equal(linked.references[0].reference_hash, terminal.output_sha256);
+    assert.equal((await state.runtime.assist.createReference(session.id, referenceInput, state.principal)).replayed, true);
+    await assert.rejects(() => state.runtime.assist.createReference(session.id, { ...referenceInput, idempotency_key: 'assist-terminal-reference-stale' }, state.principal), (error) => error.code === 'revision_conflict');
+    assert.equal(state.runtime.db.integrity().semantic.valid, true);
+  } finally { await close(state); }
 });

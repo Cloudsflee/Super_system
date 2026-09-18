@@ -1,0 +1,35 @@
+
+> ai-workspace-system@3.0.0 test:integration:clean <WORKSPACE>
+> node scripts/layered-gate.mjs integration --clean
+
+{
+  "schema_version": "aiws.v3-clean.layered-gate-result.v2",
+  "suite": "integration",
+  "status": "passed",
+  "blocking_layer": null,
+  "commands": [
+    {
+      "layer": "clean",
+      "command": "<NODE> --test tests/integration/v3-clean-p1.test.mjs tests/p3/http-contract.test.mjs tests/p3/migration.test.mjs tests/p3/project-workflow.test.mjs tests/p4/*.test.mjs",
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "summary": "ℹ tests 36\nℹ suites 0\nℹ pass 36\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3189.1661",
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      }
+    }
+  ],
+  "clean_exit": 0,
+  "historical_exit": null,
+  "advisory_failures": [],
+  "redaction": [
+    {
+      "layer": "clean",
+      "passed": true,
+      "removed": 0
+    }
+  ],
+  "receipt": null
+}

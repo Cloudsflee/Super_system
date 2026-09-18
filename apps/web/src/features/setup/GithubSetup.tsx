@@ -230,12 +230,15 @@ export function GithubSetup({ returnPath = 'setup', standalone = false, onConnec
       </button>
       {advanced && <form onSubmit={configureExisting}>
         <div className="two-column">
-          <label><span>App ID</span><input aria-label="已有 GitHub App ID" inputMode="numeric" value={appId} onChange={(event) => setAppId(event.target.value)} required /></label>
-          <label><span>App 标识</span><input aria-label="已有 GitHub App 标识" value={slug} onChange={(event) => setSlug(event.target.value)} required /></label>
+          <label><span>App ID</span><input aria-label="已有 GitHub App ID" inputMode="numeric" value={appId} onChange={(event) => setAppId(event.target.value.replace(/\D/g, ''))} required /></label>
+          <label><span>App 标识（Slug，小写）</span><input aria-label="已有 GitHub App 标识" value={slug} onChange={(event) => setSlug(event.target.value.toLowerCase().trim())} required /></label>
         </div>
         <label><span>私钥</span><textarea aria-label="已有 GitHub App 私钥" rows={5} autoComplete="off" value={privateKey} onChange={(event) => setPrivateKey(event.target.value)} required /></label>
         <label><span>Webhook Secret（可选）</span><input aria-label="已有 GitHub Webhook Secret" type="password" autoComplete="off" value={webhookSecret} onChange={(event) => setWebhookSecret(event.target.value)} /></label>
-        <button className="button" disabled={busy === 'configure' || !privateKey}><ShieldCheck size={15} />绑定到本地凭据库</button>
+        <button type="submit" className="button" disabled={busy === 'configure' || !privateKey}>
+          {busy === 'configure' ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />}
+          {busy === 'configure' ? '正在绑定…' : '绑定到本地凭据库'}
+        </button>
       </form>}
     </div>}
 
@@ -268,10 +271,10 @@ function callbackIdempotency(kind: string, value: string) {
 
 function cleanGithubCallbackUrl() {
   const url = new URL(window.location.href);
-  for (const key of ['github_callback', 'code', 'state', 'installation_id', 'setup_action']) url.searchParams.delete(key);
+  for (const key of ['github_callback', 'return_path', 'code', 'state', 'installation_id', 'setup_action']) url.searchParams.delete(key);
   const [hashPath, hashRaw = ''] = url.hash.split('?', 2);
   const hashQuery = new URLSearchParams(hashRaw);
-  for (const key of ['github_callback', 'code', 'state', 'installation_id', 'setup_action']) hashQuery.delete(key);
+  for (const key of ['github_callback', 'return_path', 'code', 'state', 'installation_id', 'setup_action']) hashQuery.delete(key);
   const nextHash = hashQuery.size ? `${hashPath}?${hashQuery}` : hashPath;
   window.history.replaceState(null, '', `${url.pathname}${url.search}${nextHash}`);
 }

@@ -491,6 +491,37 @@ button.network-pill { cursor: pointer; }
 .assist-session.child { padding-left: 28px; }
 .preview-backdrop { position: fixed; z-index: 70; inset: 0; display: grid; place-items: center; padding: 18px; background: rgba(14, 24, 19, .42); }.preview-dialog { width: min(860px, 100%); max-height: min(86vh, 760px); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 18px 50px rgba(10, 20, 15, .25); }.preview-dialog > header { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 15px; border-bottom: 1px solid var(--line); }.preview-dialog header strong, .preview-dialog header small { display: block; }.preview-dialog header small { margin-top: 3px; color: var(--muted); font-size: 9px; }.preview-content { min-height: 0; margin: 0; padding: 16px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }.preview-table { min-height: 0; overflow: auto; padding: 12px; }.preview-table table { border-collapse: collapse; min-width: 100%; font-size: 10px; }.preview-table th, .preview-table td { padding: 6px 8px; border: 1px solid var(--line); text-align: left; vertical-align: top; }.preview-table th { background: var(--soft); }
 .quick-tool-backdrop { position: fixed; z-index: 60; inset: 0; display: flex; justify-content: flex-end; background: rgba(14, 24, 19, .24); }.quick-tool-drawer { width: min(760px, 100%); height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; background: #f7faf8; border-left: 1px solid var(--line); box-shadow: -12px 0 34px rgba(17, 36, 27, .18); }.quick-tool-drawer > header { display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 12px 16px; background: #fff; border-bottom: 1px solid var(--line); }.quick-tool-drawer > header > div { display: flex; gap: 6px; align-items: center; }.quick-tool-content { min-height: 0; overflow: auto; padding: 0 16px 24px; }.quick-tool-content > .page { max-width: none; padding-inline: 0; }
+.assist-quick-tool { width: min(620px, 100%); }
+.assist-quick-tool .assist-sessions { display: block; max-height: 170px; overflow: auto; }
+.assist-quick-tool .has-session .assist-session-create, .assist-quick-tool .assist-lifecycle-actions, .assist-quick-tool .assist-runtime-timeline, .assist-quick-tool .assist-review-panel, .assist-quick-tool .assist-goal-row, .assist-quick-tool .assist-mobile-tabs { display: none; }
+.assist-quick-tool .assist-layout { display: block; }
+.assist-quick-tool .assist-workspace { min-height: calc(100vh - 92px); }
+.assist-surface-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
+.assist-surface-actions { align-items: end; }.assist-surface-actions label { min-width: 120px; flex: 1; }.assist-surface-actions input { width: 100%; }
+.assist-account-surface { min-height: 260px; }
+.assist-pending-approvals > div, .assist-terminal-result { display: grid; gap: 7px; padding-block: 12px; border-block: 1px solid var(--line); overflow-wrap: anywhere; }
+.assist-terminal-result code { white-space: pre-wrap; max-height: 120px; overflow: auto; }
+.assist-terminal-result .button, .assist-pending-approvals .button { justify-self: start; }
+.assist-quick-tool .assist-page:not(.has-session) .assist-sessions { max-height: none; }
+.assist-quick-tool .assist-workspace { display: block; }
+.assist-quick-tool .quick-tool-content { overflow: hidden; padding: 0 12px; }
+.assist-quick-tool .assist-page { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding-block: 12px 10px; }
+.assist-quick-tool .page-heading { margin: 0; flex-shrink: 0; }
+.assist-quick-tool .assist-surface-actions { margin: 0; flex-shrink: 0; }
+.assist-quick-tool .assist-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.assist-quick-tool .assist-sessions .section-title { margin-bottom: 5px; }.assist-quick-tool .assist-sessions .section-title > div { display: flex; align-items: center; gap: 8px; }.assist-quick-tool .assist-sessions .section-title span { margin: 0; }
+.assist-quick-tool .assist-sessions { flex-shrink: 0; max-height: 112px; padding: 10px 14px; }
+.assist-quick-tool .assist-layout > .assist-workspace { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; padding: 12px; }
+.assist-quick-tool .assist-turns { flex: 1; min-height: 0; max-height: none; }
+.assist-quick-tool .assist-composer { flex-shrink: 0; padding-top: 8px; }
+.assist-quick-tool .assist-page:not(.has-session) .assist-sessions { flex: 1; min-height: 0; max-height: none; }
+.assist-quick-tool .assist-page:not(.has-session) .assist-workspace { display: none; }
+.assist-pending-approvals { max-height: 130px; overflow: auto; flex-shrink: 0; }
+.assist-terminal-result { grid-template-columns: minmax(0, 1fr) auto; flex-shrink: 0; align-items: start; font-size: 11px; }
+.assist-terminal-result summary { cursor: pointer; }.assist-terminal-result summary strong { margin-right: 8px; }.assist-terminal-result summary span { display: block; margin-top: 5px; }
+.assist-terminal-result details > div { display: grid; gap: 7px; max-height: 160px; overflow: auto; padding-top: 10px; }
+@media (max-width: 700px) { .assist-terminal-result { grid-template-columns: minmax(0, 1fr); }.assist-quick-tool .assist-sessions { max-height: 102px; } }
+@media (max-width: 700px) { .quick-tool-drawer { width: 100%; border-left: 0; }.assist-quick-tool .quick-tool-content { padding-inline: 10px; } }
 .onboarding-stage-title { min-height: 58px; display: flex; align-items: flex-start; gap: 13px; padding-bottom: 17px; border-bottom: 1px solid var(--line); color: #176b55; }
 .onboarding-stage-title > svg { margin-top: 3px; }.onboarding-stage-title p { margin: 0 0 4px; color: var(--muted); font-size: 10px; font-weight: 750; }.onboarding-stage-title h1 { margin: 0; color: var(--ink); font-size: 23px; line-height: 1.25; }
 .onboarding-form > .button { justify-self: end; min-width: 142px; margin-top: 5px; }

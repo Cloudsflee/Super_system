@@ -1,0 +1,39 @@
+
+> @aiws/web@3.0.0 test <WORKSPACE>\apps\web
+> vitest run
+
+
+ RUN  v3.2.7 <WORKSPACE>/apps/web
+
+ ✓ src/test/project-workflow-clean.test.tsx (10 tests) 3904ms
+   ✓ ProjectWorkflowPage clean slice > refreshes generation events independently, preserving a dirty graph and stopping terminal polling  3306ms
+ ✓ src/test/execution-p6.test.tsx (4 tests) 3607ms
+   ✓ P6 Execution workspace > selects the query Execution and polls only its detail until terminal state  3263ms
+ ✓ src/test/workflow.test.tsx (22 tests) 494ms
+ ✓ src/test/shell-navigation.test.tsx (4 tests) 475ms
+   ✓ keeps the six-entry drawer closed by default and traps, closes, and restores keyboard focus  372ms
+ ✓ src/test/project-onboarding.test.tsx (4 tests) 429ms
+ ✓ src/test/identity-access.test.tsx (6 tests) 354ms
+ ✓ src/test/setup-flow.test.tsx (5 tests) 324ms
+ ✓ src/test/execution-p7.test.tsx (1 test) 276ms
+ ✓ src/test/context.test.tsx (2 tests) 177ms
+ ✓ src/test/offline-p9.test.ts (7 tests) 167ms
+ ✓ src/test/p10-business-parity.test.tsx (1 test) 146ms
+ ✓ src/test/files-p5.test.tsx (1 test) 124ms
+ ✓ src/test/assist.test.tsx (2 tests) 139ms
+ ✓ src/test/workflows-p9.test.tsx (2 tests) 137ms
+ ✓ src/test/connections-p5.test.tsx (1 test) 152ms
+ ✓ src/test/evidence-p7.test.tsx (1 test) 141ms
+ ✓ src/test/connections-p6.test.tsx (1 test) 137ms
+ ✓ src/test/operations-p8.test.tsx (1 test) 145ms
+ ✓ src/test/terminal.test.tsx (1 test) 118ms
+ ✓ src/test/approvals-p5.test.tsx (1 test) 124ms
+ ✓ src/test/project-preparation.test.tsx (2 tests) 77ms
+ ✓ src/test/post-closure-restoration.test.tsx (3 tests) 39ms
+ ✓ src/test/events-p9.test.ts (2 tests) 22ms
+
+ Test Files  23 passed (23)
+      Tests  84 passed (84)
+   Start at  21:17:03
+   Duration  29.34s (transform 682ms, setup 4.04s, collect 3.28s, tests 11.71s, environment 6.61s, prepare 1.23s)
+

@@ -1,0 +1,12 @@
+{
+  "parse_exit": 0,
+  "required_fields_missing": [],
+  "status": "provisional",
+  "provisional": true,
+  "artifact_paths": [
+    "modified-artifact.tgz",
+    "change.patch",
+    "verification.json",
+    "rollback.ps1"
+  ]
+}

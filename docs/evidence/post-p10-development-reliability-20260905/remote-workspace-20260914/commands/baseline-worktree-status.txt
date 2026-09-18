@@ -1,0 +1,21 @@
+## feat/web-project-preparation
+ M apps/api/src/clean/context-service.mjs
+ M apps/api/src/clean/files-service.mjs
+ M apps/api/src/clean/http.mjs
+ M apps/api/src/clean/p8/github-adapter.mjs
+ M apps/api/src/clean/project-workflow.mjs
+ M apps/api/src/clean/runtime.mjs
+ M apps/api/src/clean/workflow-adapters.mjs
+ M apps/web/src/features/project/ProjectWorkflowPage.tsx
+ M apps/web/src/features/projects/index.ts
+ M feature-catalog.clean.json
+ M feature-catalog.json
+ M packages/contracts/src/clean-v2.mjs
+ M scripts/lib/v3-clean-p1-scope.mjs
+ M scripts/v3-clean-p4-performance.mjs
+ M scripts/verify-dev.mjs
+?? apps/api/src/clean/github-repository-adapter.mjs
+?? apps/web/src/features/projects/preparation/
+?? apps/web/src/test/project-preparation.test.tsx
+?? docs/evidence/post-p10-development-reliability-20260905/remote-workspace-20260913/
+?? scripts/production-lifecycle.mjs

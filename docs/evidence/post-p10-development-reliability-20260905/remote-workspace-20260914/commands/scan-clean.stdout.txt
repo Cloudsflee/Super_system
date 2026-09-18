@@ -1,0 +1,600 @@
+
+> ai-workspace-system@3.0.0 scan:clean <WORKSPACE>
+> node scripts/v3-clean-architecture-scan.mjs
+
+{
+  "schema_version": "aiws.v3-clean.architecture-scan.v10",
+  "entrypoints": [
+    "apps/api/server.mjs",
+    "apps/gateway/server.mjs",
+    "apps/runner-broker/clean-server.mjs",
+    "apps/windows-native-bridge/server.mjs"
+  ],
+  "files": [
+    "apps/api/server.mjs",
+    "apps/api/clean-server.mjs",
+    "apps/api/src/clean/runtime.mjs",
+    "apps/api/src/clean/config.mjs",
+    "apps/api/src/clean/database.mjs",
+    "apps/api/src/clean/canonical.mjs",
+    "apps/api/src/clean/migrations/001-clean-baseline.mjs",
+    "apps/api/src/clean/migrations/002-identity-acl.mjs",
+    "apps/api/src/clean/migrations/003-project-workflow.mjs",
+    "apps/api/src/clean/migrations/004-context-projection-mcp.mjs",
+    "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs",
+    "apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs",
+    "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+    "apps/api/src/clean/migrations/008-delivery-deployment-importer-operations.mjs",
+    "apps/api/src/clean/migrations/009-final-business-parity-governance.mjs",
+    "apps/api/src/clean/redaction.mjs",
+    "apps/api/src/clean/cas.mjs",
+    "apps/api/src/clean/events.mjs",
+    "apps/api/src/clean/cursor.mjs",
+    "apps/api/src/clean/operations.mjs",
+    "apps/api/src/clean/platform.mjs",
+    "apps/api/src/clean/principal.mjs",
+    "apps/api/src/clean/platform-error.mjs",
+    "apps/api/src/clean/registry.mjs",
+    "apps/api/src/clean/receipts.mjs",
+    "apps/api/src/clean/ownership.mjs",
+    "apps/api/src/clean/authorization.mjs",
+    "apps/api/src/clean/identity.mjs",
+    "apps/api/src/clean/actor-service.mjs",
+    "apps/api/src/clean/identity-helpers.mjs",
+    "apps/api/src/clean/session-service.mjs",
+    "apps/api/src/clean/team-access-service.mjs",
+    "apps/api/src/clean/credential-profile-service.mjs",
+    "apps/api/src/clean/vault.mjs",
+    "apps/api/src/clean/provider-adapters.mjs",
+    "apps/api/src/clean/app-server-adapter.mjs",
+    "apps/api/src/clean/p8/github-adapter.mjs",
+    "apps/api/src/clean/project-workflow.mjs",
+    "apps/api/src/clean/runner-input-provider.mjs",
+    "apps/api/src/clean/project-domain-helpers.mjs",
+    "apps/api/src/clean/project-service.mjs",
+    "apps/api/src/clean/repository-service.mjs",
+    "apps/api/src/clean/workflow-service.mjs",
+    "apps/api/src/clean/outcome-service.mjs",
+    "apps/api/src/clean/context-service.mjs",
+    "apps/api/src/clean/mcp-service.mjs",
+    "apps/api/src/clean/gateway-service.mjs",
+    "apps/api/src/clean/command-dispatcher.mjs",
+    "apps/api/src/clean/assist-service.mjs",
+    "apps/api/src/clean/p5-domain-helpers.mjs",
+    "apps/api/src/clean/files-service.mjs",
+    "apps/api/src/clean/terminal-service.mjs",
+    "apps/api/src/clean/bridge-service.mjs",
+    "apps/api/src/clean/windows-bridge-adapter.mjs",
+    "apps/api/src/clean/runner-service.mjs",
+    "apps/api/src/clean/runner-protocol.mjs",
+    "apps/api/src/clean/execution-service.mjs",
+    "apps/api/src/clean/candidate-workspace.mjs",
+    "apps/api/src/clean/runner-adapters.mjs",
+    "apps/api/src/clean/workflow-adapters.mjs",
+    "apps/api/src/clean/evidence-service.mjs",
+    "apps/api/src/clean/parser-service.mjs",
+    "apps/api/src/clean/parser-protocol.mjs",
+    "apps/api/src/clean/parser-limits.mjs",
+    "apps/api/src/clean/quality-service.mjs",
+    "apps/api/src/clean/outcome-evaluation-service.mjs",
+    "apps/api/src/clean/parser-adapters.mjs",
+    "apps/api/src/clean/parser-docker.mjs",
+    "apps/api/src/clean/p8-service.mjs",
+    "apps/api/src/clean/p8/repository.mjs",
+    "apps/api/src/clean/p8/artifact-operations.mjs",
+    "apps/api/src/clean/p10-service.mjs",
+    "apps/api/src/clean/local-setup-service.mjs",
+    "apps/api/src/clean/github-setup-service.mjs",
+    "apps/api/src/clean/github-repository-adapter.mjs",
+    "apps/api/src/clean/http.mjs",
+    "apps/api/src/clean/web-static.mjs"
+  ],
+  "registry": {
+    "valid": true,
+    "mismatches": [],
+    "rest_count": 293,
+    "mcp_count": 293,
+    "web_count": 293
+  },
+  "ownership": {
+    "valid": true,
+    "missing_tables": [],
+    "unexpected_tables": [],
+    "missing_commands": [],
+    "mismatched_commands": [],
+    "missing_events": [],
+    "mismatched_events": []
+  },
+  "phase_metadata": {
+    "baseline_phase": "P1",
+    "active_phase": "P10",
+    "migration_registry": [
+      {
+        "id": "001-clean-baseline",
+        "version": 1
+      },
+      {
+        "id": "002-identity-acl",
+        "version": 2
+      },
+      {
+        "id": "003-project-workflow",
+        "version": 3
+      },
+      {
+        "id": "004-context-projection-mcp",
+        "version": 4
+      },
+      {
+        "id": "005-assist-files-terminal-bridge",
+        "version": 5
+      },
+      {
+        "id": "006-runner-execution-checkpoint-replay",
+        "version": 6
+      },
+      {
+        "id": "007-evidence-quality-parser-outcome",
+        "version": 7
+      },
+      {
+        "id": "008-delivery-deployment-importer-operations",
+        "version": 8
+      },
+      {
+        "id": "009-final-business-parity-governance",
+        "version": 9
+      }
+    ],
+    "p10_table_owners": [
+      "actors",
+      "aggregate_heads",
+      "aggregate_revisions",
+      "asset_attestations",
+      "asset_blobs",
+      "asset_relations",
+      "asset_versions",
+      "assets",
+      "assist_configurations",
+      "assist_goals",
+      "assist_messages",
+      "assist_references",
+      "assist_review_comments",
+      "assist_sessions",
+      "assist_turns",
+      "attachments",
+      "audit_events",
+      "backup_manifests",
+      "bridge_devices",
+      "bridge_transfers",
+      "brief_revisions",
+      "brief_template_revisions",
+      "brief_templates",
+      "briefs",
+      "cas_objects",
+      "code_changes",
+      "context_document_versions",
+      "context_edges",
+      "context_index_snapshots",
+      "context_nodes",
+      "context_packs",
+      "context_policies",
+      "context_projection_jobs",
+      "context_selections",
+      "context_sources",
+      "credential_refs",
+      "deliveries",
+      "delivery_events",
+      "delivery_policies",
+      "deployment_candidates",
+      "deployment_verifications",
+      "digests",
+      "event_cursors",
+      "events",
+      "exchange_grants",
+      "exchange_requests",
+      "execution_events",
+      "execution_inputs",
+      "execution_stage_checkpoints",
+      "executions",
+      "file_change_batches",
+      "file_change_items",
+      "file_refs",
+      "gateway_forward_receipts",
+      "human_reviews",
+      "idempotency_keys",
+      "import_batches",
+      "import_checkpoints",
+      "import_conflicts",
+      "import_id_map",
+      "job_specs",
+      "mcp_clients",
+      "node_contracts",
+      "operation_links",
+      "operations",
+      "outcome_evaluations",
+      "outcome_requirements",
+      "outcome_waivers",
+      "parser_formats",
+      "parser_runs",
+      "project_acl_entries",
+      "project_deletion_intents",
+      "project_intakes",
+      "project_invitations",
+      "project_memberships",
+      "projects",
+      "provider_profiles",
+      "pull_request_intents",
+      "quality_review_advices",
+      "quality_review_asset_selections",
+      "quality_review_events",
+      "quality_review_reports",
+      "quality_review_runs",
+      "receipt_manifests",
+      "repository_connections",
+      "repository_deletion_intents",
+      "repository_lines",
+      "repository_locks",
+      "repository_targets",
+      "repository_workspaces",
+      "runner_profiles",
+      "runner_receipts",
+      "runtime_approvals",
+      "runtime_user_inputs",
+      "schema_meta",
+      "schema_migrations",
+      "semantic_proposals",
+      "sessions",
+      "task_attempts",
+      "team_memberships",
+      "teams",
+      "terminal_events",
+      "terminal_sessions",
+      "test_results",
+      "traces",
+      "workflow_critic_receipts",
+      "workflow_generation_proposals",
+      "workflow_generations",
+      "workflow_nodes",
+      "workflow_quality_policies",
+      "workflow_revisions",
+      "workflows"
+    ],
+    "authorization_predicate": "authorize(principal, action, project, resource, policy_revision)",
+    "evidence_directory": "docs/evidence/v3-clean-p10-final-governance-20260829",
+    "evidence_present": true
+  },
+  "workspace": {
+    "schema_version": "aiws.v3-clean.workspace-audit.v3",
+    "phase": "P1",
+    "active": {
+      "runtime_entrypoint": "apps/api/server.mjs",
+      "http_composition": "apps/api/clean-server.mjs",
+      "process_scripts": [
+        "dev",
+        "dev:api",
+        "dev:broker",
+        "dev:clean",
+        "start",
+        "start:clean"
+      ]
+    },
+    "deferred": {
+      "package_scripts": [
+        "archive:v23",
+        "audit:parity",
+        "build",
+        "dev:broker",
+        "development:receipt",
+        "evidence:p10",
+        "evidence:p3",
+        "evidence:p31",
+        "evidence:p4",
+        "evidence:p5",
+        "evidence:p6",
+        "evidence:p7",
+        "evidence:p8",
+        "evidence:p9",
+        "fixture:legacy:acceptance",
+        "fixture:legacy:dev-broker",
+        "fixture:legacy:e2e",
+        "fixture:legacy:integration",
+        "fixture:legacy:release-build",
+        "fixture:legacy:release-promote",
+        "fixture:legacy:release-rehearse",
+        "fixture:legacy:security",
+        "fixture:seed-demo",
+        "github:seed-fixture",
+        "probe:development",
+        "test",
+        "test:development",
+        "test:e2e",
+        "test:integration",
+        "test:integration:clean",
+        "test:p10",
+        "test:p2",
+        "test:p3",
+        "test:p31",
+        "test:p4",
+        "test:p5",
+        "test:p6",
+        "test:p7",
+        "test:p8",
+        "test:p9",
+        "test:release",
+        "test:runner-real",
+        "test:security",
+        "test:security:clean",
+        "typecheck",
+        "verify:dev"
+      ],
+      "package_script_roles": {
+        "dev:broker": {
+          "role": "active_process",
+          "phase": "P6"
+        },
+        "fixture:legacy:dev-broker": {
+          "role": "deferred_fixture",
+          "phase": "P6"
+        },
+        "build": {
+          "role": "characterization_gate",
+          "phase": "P9"
+        },
+        "typecheck": {
+          "role": "characterization_gate",
+          "phase": "P9"
+        },
+        "test": {
+          "role": "characterization_gate",
+          "phase": "P2-P10"
+        },
+        "test:p2": {
+          "role": "characterization_gate",
+          "phase": "P2"
+        },
+        "test:p3": {
+          "role": "p3_gate",
+          "phase": "P3"
+        },
+        "test:p31": {
+          "role": "p31_gate",
+          "phase": "P3.1"
+        },
+        "test:p4": {
+          "role": "p4_gate",
+          "phase": "P4"
+        },
+        "test:p5": {
+          "role": "p5_gate",
+          "phase": "P5"
+        },
+        "test:p6": {
+          "role": "p6_gate",
+          "phase": "P6"
+        },
+        "test:p7": {
+          "role": "p7_gate",
+          "phase": "P7"
+        },
+        "test:p8": {
+          "role": "p8_gate",
+          "phase": "P8"
+        },
+        "test:p9": {
+          "role": "p9_gate",
+          "phase": "P9"
+        },
+        "test:p10": {
+          "role": "p10_gate",
+          "phase": "P10"
+        },
+        "audit:parity": {
+          "role": "p10_gate",
+          "phase": "P10"
+        },
+        "evidence:p3": {
+          "role": "p3_evidence",
+          "phase": "P3"
+        },
+        "evidence:p31": {
+          "role": "p31_evidence",
+          "phase": "P3.1"
+        },
+        "evidence:p4": {
+          "role": "p4_evidence",
+          "phase": "P4"
+        },
+        "evidence:p5": {
+          "role": "p5_evidence",
+          "phase": "P5"
+        },
+        "evidence:p6": {
+          "role": "p6_evidence",
+          "phase": "P6"
+        },
+        "evidence:p7": {
+          "role": "p7_evidence",
+          "phase": "P7"
+        },
+        "evidence:p8": {
+          "role": "p8_evidence",
+          "phase": "P8"
+        },
+        "evidence:p9": {
+          "role": "p9_evidence",
+          "phase": "P9"
+        },
+        "evidence:p10": {
+          "role": "p10_evidence",
+          "phase": "P10"
+        },
+        "test:integration": {
+          "role": "layered_gate",
+          "phase": "P3.1"
+        },
+        "test:integration:clean": {
+          "role": "p31_gate",
+          "phase": "P3.1"
+        },
+        "fixture:legacy:integration": {
+          "role": "deferred_fixture",
+          "phase": "historical"
+        },
+        "test:e2e": {
+          "role": "characterization_gate",
+          "phase": "P9"
+        },
+        "test:security": {
+          "role": "layered_gate",
+          "phase": "P3.1"
+        },
+        "test:security:clean": {
+          "role": "p31_gate",
+          "phase": "P3.1"
+        },
+        "fixture:legacy:security": {
+          "role": "deferred_fixture",
+          "phase": "historical"
+        },
+        "test:release": {
+          "role": "characterization_gate",
+          "phase": "P8-P9"
+        },
+        "test:runner-real": {
+          "role": "characterization_gate",
+          "phase": "P6"
+        },
+        "test:development": {
+          "role": "development_gate",
+          "phase": "P10+"
+        },
+        "probe:development": {
+          "role": "development_probe",
+          "phase": "P10+"
+        },
+        "github:seed-fixture": {
+          "role": "deferred_fixture",
+          "phase": "P7"
+        },
+        "verify:dev": {
+          "role": "development_gate",
+          "phase": "P10+"
+        },
+        "development:receipt": {
+          "role": "operations_receipt",
+          "phase": "P10+"
+        },
+        "fixture:seed-demo": {
+          "role": "deferred_fixture",
+          "phase": "P3"
+        },
+        "archive:v23": {
+          "role": "historical_maintenance",
+          "phase": "historical"
+        },
+        "fixture:legacy:acceptance": {
+          "role": "deferred_fixture",
+          "phase": "P2-P9"
+        },
+        "fixture:legacy:e2e": {
+          "role": "deferred_fixture",
+          "phase": "historical"
+        },
+        "fixture:legacy:release-build": {
+          "role": "deferred_fixture",
+          "phase": "P8-P9"
+        },
+        "fixture:legacy:release-rehearse": {
+          "role": "deferred_fixture",
+          "phase": "P8-P9"
+        },
+        "fixture:legacy:release-promote": {
+          "role": "deferred_fixture",
+          "phase": "P8-P9"
+        }
+      },
+      "retired_route_references": {
+        "P1:p1": 1,
+        "P10:clean": 2,
+        "P2-P8:historical domain/runtime input": 2,
+        "P2-P9:historical behavior or future-phase tool": 681,
+        "P2-P9:pre-clean shared contract": 1,
+        "P4:clean": 4,
+        "P5:clean": 2,
+        "P6:clean": 3,
+        "P7:clean": 3,
+        "P8:clean": 1,
+        "P9:clean": 8,
+        "P9:pre-clean Web characterization": 3
+      }
+    },
+    "evidence": {
+      "directory": "docs/evidence/v3-clean-p1-gate-contract-complete-20260819",
+      "verified": true,
+      "workspace_comparison": false
+    },
+    "scope_inventory": {
+      "files": 4187,
+      "classifications": {
+        "governance:P0-P10": 35,
+        "clean:P7": 37,
+        "p1:P1": 65,
+        "fixture:P2-P9": 106,
+        "fixture:P2-P8": 85,
+        "clean:P5": 36,
+        "clean:P4": 23,
+        "clean:P6": 28,
+        "clean:P10": 58,
+        "clean:P8": 31,
+        "clean:P9": 33,
+        "fixture:P6": 6,
+        "fixture:P9": 21,
+        "fixture:P8-P9": 4,
+        "non_product:unscoped research": 88,
+        "archive:historical": 8,
+        "evidence:P0-P10": 3522,
+        "supporting_document:P0-P10": 1
+      },
+      "unclassified": []
+    },
+    "checks": [
+      {
+        "id": "package-process-surface",
+        "valid": true
+      },
+      {
+        "id": "runtime-entrypoints",
+        "valid": true
+      },
+      {
+        "id": "legacy-server-containment",
+        "valid": true
+      },
+      {
+        "id": "retired-route-containment",
+        "valid": true
+      },
+      {
+        "id": "active-document-contracts",
+        "valid": true
+      },
+      {
+        "id": "gate-sync-contract",
+        "valid": true
+      },
+      {
+        "id": "p1-evidence-synchronization",
+        "valid": true
+      },
+      {
+        "id": "workspace-inventory",
+        "valid": true
+      }
+    ],
+    "findings": [],
+    "valid": true
+  },
+  "forbidden_findings": [],
+  "valid": true
+}

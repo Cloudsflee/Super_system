@@ -7,7 +7,7 @@ import {
   WifiOff, Workflow, X
 } from 'lucide-react';
 import { apiV2 } from './api';
-import { AssistPage } from './features/assist';
+import { AssistDrawer, AssistPage } from './features/assist';
 import { ApprovalPage } from './features/approvals';
 import { ConnectionsPage } from './features/connections';
 import { ContextPage, McpSettingsPage } from './features/context';
@@ -28,7 +28,7 @@ import { SettingsPage } from './features/settings';
 import { TerminalPage } from './features/terminal';
 import { FinalBusinessParityPage } from './features/p10';
 import type { Project } from './types';
-import type { WorkspacePageProps, WorkspaceRoute } from './workspace';
+import type { AssistPageContext, TerminalLaunchContext, WorkspacePageProps, WorkspaceRoute } from './workspace';
 import { projectDeepLink } from './api';
 export { projectDeepLink } from './api';
 import { clearWorkspaceScope, queryClient, workspaceQueryKey } from './query';
@@ -126,6 +126,11 @@ function WorkspaceLayout() {
   const [bootstrapFailure, setBootstrapFailure] = useState('');
   const [pendingInteractions, setPendingInteractions] = useState(0);
   const [quickTool, setQuickTool] = useState<Extract<WorkspaceRoute, 'assist' | 'approvals' | 'files' | 'terminals'> | null>(null);
+  const [assistContext, setAssistContext] = useState<AssistPageContext | undefined>(undefined);
+  const [registeredAssistContext, setRegisteredAssistContext] = useState<AssistPageContext | undefined>(undefined);
+  const [assistAttachRequest, setAssistAttachRequest] = useState(0);
+  const attachSequence = useRef(0);
+  const [terminalLaunch, setTerminalLaunch] = useState<TerminalLaunchContext | undefined>(undefined);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const quickToolButtonRef = useRef<HTMLButtonElement>(null);
@@ -243,6 +248,36 @@ function WorkspaceLayout() {
     setQuickTool(tool);
   }, []);
 
+  const registerAssistContext = useCallback((context: AssistPageContext | undefined) => {
+    setRegisteredAssistContext(context);
+    if (!context) { setAssistContext(undefined); setAssistAttachRequest(0); }
+  }, []);
+
+  useEffect(() => { setAssistContext(undefined); setAssistAttachRequest(0); }, [page, projectId]);
+  useEffect(() => { setTerminalLaunch(undefined); }, [projectId]);
+
+  const openAssist = useCallback((context?: AssistPageContext, attach = false) => {
+    setAssistContext(context || (registeredAssistContext?.route === page && registeredAssistContext.projectId === projectId ? registeredAssistContext : undefined) || { route: page, projectId: projectId || null });
+    setAssistAttachRequest(attach ? ++attachSequence.current : 0);
+    openQuickTool('assist');
+  }, [openQuickTool, page, projectId, registeredAssistContext]);
+
+  const openTerminal = useCallback((context?: TerminalLaunchContext) => {
+    setTerminalLaunch(context);
+    openQuickTool('terminals');
+  }, [openQuickTool]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j') {
+        event.preventDefault();
+        if (setupReady) { if (quickTool === 'assist') closeQuickTool(); else openAssist(); }
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [openAssist, closeQuickTool, quickTool, setupReady]);
+
   useEffect(() => {
     if (!menuOpen) return undefined;
     const priorOverflow = document.body.style.overflow;
@@ -330,7 +365,10 @@ function WorkspaceLayout() {
   }
 
   const Page = PAGES[page];
-  const pageProps: WorkspacePageProps = { projectId, selectedProject, selectProject, refreshProjects: async () => { await loadProjects(); }, notify, navigate, navigateProject, setupReady: Boolean(setupReady), refreshSetup };
+  const currentAssistContext = registeredAssistContext?.projectId === projectId && registeredAssistContext.route === page
+    ? registeredAssistContext : assistContext?.projectId === projectId && assistContext.route === page
+      ? assistContext : { route: page, projectId: projectId || null };
+  const pageProps: WorkspacePageProps = { projectId, selectedProject, selectProject, refreshProjects: async () => { await loadProjects(); }, notify, navigate, navigateProject, setupReady: Boolean(setupReady), refreshSetup, assistContext: currentAssistContext, assistAttachRequest, registerAssistContext, openAssist, openTerminal, terminalLaunch, online };
   const projectToolsDisabled = !setupReady || !projectId;
 
   return <div className="app-shell" data-route={page} data-setup-ready={String(setupReady)} data-setup-status={setup?.status || 'pending'}>
@@ -347,10 +385,10 @@ function WorkspaceLayout() {
         <div className="page-title"><span>{PAGE_LABELS[page]}</span>{eventState !== 'idle' && <small className={`sync-state ${eventState}`} role="status">{statusLabel(eventState)}</small>}</div>
         <label className="project-switcher"><span>项目</span><div><select value={projectId} disabled={!setupReady} onChange={(event) => selectProject(event.target.value)} aria-label="当前项目">{!projects.length && <option value="">无项目</option>}{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select><ChevronDown size={15} /></div></label>
         <div className="topbar-tools" aria-label="项目工具">
-          <button ref={quickToolButtonRef} className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="Assist" title="Assist" onClick={() => openQuickTool('assist')}><MessageSquare size={17} /></button>
+          <button ref={quickToolButtonRef} className="icon-button topbar-tool" disabled={!setupReady} aria-label="Assist" title="Assist (Ctrl/Cmd + J)" onClick={() => openAssist()}><MessageSquare size={17} /></button>
           <button className="icon-button topbar-tool topbar-approval" disabled={projectToolsDisabled} aria-label={`审批中心，${pendingInteractions} 项待处理`} title="审批中心" onClick={() => openQuickTool('approvals')}><ShieldCheck size={17} />{pendingInteractions > 0 && <span>{pendingInteractions > 99 ? '99+' : pendingInteractions}</span>}</button>
           <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="文件" title="文件" onClick={() => openQuickTool('files')}><Paperclip size={17} /></button>
-          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="终端" title="终端" onClick={() => openQuickTool('terminals')}><TerminalIcon size={17} /></button>
+          <button className="icon-button topbar-tool" disabled={projectToolsDisabled} aria-label="终端" title="终端" onClick={() => { setTerminalLaunch(undefined); openQuickTool('terminals'); }}><TerminalIcon size={17} /></button>
           <OutboxStatus actorId={sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor'} teamId={String((selectedProject as Project & { team_id?: string } | undefined)?.team_id || 'default-team')} projectId={projectId} />
         </div>
         {!online && <span className="network-pill offline" role="status"><WifiOff size={14} />离线</span>}
@@ -378,9 +416,12 @@ function QuickToolDrawer({ tool, pageProps, onClose }: { tool: Extract<Workspace
     };
     document.addEventListener('keydown', onKeyDown, true);
     return () => { cancelAnimationFrame(focus); document.removeEventListener('keydown', onKeyDown, true); };
-  }, []);
+  }, [tool]);
   const Page = PAGES[tool];
-  return <div className="quick-tool-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside ref={ref} className="quick-tool-drawer" role="dialog" aria-modal="true" aria-label={`${PAGE_LABELS[tool]} 抽屉`}><header><strong>{PAGE_LABELS[tool]}</strong><div><button className="button" onClick={() => { window.location.hash = pageProps.projectId ? projectDeepLink(pageProps.projectId, tool) : `#/${tool}`; onClose(); }}>打开完整页面</button><button className="icon-button" aria-label="关闭工具抽屉" title="关闭" onClick={onClose}><X size={16} /></button></div></header><div className="quick-tool-content"><Page {...pageProps} /></div></aside></div>;
+  const page = tool === 'assist'
+    ? <AssistDrawer {...pageProps} />
+    : <Page {...pageProps} />;
+  return <div className="quick-tool-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside ref={ref} className={`quick-tool-drawer${tool === 'assist' ? ' assist-quick-tool' : ''}`} role="dialog" aria-modal="true" aria-label={`${PAGE_LABELS[tool]} 抽屉`}><header><strong>{PAGE_LABELS[tool]}</strong><div><button className="button" onClick={() => { window.location.hash = pageProps.projectId ? projectDeepLink(pageProps.projectId, tool) : `#/${tool}`; onClose(); }}>打开完整页面</button><button className="icon-button" aria-label="关闭工具抽屉" title="关闭" onClick={onClose}><X size={16} /></button></div></header><div className="quick-tool-content">{page}</div></aside></div>;
 }
 
 function RouteErrorBoundary() {

@@ -44,6 +44,7 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'docs/architecture/v3-clean-development-plan.md',
     'docs/testing.md',
     'scripts/lib/v3-clean-p1-scope.mjs',
+    'scripts/production-lifecycle.mjs',
     'scripts/v3-clean-workspace-audit.mjs',
     'scripts/v3-clean-architecture-scan.mjs',
     'scripts/catalog-loader.mjs',

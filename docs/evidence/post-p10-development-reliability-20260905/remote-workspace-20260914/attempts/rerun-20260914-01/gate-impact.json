@@ -1,0 +1,40 @@
+{
+  "schema_version": "aiws.post-p10.remote-workspace.gate-impact.v1",
+  "phase": "post-P10 D-040 maintenance",
+  "owner": "Repository/Platform",
+  "trigger": [
+    "repository transport implementation",
+    "workspace lifecycle behavior",
+    "new P10 behavior test",
+    "Catalog behavior-test mapping",
+    "testing/architecture documentation"
+  ],
+  "rules": {
+    "GS-001": "reviewed",
+    "GS-002": "reviewed",
+    "GS-003": "reviewed",
+    "GS-004": "reviewed",
+    "GS-005": "reviewed",
+    "GS-006": "reviewed",
+    "GS-007": "reviewed"
+  },
+  "selected_commands": [
+    "pnpm check",
+    "pnpm audit:p1",
+    "pnpm scan:clean",
+    "pnpm audit:parity",
+    "pnpm test:p3",
+    "pnpm test:p8",
+    "pnpm test:p10",
+    "pnpm test:integration:clean",
+    "pnpm test:security:clean",
+    "pnpm --filter @aiws/web test",
+    "pnpm build",
+    "pnpm verify:dev -- --base 0fd9eb91a14dc53ac944e8ada608c8d958728ff8",
+    "pnpm verify"
+  ],
+  "catalog_status_before": "27/0/27",
+  "catalog_status_after": "27/0/27",
+  "formal_p10_evidence_changed": false,
+  "promotion": false
+}

@@ -373,8 +373,9 @@ function p5DispatchArguments(command, params, url, body, schema) {
       if (value == null) continue;
       const definition = properties[key] || {};
       if (definition.type === 'integer' || definition.anyOf?.some((item) => item.type === 'integer')) {
-        if (!/^\d+$/.test(value)) throw new HttpError('schema_invalid', `${key} must be an integer`, {}, 400, false);
-        args[key] = Number(value);
+        if (/^\d+$/.test(value)) args[key] = Number(value);
+        else if (definition.anyOf?.some((item) => item.type === 'string')) args[key] = value;
+        else throw new HttpError('schema_invalid', `${key} must be an integer`, {}, 400, false);
       } else if (definition.type === 'boolean' || definition.anyOf?.some((item) => item.type === 'boolean')) {
         if (value !== 'true' && value !== 'false') throw new HttpError('schema_invalid', `${key} must be a boolean`, {}, 400, false);
         args[key] = value === 'true';
@@ -802,7 +803,7 @@ async function handleP3Route({ entry, params, url, req, res, requestId, runtime,
     case 'repository.line.list': data = { lines: service.listRepositoryLines(params.project_id, actor) }; break;
     case 'repository.line.reconcile': data = await service.reconcileRepositoryLine(params.id, body, actor); break;
     case 'repository.workspace.list': data = { workspaces: service.listRepositoryWorkspaces(params.project_id, actor) }; break;
-    case 'repository.workspace.create': data = await service.createRepositoryWorkspace(params.project_id, body, actor); status = 201; break;
+    case 'repository.workspace.create': data = await service.createRepositoryWorkspace(params.project_id, body, actor); status = body.defer === true ? 202 : 201; break;
     case 'repository.workspace.refresh': data = await service.refreshRepositoryWorkspace(params.id, body, actor); break;
     case 'repository.workspace.lock': data = await service.lockRepositoryWorkspace(params.id, body, actor); break;
     case 'repository.workspace.release': data = await service.releaseRepositoryWorkspace(params.id, body, actor); break;

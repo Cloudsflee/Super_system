@@ -1,0 +1,121 @@
+{
+  "schema_version": "aiws.post-p10.remote-workspace.manifest.v1",
+  "baseline_commit": "0fd9eb91a14dc53ac944e8ada608c8d958728ff8",
+  "phase": "post-P10 D-040 maintenance",
+  "owner": "Repository/Platform",
+  "target": "GitHub authenticated Repository transport and Workspace materialization",
+  "non_target": [
+    "existing Web/project-preparation changes",
+    "P1-P10 formal Evidence",
+    "Catalog status",
+    "database migrations",
+    "production volumes/pointers"
+  ],
+  "files": [
+    {
+      "path": "apps/api/src/clean/config.mjs",
+      "baseline_sha256": "c213f8c973f8348db6c0907df5e8b2a71c38eeb5236be87487884c3da9c12734",
+      "modified_sha256": "42960a0fd9c92fb0f093d2bd3444bbd737984dcfc69e38556598a80c7234c95d",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "apps/api/src/clean/github-repository-adapter.mjs",
+      "baseline_sha256": null,
+      "modified_sha256": "82687d390e2d6977f8f63a0e9d4eace68220f787019e237b0e48cd0c66cc4a67",
+      "baseline_present": false,
+      "modified_present": true
+    },
+    {
+      "path": "apps/api/src/clean/p10-service.mjs",
+      "baseline_sha256": "e70abca43c87e5bb5797afac99d6a6aa0aafa376339bb21e529e9ba49d64c4da",
+      "modified_sha256": "f1c9ca69b000619dc06161b3d1aca8fe02ea9c989c25d76ee5a9aef04fc57f20",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "apps/api/src/clean/p8/github-adapter.mjs",
+      "baseline_sha256": "fe04716eef46c040e582a159f9c79cf91517c47140dad6686d86b3f6f9a9ddaf",
+      "modified_sha256": "7bc75cb9d947a5c57576a309fd95a9eb46ad30b2602831c6459ec0af820c0f47",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "apps/api/src/clean/p8/repository.mjs",
+      "baseline_sha256": "a732a16ed149ae4a9ff55e74132c54485c497475b7b90c87b9b8772d8786a13b",
+      "modified_sha256": "3c17bd0c87aa9f535052bbab39200bd58444671211e9266c8893e2ee946588e9",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "apps/api/src/clean/project-workflow.mjs",
+      "baseline_sha256": "7dfc354f4af0a0d55d512fd5da2dbd16cd60666d63147edc31292530842b7181",
+      "modified_sha256": "3276059b93a1e3ce9e560b3e3b7d61d5469f375f2cdb3a9583abab645866b933",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "apps/api/src/clean/runtime.mjs",
+      "baseline_sha256": "4f07ceccfb3fe5559197cf1d40c69bcc30c24ecb6d78789df28de95f3c39687e",
+      "modified_sha256": "3319d27a168b56d1c12f0623f11608be8a348bfc442a06b246247d68a7aae90c",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "docs/architecture/decision-log.md",
+      "baseline_sha256": "b9ae2bb56a4058084776c6191f8a00223e3e2cac6f2c7451c9eb19442d25af5c",
+      "modified_sha256": "ac246a096b9d5aa3c999fb0b035b6b0070c2f69906166ed1385d120d3be98953",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "docs/architecture/v23-capability-matrix.md",
+      "baseline_sha256": "4f0feb28afd3dd029cbcc13e552a3d5d37e0bf4f518540a8ef4e1bae09a6cc94",
+      "modified_sha256": "a7056d918e534219eb2f522d4d9ec1912639b3f7d9fb43f476bbe007bc8fdd7e",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "baseline_sha256": "655a06948ad03052923944eefac588c69596ab7544c0a4592b109fe4effd5a7a",
+      "modified_sha256": "a4e5a72f81923470e6b612c3e6cfb5809e4741f434926a5ab2bcee76dd848a10",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "docs/testing.md",
+      "baseline_sha256": "8d2c5710a0fb63818e0b30e537b43c854c1a3b0d9b2165b64fb7a8d2822c3911",
+      "modified_sha256": "a12e12fc14f9f22b08fff8f0a17bdffe5df63edfb87afb487c83346765bc5674",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "feature-catalog.clean.json",
+      "baseline_sha256": "b888c2563c7cf297a1869475149b389234ffc0709677f01c13ba199b4ea19bc0",
+      "modified_sha256": "7da027684771d2c9b1fba3dbf3049bb0ee4236ea676e2f03500385047ff1ccf6",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "feature-catalog.json",
+      "baseline_sha256": "696ad587a1915ea3ed1e1eaacd60c5d23536cb09f76a1912d1b911203164f006",
+      "modified_sha256": "f2f9298e29091a5af760c714505bc85acf0a097b262e1da40a41825e5c50d27c",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "packages/contracts/src/clean-v2.mjs",
+      "baseline_sha256": "4cd8b4f464b4b78c635cea977f52edd823c9467d023d281d1da36ca051581883",
+      "modified_sha256": "4cd8b4f464b4b78c635cea977f52edd823c9467d023d281d1da36ca051581883",
+      "baseline_present": true,
+      "modified_present": true
+    },
+    {
+      "path": "tests/p10/remote-workspace-auth.test.mjs",
+      "baseline_sha256": null,
+      "modified_sha256": "43188bf62dc80a54558654cf0940dd8914fde2f4b8fe1f3202468057622eff47",
+      "baseline_present": false,
+      "modified_present": true
+    }
+  ]
+}

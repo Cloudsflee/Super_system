@@ -1,4 +1,7 @@
 export { AssistPage } from './AssistPage';
+export { AssistDrawer } from './AssistDrawer';
+export { useAssistWorkspace } from './useAssistWorkspace';
+export type { AssistSurfaceProps } from './types';
 export { AssistMarkdown } from './AssistMarkdown';
 export { default as AttachmentPreview } from './AttachmentPreview';
 export { default as OfficePreview } from './OfficePreview';

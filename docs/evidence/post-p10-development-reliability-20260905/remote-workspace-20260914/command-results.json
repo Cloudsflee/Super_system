@@ -1,0 +1,161 @@
+{
+  "schema_version": "aiws.post-p10.remote-workspace.command-results.v1",
+  "records": [
+    {
+      "id": "check",
+      "command": "pnpm",
+      "args": [
+        "check"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "e5a35b4eadb71271274fe7c288a36f6a694518816118c3768baa7e7403d0d02c",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_tail": "> ai-workspace-system@3.0.0 check <WORKSPACE>\r\n> node scripts/check.mjs\r\n\r\ncheck passed: 512 source files, 405 syntax files, 60 scripts",
+      "stderr_tail": ""
+    },
+    {
+      "id": "audit-p1",
+      "command": "pnpm",
+      "args": [
+        "audit:p1"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "b08782200f8230b026c2d365b36b850458995210db237ebbe63071791635f5b6",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_tail": "{\r\n      \"id\": \"workspace-inventory\",\r\n      \"valid\": true\r\n    }\r\n  ],\r\n  \"findings\": [],\r\n  \"valid\": true\r\n}",
+      "stderr_tail": ""
+    },
+    {
+      "id": "scan-clean",
+      "command": "pnpm",
+      "args": [
+        "scan:clean"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "997b5a3941165d1adf6fa66128d83021c2b6ed287cb9b272ee9af5517f6fe900",
+      "stderr_sha256": "9a0650a27111b542cdf9f683645e8654bdbf125004726b1fde8d110d59b80361",
+      "stdout_tail": "}\r\n    ],\r\n    \"findings\": [],\r\n    \"valid\": true\r\n  },\r\n  \"forbidden_findings\": [],\r\n  \"valid\": true\r\n}",
+      "stderr_tail": "(node:7108) ExperimentalWarning: SQLite is an experimental feature and might change at any time\r\n(Use `node --trace-warnings ...` to show where the warning was created)"
+    },
+    {
+      "id": "audit-parity",
+      "command": "pnpm",
+      "args": [
+        "audit:parity"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "82c07fb34bae1a476d43be6394769a0834a3b21fb7dc1b8c74cc72b60b702e1b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_tail": "\"collections\": 98,\r\n    \"web_routes\": 11,\r\n    \"optimization_packages\": 7\r\n  },\r\n  \"business_groups\": 19,\r\n  \"gaps\": 0,\r\n  \"findings\": []\r\n}",
+      "stderr_tail": ""
+    },
+    {
+      "id": "test-p3",
+      "command": "pnpm",
+      "args": [
+        "test:p3"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "793201a9bc037716bf1ee073c6bdc7abeb94c344f522b035211fd404fbd4cb7d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_tail": "ℹ tests 13\r\nℹ suites 0\r\nℹ pass 13\r\nℹ fail 0\r\nℹ cancelled 0\r\nℹ skipped 0\r\nℹ todo 0\r\nℹ duration_ms 2133.8209",
+      "stderr_tail": ""
+    },
+    {
+      "id": "test-p8",
+      "command": "pnpm",
+      "args": [
+        "test:p8"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "8257a797441798f978aa077a4a0e344c119cfdec2d7fb0cf82fc46effb41d897",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_tail": "ℹ tests 18\r\nℹ suites 0\r\nℹ pass 18\r\nℹ fail 0\r\nℹ cancelled 0\r\nℹ skipped 0\r\nℹ todo 0\r\nℹ duration_ms 4955.8697",
+      "stderr_tail": ""
+    },
+    {
+      "id": "test-p10",
+      "command": "pnpm",
+      "args": [
+        "test:p10"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "6bd37e9713d2c18c54f83ef2cda924bedc19e5f3e2169384d3738d03ddd8f6d4",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_tail": "ℹ tests 93\r\nℹ suites 0\r\nℹ pass 93\r\nℹ fail 0\r\nℹ cancelled 0\r\nℹ skipped 0\r\nℹ todo 0\r\nℹ duration_ms 8065.7029",
+      "stderr_tail": ""
+    },
+    {
+      "id": "integration-clean",
+      "command": "pnpm",
+      "args": [
+        "test:integration:clean"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "85e4db2ef103a21d62726b54a4a0f4177dc6a332939dcc891d2a79784e677724",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_tail": "{\r\n      \"layer\": \"clean\",\r\n      \"passed\": true,\r\n      \"removed\": 0\r\n    }\r\n  ],\r\n  \"receipt\": null\r\n}",
+      "stderr_tail": ""
+    },
+    {
+      "id": "security-clean",
+      "command": "pnpm",
+      "args": [
+        "test:security:clean"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "865f693f1718c2e3a3a7495b35b6c1cf3f2df009439a8e077c5d3d2886bd0acb",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_tail": "{\r\n      \"layer\": \"clean\",\r\n      \"passed\": true,\r\n      \"removed\": 0\r\n    }\r\n  ],\r\n  \"receipt\": null\r\n}",
+      "stderr_tail": ""
+    },
+    {
+      "id": "web-test",
+      "command": "pnpm",
+      "args": [
+        "--filter",
+        "@aiws/web",
+        "test"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "534548ed556f7733ae9531c7aa2538ec74b2d8a246363294fdb91907ba526d6d",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_tail": "✓ src/test/post-closure-restoration.test.tsx (3 tests) 39ms\r\n ✓ src/test/events-p9.test.ts (2 tests) 22ms\r\n\r\n Test Files  23 passed (23)\r\n      Tests  84 passed (84)\r\n   Start at  21:17:03\r\n   Duration  29.34s (transform 682ms, setup 4.04s, collect 3.28s, tests 11.71s, environment 6.61s, prepare 1.23s)",
+      "stderr_tail": ""
+    },
+    {
+      "id": "build",
+      "command": "pnpm",
+      "args": [
+        "build"
+      ],
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "stdout_sha256": "f733656a510cc0f86319795c14a294eaac5565c568634f7ca1262277ce99ef52",
+      "stderr_sha256": "b158bdbc1bf898b48b62147a7c7a5c8cdc25e03eef5fb5c1c63ae29f88a92d11",
+      "stdout_tail": "✓ built in 112ms\r\n\r\nPWA v1.3.0\r\nmode      injectManifest\r\nformat:   es\r\nprecache  6 entries (1017.47 KiB)\r\nfiles generated\r\n  dist/sw.js",
+      "stderr_tail": "[plugin vite:reporter] \r\n(!) <WORKSPACE>/apps/web/src/api.ts is dynamically imported by <WORKSPACE>/apps/web/src/offline/OutboxStatus.tsx but also statically imported by <WORKSPACE>/apps/web/src/App.tsx, <WORKSPACE>/apps/web/src/features/approvals/ApprovalPage.tsx, <WORKSPACE>/apps/web/src/features/assist/AssistPage.tsx, <WORKSPACE>/apps/web/src/features/assist/AttachmentPreview.tsx, <WORKSPACE>/apps/web/src/features/assist/OfficePreview.tsx, <WORKSPACE>/apps/web/src/features/assist/PdfPreview.tsx, <WORKSPACE>/apps/web/src/features/connections/ConnectionsPage.tsx, <WORKSPACE>/apps/web/src/features/context/ContextPage.tsx, <WORKSPACE>/apps/web/src/features/context/McpSettings.tsx, <WORKSPACE>/apps/web/src/features/delivery/DeliveryPage.tsx, <WORKSPACE>/apps/web/src/features/evidence/EvidencePage.tsx, <WORKSPACE>/apps/web/src/features/execution/ExecutionP7Panels.tsx, <WORKSPACE>/apps/web/src/features/execution/ExecutionPage.tsx, <WORKSPACE>/apps/web/src/features/execution/QualityPolicyPanel.tsx, <WORKSPACE>/apps/web/src/features/files/FilesDrawer.tsx, <WORKSPACE>/apps/web/src/features/identity/IdentityAccessPage.tsx, <WORKSPACE>/apps/web/src/features/operations/OperationsPage.tsx, <WORKSPACE>/apps/web/src/features/outcome/OutcomePage.tsx, <WORKSPACE>/apps/web/src/features/p10/FinalBusinessParityPage.tsx, <WORKSPACE>/apps/web/src/features/project/ProjectOnboardingPage.tsx, <WORKSPACE>/apps/web/src/features/project/ProjectWorkflowPage.tsx, <WORKSPACE>/apps/web/src/features/projects/preparation/index.tsx, <WORKSPACE>/apps/web/src/features/settings/BriefTemplatesPanel.tsx, <WORKSPACE>/apps/web/src/features/setup/CleanSetupPage.tsx, <WORKSPACE>/apps/web/src/features/setup/CodexDiscoveryPicker.tsx, <WORKSPACE>/apps/web/src/features/setup/CodexSetup.tsx, <WORKSPACE>/apps/web/src/features/setup/GithubSetup.tsx, <WORKSPACE>/apps/web/src/features/setup/SystemOnboarding.tsx, <WORKSPACE>/apps/web/src/features/terminal/TerminalPage.tsx, dynamic import will not move module into another chunk.\r\n\r\n\r\n(!) Some chunks are larger than 500 kB after minification. Consider:\r\n- Using dynamic import() to code-split the application\r\n- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks\r\n- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit."
+    }
+  ]
+}

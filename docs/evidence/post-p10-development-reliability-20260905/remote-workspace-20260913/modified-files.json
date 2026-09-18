@@ -1,0 +1,9 @@
+[
+  "apps/api/src/clean/p8/github-adapter.mjs",
+  "apps/api/src/clean/github-repository-adapter.mjs",
+  "apps/api/src/clean/runtime.mjs",
+  "apps/api/src/clean/project-workflow.mjs",
+  "feature-catalog.clean.json",
+  "feature-catalog.json",
+  "packages/contracts/src/clean-v2.mjs"
+]

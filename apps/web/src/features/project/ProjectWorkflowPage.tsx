@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
-  AlertTriangle, Check, CircleAlert, GitBranch, LoaderCircle, Play, Plus, RefreshCw,
+  AlertTriangle, Check, CircleAlert, GitBranch, LoaderCircle, MessageSquare, Play, Plus, RefreshCw,
   RotateCcw, Save, ShieldAlert, Square, Workflow as WorkflowIcon
 } from 'lucide-react';
 import { ApiError, apiV2, mutateOfflineV2, mutateV2, useWorkbenchOnline, workbenchError, type ApiV2Envelope } from '../../api';
@@ -10,6 +10,7 @@ import { WorkflowEditor, parseWorkflowGraph, validateWorkflowGraph, normalizeWor
 import { ExecutionLauncher, type RunnerProfile } from '../execution/ExecutionPage';
 import type { WorkspacePageProps } from '../../workspace';
 import { commandLabel, errorCodeLabel, kindLabel, statusLabel } from '../../i18n';
+import { PreparationPanel } from '../projects/preparation';
 
 type Section = 'overview' | 'intake' | 'brief' | 'repository' | 'workflow';
 type LoadState = 'loading' | 'ready' | 'empty' | 'denied' | 'error';
@@ -47,16 +48,22 @@ export function ProjectWorkflowPage(props: WorkspacePageProps & { initialSection
   return <ProjectWorkflowWorkspace key={`${actor}:${id}`} {...props} projectId={id} />;
 }
 
-function ProjectWorkflowWorkspace({ projectId, selectedProject, selectProject, refreshProjects, notify, setupReady, navigate, navigateProject, initialSection }: WorkspacePageProps & { initialSection?: Section }) {
+function ProjectWorkflowWorkspace({ projectId, selectedProject, selectProject, refreshProjects, notify, setupReady, navigate, navigateProject, openAssist, registerAssistContext, assistContext: pageContext, initialSection }: WorkspacePageProps & { initialSection?: Section }) {
   const [section, setSection] = useState<Section>(initialSection || 'overview');
   useEffect(() => { if (initialSection) setSection(initialSection); }, [initialSection]);
   const [showArchived, setShowArchived] = useState(false);
   const selectedId = projectId || selectedProject?.id || '';
   const data = useProjectWorkflowData(selectedId, setupReady !== false, showArchived);
-  const { project, projects, brief, intake, connections, lines, workflow, generations, requirements, profiles, runnerProfiles, contextPacks, loadProjects } = data;
+  const { project, projects, brief, intake, connections, lines, workspaces, workflow, generations, requirements, profiles, runnerProfiles, contextPacks, loadProjects } = data;
   const loadProject = data.refresh;
   const online = useWorkbenchOnline();
   const [briefUnsaved, setBriefUnsaved] = useState(false);
+  const pageRoute = pageContext?.route || (initialSection === 'brief' ? 'brief' : 'projects');
+  useEffect(() => {
+    if (section !== 'brief') return;
+    registerAssistContext?.({ route: pageRoute, projectId: selectedId || null, resourceType: briefUnsaved ? undefined : 'brief', resourceId: briefUnsaved || !brief?.current_revision ? undefined : selectedId, revision: brief?.current_revision || null, contentHash: brief?.current?.content_sha256 || null, label: briefUnsaved ? '未保存 Brief 草稿' : '当前 Brief' });
+    return () => registerAssistContext?.(undefined);
+  }, [pageRoute, section, selectedId, briefUnsaved, brief?.current_revision, brief?.current?.content_sha256, registerAssistContext]);
   const [workflowDirty, setWorkflowDirty] = useState(false);
   const [workflowQueued, setWorkflowQueued] = useState(false);
   const workflowBase = useRef<number | undefined>(undefined);
@@ -267,10 +274,12 @@ function ProjectWorkflowWorkspace({ projectId, selectedProject, selectProject, r
   const confirmedBrief = Boolean(confirmedRevision && confirmedRevision === (brief?.current_revision || brief?.current?.revision || project?.current_brief_revision));
   const savedWorkflow = Boolean(workflow?.current_revision);
   const availableProviders = profiles.filter(profile => profile.provider === 'codex' && profile.status === 'available' && profile.lifecycle_status !== 'disabled');
-  const generationReasons = [!online && '恢复连接后可用', !confirmedBrief && '请先确认当前 Brief', briefUnsaved && '请先保存 Brief 修改', !savedWorkflow && '请先保存 Workflow 草稿', workflowDirty && '请先保存或放弃 Workflow 修改', !availableProviders.some(profile => profile.id === providerProfileId) && '请选择可用 Provider Profile'].filter(Boolean);
+  const readyWorkspace = workspaces.find(item => ['ready', 'released', 'locked'].includes(item.status));
+  const readyPack = contextPacks.find(item => item.status === 'sealed');
+  const generationReasons = [!online && '恢复连接后可用', !confirmedBrief && '请先确认当前 Brief', briefUnsaved && '请先保存 Brief 修改', !savedWorkflow && '请先保存 Workflow 草稿', workflowDirty && '请先保存或放弃 Workflow 修改', !readyWorkspace && '请先完成仓库工作区准备', !readyPack && '请先封存 Context Pack', !availableProviders.some(profile => profile.id === providerProfileId) && '请选择可用 Provider Profile'].filter(Boolean);
   const startGeneration = (mode: 'initial' | 'replan' = 'initial') => {
     if (generationReasons.length) return Promise.resolve(null);
-    return runMutation('Generation', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/workflow-generations`, { mode, provider_profile_id: providerProfileId }, 'POST', project?.revision));
+    return runMutation('Generation', () => mutateV2(`/api/v2/projects/${encodeURIComponent(selectedId)}/workflow-generations`, { mode, provider_profile_id: providerProfileId, repository_workspace_id: readyWorkspace?.id, context_pack_id: readyPack?.id }, 'POST', project?.revision));
   };
   const generationAction = (action: 'critic' | 'retry' | 'cancel' | 'apply', generation: Generation) => {
     if (!online || busy) return;
@@ -304,6 +313,7 @@ function ProjectWorkflowWorkspace({ projectId, selectedProject, selectProject, r
     <div className="project-workflow-tabs" role="tablist" aria-label="项目工作流视图">{sections.map((item) => <button key={item.id} role="tab" aria-selected={section === item.id} className={section === item.id ? 'active' : ''} onClick={() => setSection(item.id)}>{item.label}</button>)}</div>
 
     {section === 'overview' && <div className="project-workflow-grid">
+      <PreparationPanel projectId={selectedId} onReady={(packId) => showResult(`Context Pack ${packId} 已封存`)} onOpenStep={() => undefined} />
       <section className="panel"><PanelTitle title="项目状态" meta={`修订 ${project?.revision || 0}`} /><dl className="project-facts"><div><dt>团队</dt><dd className="mono">{project?.team_id || '由 ACL 解析'}</dd></div><div><dt>引导状态</dt><dd><Status value={project?.onboarding_state} /></dd></div><div><dt>Brief</dt><dd>r{project?.current_brief_revision || 0} {project?.confirmed_brief_revision ? `· 已确认 r${project.confirmed_brief_revision}` : ''}</dd></div><div><dt>Workflow</dt><dd>r{project?.current_workflow_revision || workflow?.current_revision || 0}</dd></div></dl><div className="project-edit-grid"><label><span>名称</span><input aria-label="名称" value={projectName} onChange={(event) => setProjectName(event.target.value)} /></label><label><span>说明</span><input aria-label="说明" value={projectDescription} onChange={(event) => setProjectDescription(event.target.value)} /></label><button className="button" disabled={!projectName.trim() || busy === 'Project'} onClick={() => void updateProject()}><Save size={15} />保存</button></div></section>
       <section className="panel"><PanelTitle title="项目列表" meta={`${projects.length} 个可见项目`} action={<button className="button" onClick={() => setShowArchived((value) => !value)}>{showArchived ? '隐藏归档项目' : '显示归档项目'}</button>} /><div className="compact-list">{projects.map((item) => <div key={item.id} className={`compact-row ${item.id === selectedId ? 'selected' : ''}`}><span><strong>{item.name}</strong><small className="mono">{item.id} · r{item.revision}</small></span><Status value={item.status} /><div className="row-actions">{item.status === 'archived' ? <button className="icon-button" title="恢复项目" aria-label={`恢复项目 ${item.name}`} onClick={() => void restoreProject(item)}><RefreshCw size={14} /></button> : <button className="icon-button" title="归档项目" aria-label={`归档项目 ${item.name}`} onClick={() => void archiveProject(item)}><Square size={14} /></button>}</div></div>)}{!projects.length && <div className="list-empty">暂无可见项目</div>}</div></section>
       <section className="panel"><PanelTitle title="结果要求" meta={`${requirements.length} 条规则`} /><div className="compact-list">{requirements.map((item) => <div key={item.id} className="compact-row"><span><strong>{item.requirement_key}</strong><small>Workflow r{item.workflow_revision} · r{item.revision}</small></span></div>)}{!requirements.length && <div className="list-empty">暂无结果要求</div>}</div><form className="inline-form" onSubmit={(event) => { event.preventDefault(); void createRequirement(); }}><label><span>要求标识</span><input aria-label="要求标识" value={requirementKey} onChange={(event) => setRequirementKey(event.target.value)} placeholder="acceptance.core" required /></label><button className="button" disabled={busy === 'Requirement'}><Plus size={15} />添加</button></form></section>
@@ -312,7 +322,7 @@ function ProjectWorkflowWorkspace({ projectId, selectedProject, selectProject, r
 
     {section === 'intake' && <section className="panel"><PanelTitle title="来源接入" meta={`修订 ${intake?.revision || 0} · 尝试 ${intake?.attempt || 0}`} /><div className="workflow-status-line"><Status value={intake?.status} />{intake?.error_code && <span className="fault-text"><CircleAlert size={14} />{errorCodeLabel(intake.error_code)}</span>}</div>{intake?.status === 'failed' && intake.error_code === 'source_drift' && <div className="state-banner error" data-testid="project-workflow-drift"><CircleAlert size={16} /><span>{message || '检测到源版本漂移，请对账后重试。'}</span></div>}<div className="segmented" role="group" aria-label="来源接入模式"><button className={intakeMode === 'brainstorm' ? 'active' : ''} onClick={() => setIntakeMode('brainstorm')}>从零构思</button><button className={intakeMode === 'existing' ? 'active' : ''} onClick={() => setIntakeMode('existing')}>已有来源</button></div>{intakeMode === 'existing' && <label><span>来源地址</span><input aria-label="来源地址" value={sourceLocator} onChange={(event) => setSourceLocator(event.target.value)} /></label>}<div className="form-actions"><button className="button primary" disabled={Boolean(busy) || ['processing', 'submitted'].includes(intake?.status || '')} onClick={() => void (intake?.status === 'failed' ? retryIntake() : submitIntake())}>{intake?.status === 'failed' ? <RotateCcw size={15} /> : <Play size={15} />}{intake?.status === 'failed' ? '重试接入' : '提交接入'}</button>{['processing', 'submitted'].includes(intake?.status || '') && <button className="button" disabled={Boolean(busy)} onClick={() => void cancelIntake()}><Square size={15} />取消</button>}</div></section>}
 
-    <section className="panel" hidden={section !== 'brief'}><PanelTitle title="Brief 修订" meta={`项目修订 ${project?.revision || 0}`} /><BriefEditor brief={brief} projectRevision={project?.revision || 0} busy={Boolean(busy)} online={online} intakeReady={intake?.status === 'ready'} onSave={saveBrief} onConfirm={confirmBrief} onDirty={setBriefUnsaved} /></section>
+    <section className="panel" hidden={section !== 'brief'}><PanelTitle title="Brief 修订" meta={`项目修订 ${project?.revision || 0}`} /><BriefEditor brief={brief} projectRevision={project?.revision || 0} busy={Boolean(busy)} online={online} intakeReady={intake?.status === 'ready'} onSave={saveBrief} onConfirm={confirmBrief} onDirty={setBriefUnsaved} onAssist={(dirty) => openAssist?.(dirty ? { route: pageRoute, projectId: selectedId || null, label: '未保存 Brief 草稿' } : { route: pageRoute, projectId: selectedId || null, resourceType: 'brief', resourceId: selectedId, revision: brief?.current_revision || brief?.current?.revision || null, contentHash: brief?.current?.content_sha256 || null, label: '当前 Brief' }, !dirty)} /></section>
 
     {section === 'repository' && <div className="project-workflow-grid"><section className="panel"><PanelTitle title="代码仓库连接" meta={`${connections.length} 个连接`} /><div className="compact-list">{connections.map((connection) => <div className="compact-row" key={connection.id}><span><strong>{kindLabel(connection.provider || 'fixture')}</strong><small>{kindLabel(connection.source_kind)} · {connection.source_revision || '未版本化'} · r{connection.revision}</small></span><Status value={connection.status} /></div>)}{!connections.length && <div className="list-empty">暂无代码仓库连接</div>}</div><form className="inline-form" onSubmit={(event) => { event.preventDefault(); void connectRepository(); }}><label><span>来源地址</span><input aria-label="来源地址" value={repositoryLocator} onChange={(event) => setRepositoryLocator(event.target.value)} required /></label><button className="button primary" disabled={busy === 'Repository'}><GitBranch size={15} />连接代码仓库</button></form></section><section className="panel"><PanelTitle title="仓库分支" meta={`${lines.length} 条分支`} /><div className="compact-list">{lines.map((line) => <div className="compact-row" key={line.id}><span><strong>{line.id}</strong><small>{line.source_revision || '未知'} · r{line.revision}{line.fault_code ? ` · ${errorCodeLabel(line.fault_code)}` : ''}</small></span><Status value={line.status} /></div>)}{!lines.length && <div className="list-empty">连接仓库后显示分支</div>}</div></section><RepositoryDeletionPanel targets={targets} intent={repositoryDeletionIntent} name={repositoryDeletionName} head={repositoryDeletionHead} setName={setRepositoryDeletionName} setHead={setRepositoryDeletionHead} onPrepare={() => void prepareRepositoryDeletion()} onCreatorConfirm={() => void confirmRepositoryDeletion('creator')} onOwnerConfirm={() => void confirmRepositoryDeletion('owner')} onExecute={() => void executeRepositoryDeletion()} onReconcile={() => void reconcileRepositoryDeletion()} onCancel={() => void cancelRepositoryDeletion()} busy={busy} /></div>}
 
@@ -431,6 +441,7 @@ export type RepositoryDeletionIntent = {
   error_code?: string | null;
 };
 export type RepositoryLine = { id: string; status: string; source_revision?: string; source_hash?: string; revision: number; fault_code?: string };
+export type RepositoryWorkspace = { id: string; line_id: string; status: string; relative_path: string; revision: number };
 export type Workflow = { id: string; project_id: string; status: string; current_revision: number; revision: number; current?: { graph?: Record<string, unknown>; graph_sha256?: string; layout?: Record<string, unknown> } | null };
 export type Generation = {
   id: string; phase: string; revision: number; attempt?: number; error_code?: string; operation_id?: string;
@@ -461,8 +472,8 @@ export function useProjectWorkflowData(projectId: string, enabled = true, showAr
     return { intake: intake.data.intake || null, briefs: briefs.data.briefs || [] };
   } }, queryClient);
   const repositoryQuery = useQuery({ queryKey: key('repository'), enabled: active, queryFn: async ({ signal }) => {
-    const [connections, lines] = await Promise.all([apiV2<{ connections: RepositoryConnection[] }>(`${base}/repository-connections`, { signal }), apiV2<{ lines: RepositoryLine[] }>(`${base}/repository-lines`, { signal })]);
-    return { connections: connections.data.connections || [], lines: lines.data.lines || [] };
+    const [connections, lines, workspaces] = await Promise.all([apiV2<{ connections: RepositoryConnection[] }>(`${base}/repository-connections`, { signal }), apiV2<{ lines: RepositoryLine[] }>(`${base}/repository-lines`, { signal }), apiV2<{ workspaces: RepositoryWorkspace[] }>(`${base}/repository-workspaces`, { signal })]);
+    return { connections: connections.data.connections || [], lines: lines.data.lines || [], workspaces: workspaces.data.workspaces || [] };
   } }, queryClient);
   const workflowQuery = useQuery({ queryKey: key('workflow'), enabled: active, queryFn: ({ signal }) => apiV2<{ workflow: Workflow }>(`${base}/workflow-draft`, { signal }) }, queryClient);
   const generationQuery = useQuery({ queryKey: key('generation'), enabled: active, queryFn: async ({ signal }) => {
@@ -506,7 +517,7 @@ export function useProjectWorkflowData(projectId: string, enabled = true, showAr
   return {
     project, projects: projectsQuery.data?.data.projects || [], brief, intake: briefQuery.data?.intake || null,
     workflow: workflowQuery.data?.data.workflow || expanded?.workflow || expanded?.project?.workflow || null,
-    connections: repositoryQuery.data?.connections || [], lines: repositoryQuery.data?.lines || [],
+    connections: repositoryQuery.data?.connections || [], lines: repositoryQuery.data?.lines || [], workspaces: repositoryQuery.data?.workspaces || [],
     generations: generationQuery.data || [], requirements: requirementQuery.data?.data.requirements || [],
     profiles: profileQuery.data?.data.profiles || [], runnerProfiles: runnerQuery.data?.data.profiles || [], contextPacks: contextQuery.data?.data.packs || [],
     prerequisiteError: profileQuery.error || runnerQuery.error || contextQuery.error,
@@ -520,10 +531,10 @@ export function briefDraft(brief: Brief | null): BriefDraft {
   const content = brief?.current?.content;
   return { objective: typeof content?.objective === 'string' ? content.objective : '', acceptance: Array.isArray(content?.acceptance) ? content.acceptance.map(String) : [] };
 }
-export function BriefEditor({ brief, projectRevision, busy, online, intakeReady, onSave, onConfirm, onDirty }: {
+export function BriefEditor({ brief, projectRevision, busy, online, intakeReady, onSave, onConfirm, onDirty, onAssist }: {
   brief: Brief | null; projectRevision: number; busy: boolean; online: boolean; intakeReady: boolean;
   onSave: (draft: BriefDraft, expectedRevision: number) => Promise<Record<string, unknown> | null>;
-  onConfirm: () => Promise<Record<string, unknown> | null>; onDirty: (dirty: boolean) => void;
+  onConfirm: () => Promise<Record<string, unknown> | null>; onDirty: (dirty: boolean) => void; onAssist?: (dirty: boolean) => void;
 }) {
   const [draft, setDraft] = useState(() => briefDraft(brief));
   const [dirty, setDirty] = useState(false); const [queued, setQueued] = useState(false);
@@ -552,7 +563,7 @@ export function BriefEditor({ brief, projectRevision, busy, online, intakeReady,
       </fieldset>
     </fieldset>
     <div className="revision-note" role="status"><span>当前修订 r{revision}</span><span>已确认 {brief?.confirmed_revision ? `r${brief.confirmed_revision}` : '未确认'}</span><code>{brief?.current?.content_sha256 || '尚无内容哈希'}</code><span>{queued ? '已离线保存，等待同步' : dirty ? '有未保存修改' : '与服务器一致'}</span></div>
-    <div className="form-actions"><button className="button" disabled={!valid || busy || queued} onClick={() => void save()}><Save size={15} />保存修订</button><button className="button primary" disabled={Boolean(reason) || busy} onClick={() => void onConfirm()}><Check size={15} />确认修订</button>{dirty && <button className="button" onClick={discard} disabled={busy}>放弃本地修改</button>}</div>
+    <div className="form-actions"><button className="button" disabled={!valid || busy || queued} onClick={() => void save()}><Save size={15} />保存修订</button><button className="button" disabled={!onAssist || (!revision && !dirty)} onClick={() => onAssist?.(dirty || queued || !revision)}><MessageSquare size={15} />在 Assist 中审阅当前 Brief</button><button className="button primary" disabled={Boolean(reason) || busy} onClick={() => void onConfirm()}><Check size={15} />确认修订</button>{dirty && <button className="button" onClick={discard} disabled={busy}>放弃本地修改</button>}</div>
     {reason && <p className="prerequisite-note">{reason}</p>}
   </div>;
 }

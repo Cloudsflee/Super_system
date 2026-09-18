@@ -3,10 +3,10 @@ import {
   type FormEvent, type KeyboardEvent
 } from 'react';
 import {
-  Download, Keyboard, LoaderCircle, RefreshCw, RotateCcw, Send, ShieldCheck,
-  Square, Terminal as TerminalIcon, Wifi, WifiOff
+  Check, Download, Keyboard, LoaderCircle, RefreshCw, RotateCcw, Send, ShieldCheck,
+  Square, Terminal as TerminalIcon, Wifi, WifiOff, X
 } from 'lucide-react';
-import { ApiError, apiV2, formatBytes, mutateV2, shortHash } from '../../api';
+import { ApiError, apiV2, formatBytes, mutateV2, shortHash, useWorkbenchOnline } from '../../api';
 import type { TerminalCapabilities, TerminalRuntime } from '../../types';
 import type { WorkspacePageProps } from '../../workspace';
 import { runtimeLabel, statusLabel } from '../../i18n';
@@ -52,10 +52,11 @@ type SocketMessage = {
   session?: TerminalSession;
   error?: { code?: string; message?: string };
 };
-
 const ACTIVE_TERMINAL = new Set(['ready', 'running']);
 
-export function TerminalPage({ projectId, selectedProject, navigate, notify }: WorkspacePageProps) {
+export function TerminalPage({ projectId, selectedProject, navigate, notify, terminalLaunch, online: shellOnline = true, openAssist }: WorkspacePageProps) {
+  const browserOnline = useWorkbenchOnline();
+  const online = browserOnline && shellOnline;
   const [capabilities, setCapabilities] = useState<TerminalCapabilities | null>(null);
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -114,8 +115,11 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
     setWorkspaceId((current) => workspaceRows.some((workspace) => workspace.id === current)
       ? current
       : workspaceRows.find((workspace) => ['ready', 'released'].includes(workspace.status))?.id || workspaceRows[0]?.id || '');
-    setSelectedId((current) => terminalRows.some((terminal) => terminal.id === current) ? current : terminalRows[0]?.id || '');
-  }, [projectId]);
+    setSelectedId((current) => {
+      if (terminalLaunch?.approvalId && !terminalRows.some((terminal) => terminal.approval_id === terminalLaunch.approvalId)) return '';
+      return terminalRows.some((terminal) => terminal.id === current) ? current : terminalRows.find((terminal) => terminal.approval_id === terminalLaunch?.approvalId)?.id || terminalRows[0]?.id || '';
+    });
+  }, [projectId, terminalLaunch?.approvalId]);
 
   const loadSelected = useCallback(async () => {
     if (!selectedId) {
@@ -135,6 +139,14 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
   useEffect(() => {
     void load().catch((error) => notify(error instanceof Error ? error.message : '终端加载失败', 'error'));
   }, [load, notify]);
+
+  useEffect(() => {
+    if (!terminalLaunch) return;
+    if (terminalLaunch.workspaceId) setWorkspaceId(terminalLaunch.workspaceId);
+    if (terminalLaunch.runtime) setRuntime(terminalLaunch.runtime as TerminalRuntime);
+    if (terminalLaunch.cwd != null) setCwd(terminalLaunch.cwd);
+    if (terminalLaunch.command != null) setCommand(terminalLaunch.command);
+  }, [terminalLaunch]);
 
   useEffect(() => {
     setConnected(false);
@@ -208,7 +220,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
 
   const sendFrame = useCallback(async (type: 'input' | 'resize' | 'signal' | 'stop', values: Record<string, unknown> = {}) => {
     const terminal = selectedRef.current;
-    if (!terminal || !ACTIVE_TERMINAL.has(terminal.status) || frameBusy) return;
+    if (!online || !terminal || !ACTIVE_TERMINAL.has(terminal.status) || frameBusy) return;
     const clientSequence = terminal.last_client_sequence + 1;
     const frame = {
       type,
@@ -231,9 +243,10 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
     } finally {
       setFrameBusy(false);
     }
-  }, [applySession, frameBusy]);
+  }, [applySession, frameBusy, online]);
 
   const requestApproval = async () => {
+    if (!online || busy) return;
     const workspace = workspaces.find((item) => item.id === workspaceId);
     if (!workspace) return notify('请选择可用的代码仓库工作区。', 'error');
     setBusy('request');
@@ -241,7 +254,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
       await mutateV2('/api/v2/approvals', {
         project_id: projectId,
         action: 'terminal.open',
-        request: { workspace_id: workspace.id, runtime, cwd, cols: 120, rows: 32 },
+        request: { workspace_id: workspace.id, runtime, cwd, cols: 120, rows: 32, ...(terminalLaunch?.assistSessionId ? { assist_session_id: terminalLaunch.assistSessionId } : {}) },
         ttl_seconds: 3600
       }, 'POST', workspace.revision);
       await load();
@@ -254,6 +267,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
   };
 
   const openTerminal = async (approval: Approval) => {
+    if (!online || busy || approval.status !== 'approved') return;
     const requestedWorkspace = String(approval.request.workspace_id || workspaceId);
     const workspace = workspaces.find((item) => item.id === requestedWorkspace);
     if (!workspace) return notify('已批准的代码仓库工作区不可用。', 'error');
@@ -266,11 +280,13 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
         runtime: String(approval.request.runtime || runtime),
         cwd: String(approval.request.cwd || ''),
         cols: Number(approval.request.cols || 120),
-        rows: Number(approval.request.rows || 32)
+        rows: Number(approval.request.rows || 32),
+        ...(approval.request.assist_session_id ? { assist_session_id: String(approval.request.assist_session_id) } : {})
       }, 'POST', workspace.revision);
       setSelectedId(result.data.terminal.id);
       applySession(result.data.terminal);
       setOutput('');
+      if (typeof approval.request.command === 'string') setCommand(approval.request.command);
       cursorRef.current = 0;
       await load();
       notify('终端已打开');
@@ -279,6 +295,16 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
     } finally {
       setBusy('');
     }
+  };
+
+  const decideApproval = async (approval: Approval, decision: 'approved' | 'rejected') => {
+    if (!online || busy) return;
+    setBusy(`decide:${approval.id}`);
+    try {
+      await mutateV2(`/api/v2/approvals/${encodeURIComponent(approval.id)}/decide`, { decision }, 'POST', approval.revision);
+      await load(); notify(decision === 'approved' ? 'Terminal 访问已批准' : 'Terminal 访问已拒绝');
+    } catch (failure) { notify(failure instanceof Error ? failure.message : 'Terminal 审批失败', 'error'); }
+    finally { setBusy(''); }
   };
 
   const submitCommand = async (event: FormEvent) => {
@@ -329,8 +355,9 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
   }, [frameBusy, selected, sendFrame]);
 
   const consumedApprovalIds = useMemo(() => new Set(sessions.map((session) => session.approval_id)), [sessions]);
-  const availableApprovals = approvals.filter((approval) => approval.status === 'approved' && !consumedApprovalIds.has(approval.id));
-  const pendingApprovals = approvals.filter((approval) => approval.status === 'pending');
+  const visibleApprovals = terminalLaunch?.approvalId ? approvals.filter((approval) => approval.id === terminalLaunch.approvalId) : approvals;
+  const availableApprovals = visibleApprovals.filter((approval) => approval.status === 'approved' && !consumedApprovalIds.has(approval.id));
+  const pendingApprovals = visibleApprovals.filter((approval) => approval.status === 'pending');
   const activeSession = sessions.find((terminal) => ACTIVE_TERMINAL.has(terminal.status));
 
   if (!projectId) return <div className="empty-state"><TerminalIcon size={28} /><h2>请选择项目以打开终端</h2><button className="button" onClick={() => navigate('projects')}>项目</button></div>;
@@ -341,6 +368,8 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
         <div><p className="eyebrow">交互式工作区</p><h1>终端</h1></div>
         <button className="icon-button" title="刷新终端" aria-label="刷新终端" onClick={() => void load()}><RefreshCw size={17} /></button>
       </div>
+      {!online && <div className="state-banner conflict" role="status">离线：审批和 Terminal 执行已暂停。</div>}
+      {terminalLaunch?.assistSessionId && <button className="button" onClick={() => openAssist?.()}><TerminalIcon size={15} />返回 Assist</button>}
       <section className="health-band terminal-capabilities">
         <div><span>传输方式</span><strong className="mono">{capabilities?.transport || '检查中'}</strong></div>
         <div><span>默认运行时</span><Status value={capabilities?.default_runtime || 'checking'} /></div>
@@ -376,12 +405,12 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
               <label><span>运行时</span><select value={runtime} onChange={(event) => setRuntime(event.target.value as TerminalRuntime)}><option value="linux_native" disabled={!capabilities?.linux_native?.available}>Linux 原生</option><option value="windows_native" disabled={!capabilities?.windows_native?.available}>Windows 原生</option></select></label>
               <label><span>工作区</span><select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}><option value="">不使用工作区</option>{workspaces.map((workspace) => <option key={workspace.id} value={workspace.id} disabled={!['ready', 'released'].includes(workspace.status)}>{workspace.relative_path || shortHash(workspace.id)} | {statusLabel(workspace.status)}</option>)}</select></label>
               <label><span>工作目录</span><input className="mono" value={cwd} onChange={(event) => setCwd(event.target.value)} placeholder="工作区根目录" /></label>
-              <button className="button primary" disabled={!capabilities?.available || busy === 'request' || Boolean(activeSession) || selectedProject?.status === 'archived' || !workspaceId} onClick={() => void requestApproval()}>{busy === 'request' ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />}申请访问</button>
+              <button className="button primary" disabled={!online || !capabilities?.available || Boolean(busy) || Boolean(activeSession) || selectedProject?.status === 'archived' || !workspaceId} onClick={() => void requestApproval()}>{busy === 'request' ? <LoaderCircle className="spin" size={16} /> : <ShieldCheck size={16} />}申请访问</button>
             </div>
             <div className="terminal-approval-list">
               <div className="terminal-subheading"><span>访问请求</span><small>{pendingApprovals.length} 项待处理 | {availableApprovals.length} 项就绪</small></div>
-              {pendingApprovals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{runtimeLabel(approval.request.runtime || runtime)}</strong><small className="mono">{shortHash(approval.id)}</small></div><Status value={approval.status} /><button className="button" onClick={() => navigate('approvals')}>查看</button></div>)}
-              {availableApprovals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{runtimeLabel(approval.request.runtime || runtime)}</strong><small className="mono">{shortHash(approval.id)}</small></div><Status value={approval.status} /><button className="button primary" disabled={busy === `open:${approval.id}` || Boolean(activeSession)} onClick={() => void openTerminal(approval)}>{busy === `open:${approval.id}` ? <LoaderCircle className="spin" size={15} /> : <TerminalIcon size={15} />}打开</button></div>)}
+              {pendingApprovals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{runtimeLabel(approval.request.runtime || runtime)}</strong><small className="mono">{String(approval.request.command || '打开交互式 Shell')}</small><small>Workspace {String(approval.request.workspace_id || '')} · cwd {String(approval.request.cwd || '.')}</small></div><Status value={approval.status} /><div className="terminal-approval-actions"><button className="button" disabled={!online || Boolean(busy)} onClick={() => void decideApproval(approval, 'rejected')}><X size={14} />拒绝</button><button className="button primary" disabled={!online || Boolean(busy)} onClick={() => void decideApproval(approval, 'approved')}><Check size={14} />批准</button></div></div>)}
+              {availableApprovals.map((approval) => <div className="terminal-approval-row" key={approval.id}><div><strong>{runtimeLabel(approval.request.runtime || runtime)}</strong><small className="mono">{String(approval.request.command || shortHash(approval.id))}</small></div><Status value={approval.status} /><button className="button primary" disabled={!online || Boolean(busy) || Boolean(activeSession)} onClick={() => void openTerminal(approval)}>{busy === `open:${approval.id}` ? <LoaderCircle className="spin" size={15} /> : <TerminalIcon size={15} />}打开</button></div>)}
               {!pendingApprovals.length && !availableApprovals.length && <div className="list-empty">请先申请审批</div>}
             </div>
           </>}
@@ -391,7 +420,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify }: W
             <pre className="terminal-output" ref={(element) => { outputRef.current = element; viewportRef.current = element; }} tabIndex={0} role="log" aria-label="终端输出" onKeyDown={handleOutputKeyDown}>{output || '等待 Shell 输出……'}</pre>
             <form className="terminal-input-row" onSubmit={(event) => void submitCommand(event)}>
               <label className="terminal-command-field"><span>命令</span><input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="输入要运行的命令" autoComplete="off" disabled={!ACTIVE_TERMINAL.has(selected.status)} /></label>
-              <button className="button primary" disabled={!command.trim() || !connected || frameBusy || !ACTIVE_TERMINAL.has(selected.status)}>{frameBusy ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}发送</button>
+              <button className="button primary" disabled={!online || !command.trim() || !connected || frameBusy || !ACTIVE_TERMINAL.has(selected.status)}>{frameBusy ? <LoaderCircle className="spin" size={16} /> : <Send size={16} />}发送</button>
             </form>
             <div className="terminal-meta-grid">
               <div><span>输出</span><strong>{formatBytes(selected.output_bytes)}</strong></div>

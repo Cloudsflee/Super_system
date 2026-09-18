@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AssistPage } from '../features/assist';
+import type { Session } from '../features/assist/types';
 import type { Project } from '../types';
 import type { WorkspacePageProps } from '../workspace';
 
@@ -23,7 +24,7 @@ const props = (overrides: Partial<WorkspacePageProps> = {}): WorkspacePageProps 
   ...overrides
 });
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); });
 afterEach(() => cleanup());
 
 describe('P5 Assist workspace', () => {
@@ -79,4 +80,89 @@ describe('P5 Assist workspace', () => {
     expect(screen.getByRole('heading', { name: '请选择项目以打开 Assist' })).toBeVisible();
     expect(fetch).not.toHaveBeenCalled();
   });
+});
+
+function assistScenario(initialStatus = 'completed') {
+  let session: Session = { id: 'assist_existing', project_id: projectId, scope: 'project', scope_id: projectId, title: '第一会话', status: 'active', revision: 2, context_pack_id: pack.id, context_pack_hash: pack.pack_hash, profile_id: profile.id, references: [], turns: [{ id: 'turn_latest', turn_no: 1, status: 'completed', revision: 3, attempt: 1, operation_id: 'op_latest', messages: [{ id: 'message_latest', role: 'assistant', kind: 'response', content: 'Existing response', sequence: 1 }] }] };
+  const second = { ...session, id: 'assist_second', title: '第二会话', turns: [] };
+  session.turns![0].status = initialStatus;
+  const mutations: Array<{ url: string; body: Record<string, unknown>; revision: string | null }> = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+    const url = String(input); const method = options?.method || 'GET';
+    if (method !== 'GET') {
+      const body = JSON.parse(String(options?.body));
+      mutations.push({ url, body, revision: new Headers(options?.headers).get('X-Expected-Revision') });
+      if (url.endsWith('/references')) {
+        session = { ...session, revision: session.revision + 1, references: [...(session.references || []), { id: `reference_${mutations.length}`, ...body, created_at: '' }] };
+        return envelope({ references: session.references });
+      }
+      return envelope({ operation_id: 'operation_success', status: 'succeeded', revision: 1 });
+    }
+    if (url.endsWith('/context/packs')) return envelope({ packs: [pack] });
+    if (url.endsWith('/api/v2/profiles')) return envelope({ profiles: [profile] });
+    if (url.endsWith('/repository-workspaces')) return envelope({ workspaces: [workspace] });
+    if (url.includes('/assist/sessions?')) return envelope({ sessions: [session, second] });
+    if (url.endsWith('/assist/sessions/assist_existing')) return envelope(session);
+    if (url.endsWith('/assist/sessions/assist_second')) return envelope(second);
+    if (url.includes('/events?')) return envelope({ events: [], next_cursor: 0 });
+    if (url.includes('/terminals?')) return envelope({ terminals: [] });
+    if (url.includes('/approvals?')) return envelope({ approvals: [] });
+    throw new Error(`Unexpected scenario request ${method} ${url}`);
+  }));
+  return { mutations, complete: () => { session = { ...session, turns: [{ ...session.turns![0], status: 'completed', messages: [{ id: 'message_completed', role: 'assistant', kind: 'response', content: 'Completion after reopening', sequence: 2 }] }] }; } };
+}
+
+it('attaches only explicitly requested saved page context and detects revision/hash drift', async () => {
+  const { mutations } = assistScenario();
+  const assistContext = { route: 'brief' as const, projectId, resourceType: 'brief', resourceId: projectId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' };
+  const view = render(<AssistPage {...props({ assistContext })} />);
+  await screen.findByText('Existing response');
+  expect(mutations).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: '附加当前页面' }));
+  await screen.findByText('当前 Brief 已附加');
+  expect(mutations[0]).toMatchObject({ revision: '2', body: { reference_type: 'brief', reference_id: projectId, reference_revision: 1, reference_hash: assistContext.contentHash } });
+  view.rerender(<AssistPage {...props({ assistContext: { ...assistContext, revision: 2, contentHash: 'b'.repeat(64) } })} />);
+  expect(screen.getByRole('alert')).toHaveTextContent('旧引用已过期');
+  expect(mutations).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: '附加当前页面' }));
+  await waitFor(() => expect(mutations).toHaveLength(2));
+  await waitFor(() => expect(screen.queryByText(/旧引用已过期/)).toBeNull());
+  expect(mutations[1]).toMatchObject({ revision: '3', body: { reference_revision: 2, reference_hash: 'b'.repeat(64) } });
+});
+
+it('attaches a Brief review request once and preserves the loaded conversation offline', async () => {
+  const { mutations } = assistScenario();
+  const pageProps = props({ assistContext: { route: 'brief', projectId, resourceType: 'brief', resourceId: projectId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' }, assistAttachRequest: 1 });
+  const view = render(<AssistPage {...pageProps} surface="drawer" />);
+  await screen.findByText('当前 Brief 已附加');
+  expect(mutations).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText('Assist 消息'), { target: { value: 'Offline draft' } });
+  view.rerender(<AssistPage {...pageProps} online={false} surface="drawer" />);
+  expect(screen.getByText('Existing response')).toBeVisible();
+  expect(screen.getByLabelText('Assist 消息')).toHaveValue('Offline draft');
+  expect(screen.getByRole('button', { name: '发送' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '在 Terminal 执行' })).toBeDisabled();
+  expect(mutations).toHaveLength(1);
+});
+
+it('restores the selected session on drawer reopen without creating another session', async () => {
+  const { mutations } = assistScenario();
+  const first = render(<AssistPage {...props()} surface="drawer" />);
+  await screen.findByText('Existing response');
+  fireEvent.click(screen.getByRole('button', { name: /第二会话/ }));
+  await waitFor(() => expect(sessionStorage.getItem(`aiws:v3:assist-session:${projectId}`)).toBe('assist_second'));
+  first.unmount();
+  render(<AssistPage {...props()} surface="drawer" />);
+  await waitFor(() => expect(screen.getByRole('button', { name: /第二会话/ })).toHaveClass('selected'));
+  expect(mutations).toHaveLength(0);
+});
+
+it('continues a restored active Turn even after its session event cursor is exhausted', async () => {
+  const { mutations, complete } = assistScenario('queued');
+  sessionStorage.setItem(`aiws:v3:assist-session:${projectId}`, 'assist_existing');
+  render(<AssistPage {...props()} surface="drawer" />);
+  await screen.findByText('Existing response');
+  complete();
+  expect(await screen.findByText('Completion after reopening', {}, { timeout: 3000 })).toBeVisible();
+  expect(mutations).toHaveLength(0);
 });

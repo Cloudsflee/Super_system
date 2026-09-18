@@ -1,0 +1,31 @@
+
+> ai-workspace-system@3.0.0 test:p3 <WORKSPACE>
+> node --test tests/p3/http-contract.test.mjs tests/p3/migration.test.mjs tests/p3/project-workflow.test.mjs
+
+(node:11380) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P3 HTTP uses the session cookie, closed contracts, and equivalent operation replay (220.4026ms)
+✔ P3 project access remains resolver- and ACL-scoped (95.1052ms)
+(node:45148) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 003 registry upgrades empty, P1 and P2 volumes without rewriting prior ledgers (201.2739ms)
+✔ 003 DDL, ledger, receipt and commit faults roll back and restart cleanly (316.0444ms)
+✔ 003 checksum and latest schema snapshot drift stop restart before serving (170.297ms)
+(node:19400) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ P3 complete project workflow keeps every aggregate head and audit aligned (245.9894ms)
+✔ P3 stale proposal is committed before conflict and retry paths honor supplied revisions (334.2427ms)
+✔ P3 domain cancellation propagates to a delayed generator operation (166.315ms)
+✔ P3 project archive and restore replay exactly one mutation per idempotency key (73.6306ms)
+✔ P3 intake drift is retryable with CAS and cancellation reaches the operation (202.9583ms)
+✔ P3 repository source, target, line recovery and repeated workspace leases preserve CAS heads (119.7033ms)
+✔ P3 generator failures become retryable domain state with explicit lineage (171.6271ms)
+✔ P3 restart resumes a running generation only after recovery settles (182.9934ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2133.8209

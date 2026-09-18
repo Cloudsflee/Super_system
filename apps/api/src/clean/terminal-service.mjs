@@ -52,13 +52,29 @@ export class CleanTerminalService {
     if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
     const requestedRuntime = String(input.runtime || this.capabilities().default_runtime); const capability = this.capabilities()[requestedRuntime];
     if (!capability?.available) throw new PlatformError('terminal_runtime_unavailable', 'requested terminal runtime is unavailable', { runtime: requestedRuntime }, 422);
-    const cwdRelative = safeCwd(input.cwd || ''); const cwd = this.workspaceDirectory(workspace, cwdRelative); fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); rejectReparse(cwd);
+    const cwdRelative = safeCwd(input.cwd || '');
     const cols = boundedInt(input.cols, 20, 400, 120); const rows = boundedInt(input.rows, 5, 200, 32);
+    const assistSessionId = input.assist_session_id ? String(input.assist_session_id) : null;
+    const approvedRequest = JSON.parse(approval.request_json);
+    if ((approvedRequest.assist_session_id || null) !== assistSessionId) throw new PlatformError('approval_request_mismatch', 'terminal Assist association differs from approval', {}, 409);
+    const assistSession = assistSessionId ? this.db.get('SELECT * FROM assist_sessions WHERE id=? AND project_id=?', [assistSessionId, projectId]) : null;
+    if (assistSessionId) assertProject(this.authorization, principal, 'run', projectId, { resource: 'assist' });
+    if (assistSessionId && (!assistSession || assistSession.deleted_at)) throw new PlatformError('assist_session_mismatch', 'terminal Assist session belongs to another project or was deleted', {}, 409);
+    const approvedFields = { workspace_id: workspace.id, runtime: requestedRuntime, cwd: cwdRelative, cols, rows };
+    for (const [field, value] of Object.entries(approvedFields)) {
+      if (Object.hasOwn(approvedRequest, field) && (field === 'cwd' ? safeCwd(approvedRequest[field]) : approvedRequest[field]) !== value) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field }, 409);
+    }
+    const expected = requireRevision(input.expected_revision, { allowZero: true });
     const key = requireIdempotency(input.idempotency_key); const now = time(this.clock); const id = opaqueId('terminal');
-    const hash = requestHash({ project_id: projectId, workspace_id: workspace.id, approval_id: approval.id, runtime: requestedRuntime, cwd: cwdRelative, cols, rows });
+    const hash = requestHash({ project_id: projectId, workspace_id: workspace.id, approval_id: approval.id, expected_revision: expected, assist_session_id: assistSessionId, runtime: requestedRuntime, cwd: cwdRelative, cols, rows });
     const replay = await this.db.withTransaction((tx) => priorResponse(this.operations, tx, { actorId: principal.actorId, commandId: 'terminal.open', idempotencyKey: key, requestHash: hash, now }));
     if (replay) return replay;
     if (this.db.get('SELECT id FROM terminal_sessions WHERE approval_id=?', [approval.id])) throw new PlatformError('approval_consumed', 'terminal approval was already consumed', {}, 409);
+    if (expected > 0) {
+      assertRevision(workspace, expected);
+      if (Number(approval.requested_revision) > 0 && Number(approval.requested_revision) !== expected) throw new PlatformError('revision_conflict', 'terminal approval workspace revision is stale', {}, 409);
+    }
+    const cwd = this.workspaceDirectory(workspace, cwdRelative); fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); rejectReparse(cwd);
     const lease = await this.acquireLease(workspace, principal);
     let child;
     try { child = this.spawn(requestedRuntime, cwd, cols, rows); }
@@ -70,10 +86,10 @@ export class CleanTerminalService {
         if (tx.get('SELECT id FROM terminal_sessions WHERE approval_id=?', [approval.id])) throw new PlatformError('approval_consumed', 'terminal approval was already consumed', {}, 409);
         const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId: 'terminal.open', resourceType: 'terminal_session', resourceId: id, projectId, requestHash: hash, status: 'running', now });
         tx.run(`INSERT INTO terminal_sessions(id,project_id,workspace_id,approval_id,assist_session_id,operation_id,runtime,cwd_relative,status,cols,rows,last_client_sequence,output_bytes,output_preview,output_sha256,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id)
-          VALUES(?,?,?,?,?,?,?,?,'running',?,?,0,0,'','',1,?,?,?,?)`, [id, projectId, workspace.id, approval.id, input.assist_session_id || null, op.id, requestedRuntime, cwdRelative, cols, rows, now, now, principal.actorId, principal.actorId]);
+          VALUES(?,?,?,?,?,?,?,?,'running',?,?,0,0,'','',1,?,?,?,?)`, [id, projectId, workspace.id, approval.id, assistSessionId, op.id, requestedRuntime, cwdRelative, cols, rows, now, now, principal.actorId, principal.actorId]);
         const event = appendAggregate(this.events, tx, { aggregateType: 'terminal_session', aggregateId: id, revision: 1, operationId: op.id, actorId: principal.actorId, projectId, type: 'terminal.opened', data: { terminal_id: id, runtime: requestedRuntime }, payload: { id, project_id: projectId, workspace_id: workspace.id, status: 'running', revision: 1 }, now });
         tx.run('INSERT INTO terminal_events(id,session_id,generic_event_id,generic_sequence,event_type,chunk_cas_hash,chunk_byte_length,created_at) VALUES(?,?,?,?,?,?,?,?)', [opaqueId('terminal_event'), id, event.id, event.sequence, 'terminal.opened', null, 0, now]);
-        this.operations.linkInTransaction(tx, op.id, [['terminal_session', id], ['repository_workspace', workspace.id]], now);
+        this.operations.linkInTransaction(tx, op.id, [['terminal_session', id], ['repository_workspace', workspace.id], ['runtime_approval', approval.id], ...(assistSessionId ? [['assist_session', assistSessionId]] : [])], now);
         const value = { terminal: this.view(tx.get('SELECT * FROM terminal_sessions WHERE id=?', [id])), operation: this.operations.summary(op), lease: { fencing_token_hash: sha256Hex(lease.token || '') } };
         saveResponse(this.operations, tx, { actorId: principal.actorId, commandId: 'terminal.open', idempotencyKey: key, requestHash: hash, response: value, operationId: op.id, status: 201, now });
         return value;

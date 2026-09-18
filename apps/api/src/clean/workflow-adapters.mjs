@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { PlatformError } from './platform-error.mjs';
@@ -253,6 +254,7 @@ export class LocalGitRepositoryAdapter {
   }
   async probe(source = {}) {
     if (source.kind === 'none') return { revision: '', hash: '' };
+    if (source.kind === 'git') return this.probeRemote(source);
     const root = this.root(source);
     const commit = String(await this.gitBytes(root, ['rev-parse','--verify','HEAD^{commit}'])).trim();
     const tree = String(await this.gitBytes(root, ['rev-parse','--verify',commit + '^{tree}'])).trim();
@@ -281,6 +283,7 @@ export class LocalGitRepositoryAdapter {
     return { revision: commit, commit_sha: commit, tree_sha: tree, hash, manifest_hash: hash, entries, file_count: entries.length };
   }
   async materialize(source, target, expected = {}) {
+    if (source.kind === 'git') return this.materializeRemote(source, target, expected);
     const observed = await this.probe({ ...source, revision: expected.revision || source.revision, hash: expected.hash || source.hash });
     const root = this.root(source), destination = path.resolve(target);
     if (destination === root || root.startsWith(destination + path.sep) || destination.startsWith(root + path.sep) || fs.existsSync(destination)) throw new PlatformError('repository_source_invalid', 'materialization requires a distinct new directory', {}, 409);
@@ -295,4 +298,46 @@ export class LocalGitRepositoryAdapter {
     if (canonicalJson(manifest) !== canonicalJson(observed.entries.map(({ path, sha256, byte_length }) => ({ path, sha256, byte_length })))) throw new PlatformError('workspace_changed', 'materialized bytes differ', {}, 409);
     return { ...observed, workspace_hash: sha256Hex(canonicalJson(manifest)), workspace_manifest: manifest };
   }
+
+  async probeRemote(source = {}) {
+    const url = normalizeRemote(source.locator || source.url);
+    const staging = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'aiws-git-probe-'));
+    try {
+      const branch = String(source.branch || 'main');
+      await this.execGit(['clone', '--depth=1', '--no-tags', '--single-branch', '--branch', branch, '--', url, staging]);
+      const result = await this.probe({ kind: 'local', path: staging });
+      return { ...result, source_kind: 'git', remote: displayRemote(url), branch };
+    } finally { await fs.promises.rm(staging, { recursive: true, force: true }).catch(() => {}); }
+  }
+
+  async materializeRemote(source, target, expected = {}) {
+    const url = normalizeRemote(source.locator || source.url);
+    const destination = path.resolve(target);
+    if (fs.existsSync(destination)) throw new PlatformError('repository_source_invalid', 'materialization requires a new directory', {}, 409);
+    fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 });
+    const branch = String(source.branch || 'main');
+    await this.execGit(['clone', '--depth=1', '--no-tags', '--single-branch', '--branch', branch, '--', url, destination]);
+    try {
+      const observed = await this.probe({ kind: 'local', path: destination });
+      if (expected.revision && String(expected.revision) !== String(observed.revision)) throw new PlatformError('source_drift', 'remote HEAD changed during materialization', {}, 409);
+      if (expected.hash && String(expected.hash) !== String(observed.hash)) throw new PlatformError('source_drift', 'remote manifest changed during materialization', {}, 409);
+      fs.rmSync(path.join(destination, '.git'), { recursive: true, force: true });
+      const manifest = treeManifest(destination);
+      return { ...observed, source_kind: 'git', remote: displayRemote(url), branch, workspace_hash: sha256Hex(canonicalJson(manifest)), workspace_manifest: manifest };
+    } catch (error) { await fs.promises.rm(destination, { recursive: true, force: true }).catch(() => {}); throw error; }
+  }
+
+  async execGit(args) {
+    try { return await execFileAsync(this.git, ['-c', 'core.fsmonitor=false', '-c', 'core.hooksPath=', ...args], { encoding: 'buffer', shell: false, windowsHide: true, timeout: 120000, maxBuffer: this.maxBytes, env: { PATH: process.env.PATH || process.env.Path || '', SystemRoot: process.env.SystemRoot || '', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1' } }); }
+    catch { throw new PlatformError('repository_probe_failed', 'remote Git operation failed', {}, 422); }
+  }
 }
+
+function normalizeRemote(value) {
+  const raw = String(value || '').trim();
+  if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(raw)) return `https://github.com/${raw}.git`;
+  let parsed; try { parsed = new URL(raw); } catch { throw new PlatformError('repository_source_invalid', 'remote Git URL is invalid', {}, 422); }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash || parsed.search) throw new PlatformError('repository_source_invalid', 'remote Git URL must be HTTPS without credentials', {}, 422);
+  return parsed.toString();
+}
+function displayRemote(value) { try { const parsed = new URL(value); return `${parsed.hostname}${parsed.pathname}`.slice(0, 240); } catch { return '[remote]'; } }

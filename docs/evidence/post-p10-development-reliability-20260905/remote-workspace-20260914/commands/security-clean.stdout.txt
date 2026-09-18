@@ -1,0 +1,35 @@
+
+> ai-workspace-system@3.0.0 test:security:clean <WORKSPACE>
+> node scripts/layered-gate.mjs security --clean
+
+{
+  "schema_version": "aiws.v3-clean.layered-gate-result.v2",
+  "suite": "security",
+  "status": "passed",
+  "blocking_layer": null,
+  "commands": [
+    {
+      "layer": "clean",
+      "command": "<NODE> --test --test-concurrency=1 tests/security/v3-clean-p1.test.mjs tests/security/boundary.test.mjs tests/p4/mcp-exchange-gateway.test.mjs",
+      "exit_status": 0,
+      "signal": null,
+      "ok": true,
+      "summary": "ℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 18297.6636",
+      "redaction": {
+        "passed": true,
+        "removed": 0
+      }
+    }
+  ],
+  "clean_exit": 0,
+  "historical_exit": null,
+  "advisory_failures": [],
+  "redaction": [
+    {
+      "layer": "clean",
+      "passed": true,
+      "removed": 0
+    }
+  ],
+  "receipt": null
+}

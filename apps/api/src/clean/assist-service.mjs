@@ -547,7 +547,8 @@ export class CleanAssistService {
   listEvents(sessionId, input = {}, principal) {
     const row = this.sessionRow(sessionId); this.assertSession(principal, row, 'read');
     const after = input.cursor == null ? 0 : input.cursor;
-    return this.events.replay({ actorId: principal.actorId, projectId: row.project_id, aggregateType: 'assist_session', aggregateId: row.id, cursor: after, limit: input.limit || 500 });
+    const replay = this.events.replay({ actorId: principal.actorId, projectId: row.project_id, aggregateType: 'assist_session', aggregateId: row.id, cursor: after, limit: input.limit || 500 });
+    return { ...replay, resource: { id: row.id, type: 'assist_session', revision: Number(row.revision) } };
   }
 
   getGoal(sessionId, principal) {

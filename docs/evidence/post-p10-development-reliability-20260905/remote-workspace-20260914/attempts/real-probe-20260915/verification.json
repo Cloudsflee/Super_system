@@ -1,0 +1,12 @@
+{
+  "schema_version": "aiws.post-p10.remote-workspace.real-probe-receipt.v1",
+  "date": "2026-09-15",
+  "command": "node scripts/v3-clean-p10-github-deletion-probe.mjs",
+  "exit_status": 0,
+  "stdout": "github-deletion-probe.stdout.json",
+  "stdout_sha256": "28565cf9e51472327c04e16c69f07f01d4a6d8a8f9923f9c7413e09fb59a25ea",
+  "status": "verified",
+  "provisional": false,
+  "catalog": "27/0/27",
+  "notes": "Real GitHub App, Installation, Vault key, credential and disposable repository probe passed; generated repository deleted and reconciled absent."
+}

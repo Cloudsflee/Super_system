@@ -1,0 +1,27 @@
+{
+  "schema_version": "aiws.v3-clean.p10-github-deletion-probe.v1",
+  "status": "passed",
+  "provisional": false,
+  "external": {
+    "status": "verified",
+    "adapter": "github-app",
+    "repository": "Cloudsflee/aiws-p10-delete-20260914183620-52712-15290d14",
+    "generated_repository_id": "1370399746",
+    "repository_selection": "all",
+    "preexisting_check": "absent"
+  },
+  "deletion": {
+    "deleted": true,
+    "reconciled_absent": true,
+    "target_full_name_bound": true,
+    "repository_id_bound": true,
+    "expected_head_sha_bound": true,
+    "head_sha": "753a1584e5d6aa3016aea9058d6b5c8fb7552359",
+    "session_proofs": 2
+  },
+  "cleanup": {
+    "only_generated_repository_id": "1370399746",
+    "no_broad_cleanup": true,
+    "residual_repository": false
+  }
+}

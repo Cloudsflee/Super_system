@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import MiniSearch from 'minisearch';
 import { canonicalJson, opaqueId, sha256Hex, utcNow } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
@@ -21,7 +23,7 @@ const INDEX_OPTIONS = Object.freeze({
  * publish and never a partially visible projection.
  */
 export class CleanContextService {
-  constructor({ db, cas, events, operations, authorization, policy, clock = utcNow, bootstrapActorId = 'actor_system_bootstrap' } = {}) {
+  constructor({ db, cas, events, operations, authorization, policy, clock = utcNow, bootstrapActorId = 'actor_system_bootstrap', config = {} } = {}) {
     if (!db || !cas || !events || !operations) throw new TypeError('clean_context_dependencies_required');
     this.db = db;
     this.cas = cas;
@@ -31,6 +33,7 @@ export class CleanContextService {
     this.redactionPolicy = policy;
     this.clock = clock;
     this.bootstrapActorId = bootstrapActorId;
+    this.workspaceRoot = path.resolve(String(config.workspaceRoot || config.home || process.cwd()));
     this.recoveryStarted = false;
   }
 
@@ -58,7 +61,23 @@ export class CleanContextService {
     const sourceType = normalizeSourceType(input.source_type || input.kind || 'note');
     const title = bounded(input.title || input.name || sourceType, 240);
     const canonicalUri = canonicalUriFor(id, input.canonical_uri || input.uri || input.path || `${sourceType}/${title}`);
-    const content = String(input.content ?? input.body ?? '');
+    let content = String(input.content ?? input.body ?? '');
+    let fileRef = null;
+    if (input.file_ref_id) {
+      fileRef = this.db.get('SELECT * FROM file_refs WHERE id=? AND project_id=?', [String(input.file_ref_id), id]);
+      if (!fileRef) throw new PlatformError('not_found', 'file reference not found', {}, 404);
+      if (input.expected_file_revision != null && Number(input.expected_file_revision) !== Number(fileRef.revision)) throw new PlatformError('file_stale', 'file reference revision does not match', { expected_revision: Number(input.expected_file_revision), actual_revision: Number(fileRef.revision) }, 409);
+      if (input.expected_file_hash && String(input.expected_file_hash).toLowerCase() !== String(fileRef.content_sha256).toLowerCase()) throw new PlatformError('file_stale', 'file reference hash does not match', {}, 409);
+      const workspace = this.db.get('SELECT relative_path FROM repository_workspaces WHERE id=? AND project_id=?', [fileRef.workspace_id, id]);
+      if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
+      const filePath = path.resolve(this.workspaceRoot, workspace.relative_path, fileRef.relative_path);
+      if (!filePath.startsWith(path.resolve(this.workspaceRoot) + path.sep) || !fs.existsSync(filePath)) throw new PlatformError('file_unavailable', 'file reference content is unavailable', {}, 409);
+      const bytes = fs.readFileSync(filePath);
+      const actualHash = sha256Hex(bytes);
+      if (actualHash !== fileRef.content_sha256) throw new PlatformError('file_stale', 'workspace file changed since indexing', { expected_hash: fileRef.content_sha256, actual_hash: actualHash }, 409);
+      if (bytes.includes(0)) throw new PlatformError('file_not_previewable', 'binary files cannot be selected as context', {}, 422);
+      content = bytes.toString('utf8');
+    }
     if (content.length > 2_000_000) throw new PlatformError('invalid_input', 'context source is too large', {}, 422);
     const sensitivity = normalizeSensitivity(input.sensitivity);
     const metadata = safeObject(input.metadata);
@@ -68,7 +87,7 @@ export class CleanContextService {
     const now = this.time();
     const actorId = actorOf(principal, this.bootstrapActorId);
     const key = requireKey(input.idempotency_key || options.idempotencyKey);
-    const request = { project_id: id, source_type: sourceType, canonical_uri: canonicalUri, title, source_revision: String(input.source_revision || ''), source_hash: contentHash, cas_hash: casObject.hash, sensitivity, metadata };
+    const request = { project_id: id, source_type: sourceType, canonical_uri: canonicalUri, title, source_revision: String(input.source_revision || fileRef?.revision || ''), source_hash: contentHash, cas_hash: casObject.hash, sensitivity, metadata, file_ref_id: fileRef?.id || null };
     const requestHash = sha256Hex(canonicalJson(request));
     return this.db.withTransaction((tx) => {
       const prior = this.operations.getIdempotencyInTransaction(tx, { actorId, commandId: 'context.source.create', idempotencyKey: key, requestHash, now });
@@ -728,7 +747,15 @@ function sourcePayload(row) { return { id: row.id, project_id: row.project_id, s
 function sourceView(row) { return { ...sourcePayload(row), adapter: row.adapter, metadata: parseJson(row.metadata_json, {}), status: row.status, created_at: row.created_at, updated_at: row.updated_at }; }
 function nodeView(row) { return { id: row.id, project_id: row.project_id, stable_uri: row.stable_uri, uri: row.stable_uri, source_id: row.source_id, node_kind: row.node_kind, kind: row.node_kind, title: row.title, source_revision: row.source_revision, source_hash: row.source_hash, sensitivity: row.sensitivity, freshness: { status: row.freshness_status }, required_scopes: parseJson(row.required_scopes_json, ['context:read']), sort: parseJson(row.sort_json, {}), current_document_version_id: row.current_document_version_id, status: row.status, revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at }; }
 function selectionView(row) { return { id: row.id, project_id: row.project_id, query: row.query, token_budget: Number(row.token_budget), policy_revision: Number(row.policy_revision), input_snapshot_hash: row.input_snapshot_hash, included: parseJson(row.included_json, []), excluded: parseJson(row.excluded_json, []), token_used: Number(row.token_used), selection_hash: row.selection_hash, revision: Number(row.revision), created_at: row.created_at }; }
-function packView(row) { return { id: row.id, project_id: row.project_id, selection_id: row.selection_id, schema_version: row.schema_version, pack_hash: row.pack_hash, payload_cas_hash: row.payload_cas_hash, memory_manifest: parseJson(row.memory_manifest_json, {}), status: row.status, revision: Number(row.revision), created_at: row.created_at }; }
+function packView(row) {
+  const manifest = parseJson(row.memory_manifest_json, {});
+  return {
+    id: row.id, project_id: row.project_id, selection_id: row.selection_id, schema_version: row.schema_version,
+    pack_hash: row.pack_hash, payload_cas_hash: row.payload_cas_hash, memory_manifest: manifest,
+    input_versions: { document_version_ids: manifest.document_version_ids || [], source_hashes: manifest.source_hashes || [], brief_revision: manifest.brief_revision ?? null, workflow_revision: manifest.workflow_revision ?? null },
+    ready: row.status === 'sealed', status: row.status, revision: Number(row.revision), created_at: row.created_at
+  };
+}
 function jobView(row) { if (!row) return null; return { id: row.id, project_id: row.project_id, operation_id: row.operation_id, status: row.status, phase: row.status, mode: row.mode, input_hash: row.input_hash, snapshot_hash: row.snapshot_hash, index_hash: row.index_hash, cursor: Number(row.cursor), attempt: Number(row.attempt), retry_of_job_id: row.retry_of_job_id, stats: parseJson(row.stats_json, {}), error_code: row.error_code || '', error_details: parseJson(row.error_details_json, {}), revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at, completed_at: row.completed_at || null, cancelled_at: row.cancelled_at || null }; }
 function parseJson(value, fallback) { try { return value == null ? fallback : JSON.parse(String(value)); } catch { return fallback; } }
 function actorOf(principal, fallback) { return String(principal?.effectiveActorId || principal?.actorId || fallback); }

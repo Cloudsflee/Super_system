@@ -1,0 +1,2461 @@
+{
+  "schema_version": "aiws.v3.feature_catalog.v2",
+  "product_version": "3.0.0",
+  "status_flow": [
+    "planned",
+    "scaffolded",
+    "implemented",
+    "verified",
+    "released"
+  ],
+  "status_requirements": {
+    "planned": [
+      "behavior contract is identified"
+    ],
+    "scaffolded": [
+      "schema, contract, or interface exists",
+      "capability is not advertised as ready"
+    ],
+    "implemented": [
+      "real domain behavior",
+      "behavior and UI tests",
+      "verification evidence"
+    ],
+    "verified": [
+      "integration or external probe passed",
+      "verification record passed"
+    ],
+    "released": [
+      "temporary-volume release and rollback passed",
+      "release receipt passed"
+    ]
+  },
+  "source": {
+    "v23_commit": "e18dc0b",
+    "v3_commit": "14324a9",
+    "policy": "historical files are read-only behavior references; runtime imports target only current V3 modules"
+  },
+  "exclusions": [],
+  "features": [
+    {
+      "id": "REC-D0-GOVERNANCE-000",
+      "domain": "governance",
+      "name": "Recovery truth, ownership and synchronized architecture gates",
+      "status": "released",
+      "owner_modules": [
+        "platform"
+      ],
+      "gate_sync_rules": [
+        "GS-001",
+        "GS-002",
+        "GS-003",
+        "GS-004",
+        "GS-005",
+        "GS-006",
+        "GS-007"
+      ],
+      "gate_sync_commands": [
+        "pnpm check",
+        "pnpm audit:p1",
+        "pnpm scan:clean",
+        "pnpm test:p1",
+        "pnpm recovery:plan",
+        "pnpm recovery:catalog",
+        "pnpm recovery:coverage",
+        "pnpm recovery:impact -- --audit",
+        "pnpm verify"
+      ],
+      "source_files": [
+        "AGENTS.md",
+        "docs/architecture/v23-capability-matrix.md",
+        "docs/architecture/v3-clean-development-plan.md",
+        "docs/testing.md",
+        "scripts/lib/v3-clean-p1-scope.mjs",
+        "scripts/production-lifecycle.mjs",
+        "scripts/v3-clean-workspace-audit.mjs",
+        "scripts/v3-clean-architecture-scan.mjs",
+        "scripts/catalog-loader.mjs",
+        "scripts/layered-gate.mjs",
+        "scripts/lib/immutable-evidence-writer.mjs",
+        "scripts/v3-clean-p31-evidence.mjs",
+        "scripts/v3-clean-p4-evidence.mjs",
+        "scripts/lib/gate-process.mjs",
+        "scripts/lib/git-blob.mjs",
+        "docs/architecture/decision-log.md"
+      ],
+      "target_modules": [
+        "feature-catalog.json",
+        "package.json",
+        "apps/api/src/modules/registry.mjs",
+        "apps/api/src/modules/platform",
+        "scripts/recovery-governance.mjs",
+        "scripts/recovery-evidence.mjs",
+        "scripts/check.mjs",
+        "scripts/verify.mjs",
+        "scripts/verify-dev.mjs",
+        "scripts/test.mjs",
+        "scripts/recovery-golden.mjs",
+        "scripts/v3-clean-p1-global-sync-evidence.mjs",
+        "scripts/v3-clean-p3-evidence.mjs",
+        "feature-catalog.index.json",
+        "feature-catalog.clean.json",
+        "feature-catalog.historical.json",
+        "scripts/v3-clean-p10-parity.mjs",
+        "scripts/v3-clean-p10-evidence.mjs",
+        "scripts/lib/p10-post-closure.mjs",
+        ".githooks/pre-push"
+      ],
+      "tables": [],
+      "apis": [],
+      "ui": [],
+      "events": [
+        "recovery.governance.receipt"
+      ],
+      "behavior_tests": [
+        "tests/unit/recovery-governance.test.mjs",
+        "tests/p1/workspace-sync.test.mjs",
+        "tests/p31/catalog-split.test.mjs",
+        "tests/p31/layered-gates.test.mjs",
+        "tests/p31/evidence-immutability.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "tests/p5/migration.test.mjs",
+        "tests/p6/governance-sync.test.mjs",
+        "tests/p7/governance-sync.test.mjs",
+        "tests/p8/governance.test.mjs",
+        "tests/release/p10-final-gate.test.mjs",
+        "tests/security/boundary.test.mjs",
+        "tests/p10/parity-governance.test.mjs",
+        "tests/p10/migration.test.mjs",
+        "tests/p10/post-closure.test.mjs",
+        "tests/p10/development-reliability.test.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/integration/mcp-stdio-r5.test.mjs",
+        "tests/integration/codex-provider-flow.test.mjs"
+      ],
+      "ui_tests": [],
+      "evidence": [
+        "docs/evidence/v3-clean-p1-gate-contract-complete-20260819/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T0",
+        "tests/unit/recovery-governance.test.mjs",
+        "tests/p10/parity-governance.test.mjs",
+        "tests/p10/migration.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/development-reliability.test.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/integration/mcp-stdio-r5.test.mjs",
+        "tests/p6/governance-sync.test.mjs",
+        "tests/p7/governance-sync.test.mjs",
+        "tests/p8/governance.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10",
+      "maintenance_evidence": [
+        "docs/evidence/post-p10-development-reliability-20260905/verification.json",
+        "docs/evidence/post-p10-development-reliability-20260905/README.md",
+        "docs/evidence/post-p10-development-reliability-20260905/preflight.txt",
+        "docs/evidence/post-p10-development-reliability-20260905/modified-artifact.tgz",
+        "docs/evidence/post-p10-development-reliability-20260905/change.patch",
+        "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1",
+        "docs/evidence/post-p10-development-reliability-20260905"
+      ]
+    },
+    {
+      "id": "REC-D10-FRONTEND-024",
+      "domain": "frontend",
+      "name": "Complete V3 operational web workflows",
+      "status": "released",
+      "owner_modules": [
+        "identity",
+        "setup",
+        "project",
+        "workflow",
+        "assist",
+        "execution",
+        "evidence",
+        "operations"
+      ],
+      "source_files": [
+        "V2.3 mature web workflows"
+      ],
+      "target_modules": [
+        "apps/web/src/App.tsx",
+        "apps/web/src/api.ts",
+        "apps/web/src/features/identity/IdentityAccessPage.tsx",
+        "apps/web/src/features/identity/index.ts",
+        "apps/web/src/styles.css",
+        "apps/web/src/test/identity-access.test.tsx",
+        "apps/web/package.json",
+        "apps/web/src/features/operations/OperationsPage.tsx",
+        "apps/web/src/features/operations/index.ts",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "apps/web/src/features/p10/FinalBusinessParityPage.tsx",
+        "apps/web/src/features/setup/SystemOnboarding.tsx",
+        "apps/web/src/features/setup/GithubSetup.tsx",
+        "apps/web/src/features/settings/SettingsPage.tsx",
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx",
+        "scripts/e2e.mjs",
+        "apps/web/src/features/assets/AssetsPage.tsx",
+        "apps/web/src/features/audit/AuditPage.tsx",
+        "apps/web/src/features/assist/AssistMarkdown.tsx",
+        "apps/web/src/features/assist/AttachmentPreview.tsx",
+        "apps/web/src/features/assist/OfficePreview.tsx",
+        "apps/web/src/features/assist/PdfPreview.tsx",
+        "apps/web/src/features/assist/TurnTimeline.tsx",
+        "apps/web/src/features/assist/TypedEvent.tsx",
+        "apps/web/src/features/assist/office-preview.worker.ts",
+        "apps/web/src/features/context/ContextMapPage.tsx",
+        "apps/web/src/features/execution/QualityPolicyPanel.tsx",
+        "apps/web/src/features/nodes/NodeWorkspacePage.tsx",
+        "apps/web/src/features/project/WorkflowCanvas.tsx",
+        "apps/web/src/features/projects/ProjectsPage.tsx",
+        "apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx",
+        "apps/web/src/features/settings/BriefTemplatesPanel.tsx",
+        "apps/web/src/features/setup/CodexDiscoveryPicker.tsx",
+        "apps/web/src/features/setup/CodexSetup.tsx",
+        "apps/web/src/features/setup/codex-device-auth.ts",
+        "apps/web/src/features/workflow/WorkflowPage/index.ts",
+        "apps/web/src/features/workflow/WorkstreamPage.tsx",
+        "apps/web/src/features/assets/index.ts",
+        "apps/web/src/features/audit/index.ts",
+        "apps/web/src/features/nodes/index.ts",
+        "apps/web/src/features/projects/index.ts",
+        "apps/web/src/features/projects/onboarding/index.ts",
+        "apps/web/src/features/workflow/index.ts",
+        "apps/web/src/features/assist/index.ts",
+        "apps/web/src/features/context/index.ts",
+        "apps/web/src/features/execution/index.ts",
+        "apps/web/src/features/project/index.ts",
+        "apps/web/src/features/settings/index.ts",
+        "apps/web/src/features/setup/index.ts",
+        "apps/web/src/features/projects/preparation/index.tsx",
+        "apps/web/src/test/project-preparation.test.tsx"
+      ],
+      "tables": [],
+      "apis": [
+        "/api/v2/account",
+        "/api/v2/actors",
+        "/api/v2/teams",
+        "/api/v2/projects/{id}/permissions",
+        "/api/v2/credentials",
+        "/api/v2/profiles",
+        "/api/v2/deliveries",
+        "/api/v2/system/deployment",
+        "/api/v2/backups",
+        "/api/v2/imports",
+        "/api/v2/operations",
+        "/api/v2/cas/gc/plan",
+        "/api/v2/setup/session",
+        "/api/v2/provider-discovery/codex",
+        "/api/v2/provider-auth/codex/device-logins",
+        "/api/v2/provider-discovery/github",
+        "/api/v2/provider-auth/github/manifest",
+        "/api/v2/provider-auth/github/installations"
+      ],
+      "ui": [
+        "Identity",
+        "Teams",
+        "Members",
+        "Permissions",
+        "Credentials",
+        "Profiles",
+        "Operations",
+        "Delivery",
+        "Deployment",
+        "Backup & Restore",
+        "Importer",
+        "CAS GC",
+        "Deep-link shell",
+        "Project Repository workspace",
+        "Codex Device Login",
+        "Guided GitHub App installation",
+        "Offline continuity"
+      ],
+      "events": [
+        "actor.updated",
+        "team.created",
+        "team.membership.granted",
+        "acl.policy.updated",
+        "credential.rebound",
+        "profile.probed"
+      ],
+      "behavior_tests": [
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "tests/p10/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/identity-access.test.tsx",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "apps/web/src/test/p10-business-parity.test.tsx",
+        "apps/web/src/test/setup-flow.test.tsx",
+        "apps/web/src/test/shell-navigation.test.tsx",
+        "apps/web/src/test/project-onboarding.test.tsx",
+        "scripts/e2e.mjs",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json",
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T8",
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs",
+        "apps/web/src/test/identity-access.test.tsx",
+        "tests/p8/http-contract.test.mjs",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "tests/p10/http-contract.test.mjs",
+        "apps/web/src/test/p10-business-parity.test.tsx",
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D11-OPS-022",
+      "domain": "operations",
+      "name": "Deployment API, backup, restore, reset, import and release rollback",
+      "status": "released",
+      "owner_modules": [
+        "operations",
+        "deployment",
+        "importer",
+        "cas"
+      ],
+      "source_files": [
+        "V2.3 operations and import commands"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/p8/repository.mjs",
+        "apps/api/src/clean/p8/artifact-operations.mjs",
+        "apps/importer/cli.mjs",
+        "apps/importer/reader.mjs",
+        "apps/importer/planner.mjs",
+        "apps/importer/mapper.mjs",
+        "apps/importer/checkpoint.mjs",
+        "apps/importer/verifier.mjs",
+        "apps/importer/pointer.mjs",
+        "apps/web/src/features/operations/OperationsPage.tsx",
+        "Dockerfile",
+        ".dockerignore",
+        "apps/web/src/features/audit/AuditPage.tsx",
+        "scripts/development-receipt.mjs"
+      ],
+      "tables": [
+        "operations",
+        "operation_links",
+        "events",
+        "audit_events",
+        "backup_manifests",
+        "import_batches",
+        "import_checkpoints",
+        "import_id_map",
+        "import_conflicts",
+        "cas_objects"
+      ],
+      "apis": [
+        "/livez",
+        "/readyz",
+        "/api/v2/system/deployment",
+        "/api/v2/backups",
+        "/api/v2/restore/prepare",
+        "/api/v2/system/reset/prepare",
+        "/api/v2/imports",
+        "/api/v2/operations",
+        "/api/v2/operations/{id}/replay",
+        "/api/v2/cas/gc/plan",
+        "/api/v2/cas/gc/apply"
+      ],
+      "ui": [
+        "Operations",
+        "Backup & Restore",
+        "Importer",
+        "CAS GC"
+      ],
+      "events": [
+        "operation.*",
+        "backup.*",
+        "restore.*",
+        "system.reset.*",
+        "cas.gc.*"
+      ],
+      "behavior_tests": [
+        "tests/p8/importer.test.mjs",
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/development-reliability.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/operations-p8.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T0",
+        "T1",
+        "T8",
+        "tests/p8/importer.test.mjs",
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "scripts/v3-clean-p8-importer-probe.mjs",
+        "scripts/v3-clean-p8-backup-restore-gc-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "scripts/development-receipt.mjs",
+        "tests/p10/development-reliability.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10",
+      "maintenance_evidence": [
+        "docs/evidence/post-p10-development-reliability-20260905/verification.json",
+        "docs/evidence/post-p10-development-reliability-20260905/README.md",
+        "docs/evidence/post-p10-development-reliability-20260905/preflight.txt",
+        "docs/evidence/post-p10-development-reliability-20260905/modified-artifact.tgz",
+        "docs/evidence/post-p10-development-reliability-20260905/change.patch",
+        "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1",
+        "docs/evidence/post-p10-development-reliability-20260905"
+      ]
+    },
+    {
+      "id": "REC-D2-IDENTITY-001",
+      "domain": "identity",
+      "name": "Local owner account and sessions",
+      "status": "released",
+      "owner_modules": [
+        "identity"
+      ],
+      "source_files": [
+        "V2.3 account and session modules"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/identity.mjs",
+        "apps/api/src/clean/authorization.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/migrations/002-identity-acl.mjs",
+        "apps/web/src/features/identity/IdentityAccessPage.tsx",
+        "scripts/v3-clean-p2-evidence.mjs",
+        "apps/api/src/clean/session-service.mjs",
+        "apps/api/src/clean/operations.mjs"
+      ],
+      "tables": [
+        "actors",
+        "teams",
+        "team_memberships",
+        "sessions",
+        "project_memberships",
+        "project_invitations",
+        "project_acl_entries"
+      ],
+      "apis": [
+        "GET /api/v2/account",
+        "PATCH /api/v2/account",
+        "/api/v2/actors",
+        "/api/v2/sessions",
+        "/api/v2/teams",
+        "/api/v2/teams/{id}/memberships",
+        "/api/v2/projects/{id}/members",
+        "/api/v2/projects/{id}/invitations",
+        "/api/v2/projects/{id}/permissions",
+        "POST /api/v2/setup/session"
+      ],
+      "ui": [
+        "Identity",
+        "Teams",
+        "Members",
+        "Permissions"
+      ],
+      "events": [
+        "actor.created",
+        "actor.updated",
+        "actor.switched",
+        "session.created",
+        "session.revoked",
+        "team.created",
+        "team.membership.granted",
+        "membership.granted",
+        "invitation.created",
+        "invitation.accepted",
+        "acl.allowed",
+        "acl.denied",
+        "acl.policy.updated"
+      ],
+      "behavior_tests": [
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/identity-access.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T2",
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs",
+        "apps/web/src/test/identity-access.test.tsx",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D2-SETUP-002",
+      "domain": "setup",
+      "name": "Setup, Vault, credentials, profiles and provider probes",
+      "status": "released",
+      "owner_modules": [
+        "identity",
+        "setup",
+        "operations"
+      ],
+      "source_files": [
+        "V2.3 credential, profile and provider modules"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/identity.mjs",
+        "apps/api/src/clean/vault.mjs",
+        "apps/api/src/clean/provider-adapters.mjs",
+        "apps/api/src/clean/runtime.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "packages/contracts/src/clean-v2.mjs",
+        "apps/web/src/features/identity/IdentityAccessPage.tsx",
+        "apps/api/src/clean/p8/github-adapter.mjs",
+        "apps/api/src/clean/p8/repository.mjs",
+        "apps/web/src/features/setup/SystemOnboarding.tsx",
+        "apps/web/src/features/setup/GithubSetup.tsx",
+        "apps/web/src/features/settings/SettingsPage.tsx",
+        "apps/api/src/clean/local-setup-service.mjs",
+        "apps/api/src/clean/github-setup-service.mjs",
+        "apps/api/src/clean/config.mjs",
+        "config/github-app.local.example.json",
+        "apps/api/src/clean/app-server-adapter.mjs",
+        "apps/web/src/features/setup/CodexDiscoveryPicker.tsx",
+        "apps/web/src/features/setup/CodexSetup.tsx",
+        "apps/web/src/features/setup/codex-device-auth.ts"
+      ],
+      "tables": [
+        "credential_refs",
+        "provider_profiles",
+        "operations",
+        "operation_links"
+      ],
+      "apis": [
+        "GET /api/v2/setup",
+        "POST /api/v2/setup",
+        "/api/v2/credentials",
+        "/api/v2/credentials/{id}/rebind",
+        "/api/v2/credentials/{id}/rotate",
+        "/api/v2/credentials/{id}/revoke",
+        "/api/v2/profiles",
+        "/api/v2/profiles/{id}/probe",
+        "/api/v2/operations/{id}",
+        "/api/v2/provider-profiles/{id}/repositories",
+        "/api/v2/webhooks/github",
+        "GET /api/v2/provider-discovery/codex",
+        "POST /api/v2/provider-discovery/codex/import",
+        "POST /api/v2/provider-auth/codex/device-logins",
+        "GET /api/v2/provider-auth/codex/device-logins/{id}",
+        "POST /api/v2/provider-auth/codex/device-logins/{id}/cancel",
+        "GET /api/v2/provider-discovery/github",
+        "POST /api/v2/provider-auth/github/manifest",
+        "POST /api/v2/provider-auth/github/installations"
+      ],
+      "ui": [
+        "Setup",
+        "Credentials",
+        "Profiles",
+        "Guided GitHub App installation and callback"
+      ],
+      "events": [
+        "setup.completed",
+        "credential.created",
+        "credential.rebind.queued",
+        "credential.rebound",
+        "credential.rotate.queued",
+        "credential.rotated",
+        "credential.failed",
+        "credential.revoked",
+        "profile.created",
+        "profile.probe.queued",
+        "profile.probed",
+        "profile.probe.failed",
+        "operation.succeeded",
+        "operation.failed"
+      ],
+      "behavior_tests": [
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/identity-access.test.tsx",
+        "apps/web/src/test/setup-flow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p2-identity-acl-20260819/verification.json",
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T2",
+        "tests/p2/identity-acl.test.mjs",
+        "tests/p2/identity-acl-security.test.mjs",
+        "apps/web/src/test/identity-access.test.tsx",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "scripts/v3-clean-p8-github-delivery-probe.mjs",
+        "tests/p10/business-parity.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D3-RUNNER-003",
+      "domain": "runner",
+      "name": "Broker-isolated Docker, Host, and Windows Bridge runners with signed Job Spec",
+      "status": "released",
+      "owner_modules": [
+        "runner"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs",
+        "apps/api/src/clean/runner-protocol.mjs",
+        "apps/api/src/clean/runner-adapters.mjs",
+        "apps/api/src/clean/runner-service.mjs",
+        "apps/runner-broker/clean-server.mjs",
+        "apps/windows-native-bridge/src/protocol.mjs",
+        "apps/api/src/clean/runner-input-provider.mjs",
+        "apps/api/src/clean/candidate-workspace.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/runner-protocol.mjs",
+        "apps/api/src/clean/runner-adapters.mjs",
+        "apps/api/src/clean/runner-service.mjs",
+        "apps/runner-broker/clean-server.mjs",
+        "apps/windows-native-bridge/server.mjs",
+        "apps/web/src/features/connections/ConnectionsPage.tsx",
+        "apps/api/src/clean/runner-input-provider.mjs",
+        "apps/api/src/clean/candidate-workspace.mjs"
+      ],
+      "tables": [
+        "runner_profiles",
+        "job_specs",
+        "runner_receipts"
+      ],
+      "apis": [
+        "/api/v2/runners/profiles",
+        "/api/v2/runners/profiles/{id}",
+        "/api/v2/runners/profiles/{id}/probe",
+        "/api/v2/runners/profiles/{id}/disable"
+      ],
+      "ui": [
+        "Connections / Runner Profiles",
+        "Execution runner readiness"
+      ],
+      "events": [
+        "runner_profile.*",
+        "runner_job.*",
+        "runner_receipt.*"
+      ],
+      "behavior_tests": [
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/runner-transports.test.mjs",
+        "tests/p6/http-security.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/connections-p6.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T3",
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/runner-transports.test.mjs",
+        "tests/p6/http-security.test.mjs",
+        "apps/web/src/test/connections-p6.test.tsx",
+        "scripts/v3-clean-p6-docker-runner-probe.mjs",
+        "scripts/v3-clean-p6-host-runner-probe.mjs",
+        "scripts/v3-clean-p6-bridge-runner-probe.mjs",
+        "scripts/v3-clean-p6-restart-probe.mjs",
+        "tests/p10/real-development-loop.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D4-MCP-004",
+      "domain": "mcp",
+      "name": "MCP clients, tools and operation lifecycle over HTTP, stdio and Gateway",
+      "status": "released",
+      "owner_modules": [
+        "mcp",
+        "operations"
+      ],
+      "source_files": [
+        "packages/contracts/src/clean-v2.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/mcp-service.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/http.mjs",
+        "scripts/mcp-stdio.mjs",
+        "apps/gateway/server.mjs",
+        "scripts/recovery-golden.mjs",
+        "scripts/lib/git-blob.mjs"
+      ],
+      "tables": [
+        "mcp_clients",
+        "operations",
+        "operation_links",
+        "events"
+      ],
+      "apis": [
+        "/api/v2/mcp",
+        "/api/v2/mcp/tools",
+        "/api/v2/mcp/clients",
+        "/api/v2/mcp/clients/{id}/revoke",
+        "/api/v2/operations/{id}"
+      ],
+      "ui": [
+        "MCP Settings"
+      ],
+      "events": [
+        "mcp.tool.called",
+        "mcp_client.created",
+        "mcp_client.revoked"
+      ],
+      "behavior_tests": [
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/integration/mcp-stdio-r5.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T3",
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/integration/mcp-stdio-r5.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10",
+      "maintenance_evidence": [
+        "docs/evidence/post-p10-development-reliability-20260905/verification.json"
+      ]
+    },
+    {
+      "id": "REC-D4-SCOPE-016",
+      "domain": "mcp",
+      "name": "MCP and Exchange scopes, dual approval, allowlists and revocation",
+      "status": "released",
+      "owner_modules": [
+        "exchange",
+        "mcp",
+        "gateway"
+      ],
+      "source_files": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/gateway-service.mjs",
+        "apps/api/src/clean/authorization.mjs",
+        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/mcp-service.mjs",
+        "apps/api/src/clean/gateway-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/gateway/server.mjs",
+        "apps/web/src/features/context/McpSettingsPage.tsx"
+      ],
+      "tables": [
+        "exchange_requests",
+        "exchange_grants",
+        "mcp_clients",
+        "gateway_forward_receipts"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/exchange-requests",
+        "/api/v2/exchange-requests/{id}/approve",
+        "/api/v2/exchange-requests/{id}/reject",
+        "/api/v2/exchange-grants/{id}/revoke",
+        "/api/v2/exchange-grants/{id}/context-packs",
+        "/api/v2/gateway/forward",
+        "/api/v2/gateway/receipts/{id}"
+      ],
+      "ui": [
+        "MCP Settings",
+        "Exchange approvals"
+      ],
+      "events": [
+        "exchange_request.created",
+        "exchange_request.approved",
+        "exchange_request.rejected",
+        "exchange_grant.created",
+        "exchange_grant.revoked",
+        "gateway.forwarded",
+        "gateway.denied"
+      ],
+      "behavior_tests": [
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T3",
+        "tests/p4/mcp-exchange-gateway.test.mjs",
+        "tests/p4/transport-parity.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D5-PROJECT-005",
+      "domain": "project",
+      "name": "Draft project, retryable intake and confirmed brief",
+      "status": "released",
+      "owner_modules": [
+        "project",
+        "platform"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/003-project-workflow.mjs",
+        "apps/api/src/clean/project-workflow.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/server.mjs",
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+        "apps/api/src/clean/p10-service.mjs",
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx",
+        "apps/web/src/features/projects/ProjectsPage.tsx",
+        "apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx",
+        "apps/web/src/features/settings/BriefTemplatesPanel.tsx"
+      ],
+      "tables": [
+        "projects",
+        "project_intakes",
+        "briefs",
+        "brief_revisions",
+        "aggregate_heads"
+      ],
+      "apis": [
+        "/api/v2/projects",
+        "/api/v2/projects/{id}",
+        "/api/v2/projects/{id}/intake",
+        "/api/v2/projects/{id}/intake/retry",
+        "/api/v2/projects/{id}/intake/cancel",
+        "/api/v2/projects/{id}/briefs",
+        "/api/v2/projects/{id}/briefs/{revision}/confirm",
+        "/api/v2/project-deletion-intents/{id}"
+      ],
+      "ui": [
+        "Projects",
+        "Intake",
+        "Brief",
+        "ProjectWorkflowPage"
+      ],
+      "events": [
+        "project.created",
+        "intake.*",
+        "brief.*"
+      ],
+      "behavior_tests": [
+        "tests/p3/active-entrypoint.test.mjs",
+        "tests/p3/http-contract.test.mjs",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "apps/web/src/test/project-onboarding.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T4",
+        "tests/p3/active-entrypoint.test.mjs",
+        "tests/p3/http-contract.test.mjs",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p10/business-parity.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D5-WORKFLOW-006",
+      "domain": "workflow",
+      "name": "Workstream and Task workflow canvas with node contracts",
+      "status": "released",
+      "owner_modules": [
+        "workflow",
+        "platform"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/003-project-workflow.mjs",
+        "apps/api/src/clean/project-workflow.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx",
+        "apps/web/src/features/project/WorkflowCanvas.tsx",
+        "apps/web/src/features/workflow/WorkflowPage/index.ts",
+        "apps/web/src/features/workflow/WorkstreamPage.tsx",
+        "apps/web/src/features/nodes/NodeWorkspacePage.tsx"
+      ],
+      "tables": [
+        "workflows",
+        "workflow_revisions",
+        "workflow_nodes",
+        "node_contracts",
+        "workflow_generation_proposals",
+        "aggregate_heads"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/workflows",
+        "/api/v2/projects/{id}/workflow-draft",
+        "/api/v2/workflow-proposals/{id}/apply"
+      ],
+      "ui": [
+        "Workflow Canvas",
+        "Task Contract",
+        "ProjectWorkflowPage"
+      ],
+      "events": [
+        "workflow.*",
+        "generation.*"
+      ],
+      "behavior_tests": [
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "apps/web/src/test/project-onboarding.test.tsx",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T4",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D6-EXECUTION-008",
+      "domain": "execution",
+      "name": "Persistent DAG dispatcher and seven replayable stages",
+      "status": "released",
+      "owner_modules": [
+        "execution"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/006-runner-execution-checkpoint-replay.mjs",
+        "apps/api/src/clean/execution-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/candidate-workspace.mjs",
+        "apps/api/src/clean/runner-input-provider.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/execution-service.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/execution",
+        "apps/web/src/features/execution/QualityPolicyPanel.tsx",
+        "apps/api/src/clean/candidate-workspace.mjs",
+        "apps/api/src/clean/runner-input-provider.mjs"
+      ],
+      "tables": [
+        "executions",
+        "execution_inputs",
+        "task_attempts",
+        "execution_stage_checkpoints",
+        "execution_events"
+      ],
+      "apis": [
+        "/api/v2/projects/{project_id}/executions",
+        "/api/v2/executions/{id}",
+        "/api/v2/executions/{id}/events",
+        "/api/v2/executions/{id}/attempts",
+        "/api/v2/executions/{id}/checkpoints",
+        "/api/v2/executions/{id}/start",
+        "/api/v2/executions/{id}/pause",
+        "/api/v2/executions/{id}/resume",
+        "/api/v2/executions/{id}/cancel",
+        "/api/v2/executions/{id}/replan",
+        "/api/v2/executions/{id}/stages/{stage}/replay"
+      ],
+      "ui": [
+        "Execution list",
+        "Seven-stage rail",
+        "Task attempts",
+        "Checkpoint replay",
+        "Recovery controls"
+      ],
+      "events": [
+        "execution.*",
+        "execution_stage.*",
+        "task_attempt.*"
+      ],
+      "behavior_tests": [
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/execution-recovery.test.mjs",
+        "tests/p6/http-security.test.mjs",
+        "tests/p6/transport-parity.test.mjs",
+        "tests/p6/migration.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/execution-p6.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p6-runner-execution-20260824/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T4",
+        "tests/p6/runner-execution.test.mjs",
+        "tests/p6/execution-recovery.test.mjs",
+        "tests/p6/http-security.test.mjs",
+        "tests/p6/transport-parity.test.mjs",
+        "tests/p6/migration.test.mjs",
+        "apps/web/src/test/execution-p6.test.tsx",
+        "scripts/v3-clean-p6-performance.mjs",
+        "scripts/e2e.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D6-GENERATION-007",
+      "domain": "workflow",
+      "name": "Asynchronous workflow generator and independent critic",
+      "status": "released",
+      "owner_modules": [
+        "workflow",
+        "critic",
+        "operations"
+      ],
+      "source_files": [
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/provider-adapters.mjs",
+        "packages/contracts/src/clean-v2.mjs",
+        "apps/api/src/clean/workflow-adapters.mjs",
+        "scripts/v3-clean-real-development-loop.mjs",
+        "tests/p10/real-development-loop.test.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+        "apps/web/src/features/project/WorkflowCanvas.tsx",
+        "apps/api/src/clean/workflow-adapters.mjs",
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx"
+      ],
+      "tables": [
+        "workflow_generations",
+        "workflow_critic_receipts",
+        "workflow_generation_proposals",
+        "operations"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/workflow-generations",
+        "/api/v2/workflow-generations/{id}",
+        "/api/v2/workflow-generations/{id}/retry",
+        "/api/v2/workflow-generations/{id}/cancel",
+        "/api/v2/workflow-generations/{id}/critic",
+        "/api/v2/workflow-proposals/{id}/apply"
+      ],
+      "ui": [
+        "Workflow",
+        "ProjectWorkflowPage"
+      ],
+      "events": [
+        "generation.*",
+        "critic.*"
+      ],
+      "behavior_tests": [
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p3/migration.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T4",
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p3/migration.test.mjs",
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/p10/real-development-loop.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D6-OUTCOME-009",
+      "domain": "outcome",
+      "name": "Evidence-driven outcome, rubric and revocable waiver",
+      "status": "released",
+      "owner_modules": [
+        "outcome",
+        "project",
+        "evidence"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/003-project-workflow.mjs",
+        "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+        "apps/api/src/clean/outcome-evaluation-service.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/outcome-evaluation-service.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/execution/ExecutionP7Panels.tsx"
+      ],
+      "tables": [
+        "outcome_requirements",
+        "outcome_evaluations",
+        "outcome_waivers",
+        "digests"
+      ],
+      "apis": [
+        "/api/v2/projects/{project_id}/outcome-requirements",
+        "/api/v2/executions/{id}/outcome",
+        "/api/v2/executions/{id}/outcome/evaluate",
+        "/api/v2/executions/{id}/outcome/waivers",
+        "/api/v2/outcome-waivers/{id}/revoke"
+      ],
+      "ui": [
+        "Execution / Outcome",
+        "Quality Review"
+      ],
+      "events": [
+        "outcome.requirement.*",
+        "outcome.*"
+      ],
+      "behavior_tests": [
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/execution-p7.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T4",
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "apps/web/src/test/execution-p7.test.tsx",
+        "scripts/v3-clean-p7-quality-outcome-probe.mjs",
+        "scripts/e2e.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D7-DELIVERY-015",
+      "domain": "delivery",
+      "name": "GitHub App Draft PR delivery and merge recovery",
+      "status": "released",
+      "owner_modules": [
+        "delivery"
+      ],
+      "source_files": [
+        "delivery-service.mjs",
+        "delivery-state-domain.mjs",
+        "delivery-recovery.mjs",
+        "delivery-pr-intent.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/p8/github-adapter.mjs",
+        "apps/api/src/clean/p8/repository.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/operations/OperationsPage.tsx",
+        "apps/web/src/features/delivery/DeliveryPage.tsx"
+      ],
+      "tables": [
+        "deliveries",
+        "pull_request_intents",
+        "delivery_policies",
+        "delivery_events"
+      ],
+      "apis": [
+        "/api/v2/projects/{project_id}/delivery-policies",
+        "/api/v2/deliveries",
+        "/api/v2/deliveries/{id}/pull-request-intents",
+        "/api/v2/deliveries/{id}/ready",
+        "/api/v2/deliveries/{id}/merge",
+        "/api/v2/deliveries/{id}/reconcile",
+        "/api/v2/webhooks/github"
+      ],
+      "ui": [
+        "Delivery",
+        "Draft PR",
+        "Merge Review"
+      ],
+      "events": [
+        "delivery.queued",
+        "delivery.intent.create_draft",
+        "delivery.draft_pr",
+        "delivery.ready",
+        "delivery.merged",
+        "delivery.webhook.received"
+      ],
+      "behavior_tests": [
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/operations-p8.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T7",
+        "tests/p8/delivery-operations.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "scripts/v3-clean-p8-github-delivery-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D7-REPOSITORY-014",
+      "domain": "repository",
+      "name": "Repository connections, targets, lines and managed worktrees",
+      "status": "released",
+      "owner_modules": [
+        "repository"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/003-project-workflow.mjs",
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/provider-adapters.mjs",
+        "apps/api/src/clean/github-repository-adapter.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/project-workflow.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/project/ProjectWorkflowPage.tsx",
+        "apps/api/src/clean/p10-service.mjs",
+        "apps/api/src/clean/github-repository-adapter.mjs"
+      ],
+      "tables": [
+        "repository_connections",
+        "repository_targets",
+        "repository_lines",
+        "repository_workspaces",
+        "repository_locks"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/repository-connections",
+        "/api/v2/repository-connections/{id}",
+        "/api/v2/repository-connections/{id}/targets",
+        "/api/v2/projects/{id}/repository-lines",
+        "/api/v2/repository-lines/{id}/reconcile",
+        "/api/v2/projects/{id}/repository-workspaces",
+        "/api/v2/repository-workspaces/{id}/refresh",
+        "/api/v2/repository-workspaces/{id}/lock",
+        "/api/v2/repository-workspaces/{id}/release",
+        "/api/v2/repository-targets/{id}/deletion-intents",
+        "/api/v2/repository-deletion-intents/{id}"
+      ],
+      "ui": [
+        "Repository",
+        "Worktree",
+        "ProjectWorkflowPage",
+        "Repository deletion confirmation"
+      ],
+      "events": [
+        "repository.*",
+        "workspace.*"
+      ],
+      "behavior_tests": [
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/remote-workspace-auth.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/project-workflow-clean.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p3-project-workflow-20260819/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T7",
+        "tests/p3/migration.test.mjs",
+        "tests/p3/project-workflow.test.mjs",
+        "apps/web/src/test/project-workflow-clean.test.tsx",
+        "tests/p10/business-parity.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D8-APPROVAL-013",
+      "domain": "assist",
+      "name": "Runtime approval, user input and semantic proposals",
+      "status": "released",
+      "owner_modules": [
+        "assist"
+      ],
+      "source_files": [
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/web/src/features/approvals"
+      ],
+      "tables": [
+        "runtime_approvals",
+        "runtime_user_inputs",
+        "semantic_proposals"
+      ],
+      "apis": [
+        "/api/v2/approvals",
+        "/api/v2/user-inputs",
+        "/api/v2/proposals"
+      ],
+      "ui": [
+        "Approval Center",
+        "Proposal"
+      ],
+      "events": [
+        "runtime_approval.requested",
+        "runtime_approval.approved",
+        "runtime_approval.rejected",
+        "runtime_user_input.requested",
+        "runtime_user_input.answered",
+        "semantic_proposal.created"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/approvals-p5.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "apps/web/src/test/approvals-p5.test.tsx"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D8-ASSIST-010",
+      "domain": "assist",
+      "name": "Four-scope Assist runtime and native event replay",
+      "status": "released",
+      "owner_modules": [
+        "assist"
+      ],
+      "source_files": [
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/api/src/clean/app-server-adapter.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/assist-service.mjs",
+        "apps/api/src/clean/app-server-adapter.mjs",
+        "apps/web/src/features/assist",
+        "apps/api/src/clean/p10-service.mjs",
+        "apps/web/src/features/assist/AssistMarkdown.tsx",
+        "apps/web/src/features/assist/AttachmentPreview.tsx",
+        "apps/web/src/features/assist/OfficePreview.tsx",
+        "apps/web/src/features/assist/PdfPreview.tsx",
+        "apps/web/src/features/assist/TurnTimeline.tsx",
+        "apps/web/src/features/assist/TypedEvent.tsx",
+        "apps/web/src/features/assist/office-preview.worker.ts"
+      ],
+      "tables": [
+        "assist_sessions",
+        "assist_turns",
+        "assist_messages",
+        "assist_goals",
+        "assist_configurations",
+        "assist_references"
+      ],
+      "apis": [
+        "/api/v2/assist/sessions",
+        "/api/v2/assist/sessions/{id}/turns",
+        "/api/v2/assist/sessions/{id}/events",
+        "/api/v2/assist/turns/{id}/retry"
+      ],
+      "ui": [
+        "Assist Center",
+        "Composer",
+        "Context Pack",
+        "Turn Timeline",
+        "Operation Status"
+      ],
+      "events": [
+        "assist_session.created",
+        "assist_turn.queued",
+        "assist_turn.running",
+        "assist_turn.awaiting_input",
+        "assist_turn.completed",
+        "assist_turn.failed"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p5/provider-probe.test.mjs",
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/assist.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p5/provider-probe.test.mjs",
+        "apps/web/src/test/assist.test.tsx",
+        "scripts/v3-clean-p5-assist-probe.mjs",
+        "tests/p10/business-parity.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D8-ATTACHMENTS-011",
+      "domain": "assist",
+      "name": "Attachments and secure previews",
+      "status": "released",
+      "owner_modules": [
+        "files",
+        "parser",
+        "evidence"
+      ],
+      "source_files": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs",
+        "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+        "apps/api/src/clean/parser-service.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/api/src/clean/parser-service.mjs",
+        "apps/web/src/features/assist",
+        "apps/web/src/features/evidence",
+        "apps/web/src/features/assist/AttachmentPreview.tsx",
+        "apps/web/src/features/assist/OfficePreview.tsx",
+        "apps/web/src/features/assist/PdfPreview.tsx"
+      ],
+      "tables": [
+        "attachments",
+        "asset_blobs",
+        "parser_runs"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/attachments",
+        "/api/v2/attachments/{id}/content",
+        "/api/v2/attachments/{id}/preview",
+        "/api/v2/assets/{id}/versions/{version_id}/parse"
+      ],
+      "ui": [
+        "Attachments",
+        "Evidence preview"
+      ],
+      "events": [
+        "attachment.*",
+        "parser_run.*"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/http-contract.test.mjs",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/files-p5.test.tsx",
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "apps/web/src/test/workflow.test.tsx",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/http-contract.test.mjs",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "apps/web/src/test/files-p5.test.tsx",
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "scripts/v3-clean-p7-parser-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs",
+        "apps/web/src/test/post-closure-restoration.test.tsx"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D8-BRIDGE-026",
+      "domain": "bridge",
+      "name": "Independent Windows Native Bridge pairing and Git bundle transport",
+      "status": "released",
+      "owner_modules": [
+        "bridge"
+      ],
+      "source_files": [
+        "apps/api/src/clean/bridge-service.mjs",
+        "apps/api/src/clean/windows-bridge-adapter.mjs",
+        "apps/windows-native-bridge/server.mjs",
+        "apps/windows-native-bridge/src/protocol.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/bridge-service.mjs",
+        "apps/api/src/clean/windows-bridge-adapter.mjs",
+        "apps/windows-native-bridge"
+      ],
+      "tables": [
+        "bridge_devices",
+        "bridge_transfers"
+      ],
+      "apis": [
+        "/api/v2/bridge/pairing",
+        "/api/v2/bridge/devices/{id}/probe",
+        "/api/v2/bridge/devices/{id}/rotate",
+        "/api/v2/bridge/devices/{id}/revoke",
+        "/api/v2/bridge/devices/{id}/transfers"
+      ],
+      "ui": [
+        "Connections",
+        "Bridge Settings"
+      ],
+      "events": [
+        "bridge_device.paired",
+        "bridge_device.probed",
+        "bridge_device.rotated",
+        "bridge_device.revoked",
+        "bridge_transfer.verified",
+        "bridge_transfer.failed"
+      ],
+      "behavior_tests": [
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/connections-p5.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T5",
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "apps/web/src/test/connections-p5.test.tsx",
+        "scripts/v3-clean-p5-bridge-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D8-FILES-012",
+      "domain": "assist",
+      "name": "Managed files and reversible change batches",
+      "status": "released",
+      "owner_modules": [
+        "files"
+      ],
+      "source_files": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/files-service.mjs",
+        "apps/web/src/features/files",
+        "apps/web/src/features/files/FilesDrawer.tsx",
+        "apps/web/src/features/assist/AttachmentPreview.tsx"
+      ],
+      "tables": [
+        "file_refs",
+        "file_change_batches",
+        "file_change_items"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/files",
+        "/api/v2/projects/{id}/change-batches",
+        "/api/v2/change-batches/{id}/apply",
+        "/api/v2/change-batches/{id}/undo"
+      ],
+      "ui": [
+        "Files",
+        "Diff Review"
+      ],
+      "events": [
+        "file_change_batch.proposed",
+        "file_change_batch.approved",
+        "file_change_batch.applied",
+        "file_change_batch.undone"
+      ],
+      "behavior_tests": [
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/files-p5.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T5",
+        "tests/p5/assist-files.test.mjs",
+        "tests/p5/mutation-recovery.test.mjs",
+        "apps/web/src/test/files-p5.test.tsx",
+        "scripts/v3-clean-p5-performance.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D8-TERMINAL-025",
+      "domain": "terminal",
+      "name": "Native Terminal, reconnect and cursor recovery",
+      "status": "released",
+      "owner_modules": [
+        "terminal"
+      ],
+      "source_files": [
+        "apps/api/src/clean/terminal-service.mjs",
+        "apps/api/clean-server.mjs",
+        "apps/api/src/clean/migrations/005-assist-files-terminal-bridge.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/terminal-service.mjs",
+        "apps/api/clean-server.mjs",
+        "apps/web/src/features/terminal"
+      ],
+      "tables": [
+        "terminal_sessions",
+        "terminal_events"
+      ],
+      "apis": [
+        "/api/v2/terminals",
+        "/api/v2/terminals/{id}/events",
+        "/api/v2/terminals/{id}/ws"
+      ],
+      "ui": [
+        "Terminal"
+      ],
+      "events": [
+        "terminal.opened",
+        "terminal.output",
+        "terminal.resized",
+        "terminal.signalled",
+        "terminal.orphaned",
+        "terminal.stopped"
+      ],
+      "behavior_tests": [
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/terminal.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p5-assist-terminal-20260820/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T5",
+        "tests/p5/terminal-bridge.test.mjs",
+        "tests/p5/http-contract.test.mjs",
+        "apps/web/src/test/terminal.test.tsx",
+        "scripts/v3-clean-p5-performance.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D9-CONTEXT-017",
+      "domain": "context",
+      "name": "Context tree, versions, policy, selection and Context Pack v5",
+      "status": "released",
+      "owner_modules": [
+        "context",
+        "platform",
+        "operations"
+      ],
+      "source_files": [
+        "apps/api/src/clean/context-service.mjs",
+        "apps/api/src/clean/cas.mjs",
+        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/context-service.mjs",
+        "apps/api/src/clean/command-dispatcher.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/web/src/features/context/ContextPage.tsx",
+        "apps/web/src/features/context/types.ts",
+        "apps/api/src/modules/context/index.mjs",
+        "apps/web/src/features/projects/preparation/index.tsx",
+        "apps/web/src/test/project-preparation.test.tsx"
+      ],
+      "tables": [
+        "context_sources",
+        "context_nodes",
+        "context_document_versions",
+        "context_edges",
+        "context_policies",
+        "context_selections",
+        "context_packs",
+        "aggregate_revisions",
+        "aggregate_heads",
+        "events"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/context/sources",
+        "/api/v2/projects/{id}/context/map",
+        "/api/v2/projects/{id}/context/search",
+        "/api/v2/projects/{id}/context/read",
+        "/api/v2/projects/{id}/context/nodes/{node_id}",
+        "/api/v2/projects/{id}/context/nodes/{node_id}/versions",
+        "/api/v2/projects/{id}/context/policy",
+        "/api/v2/projects/{id}/context/selections",
+        "/api/v2/projects/{id}/context/packs"
+      ],
+      "ui": [
+        "Context Map",
+        "Document History",
+        "Context Policy",
+        "Context Pack"
+      ],
+      "events": [
+        "context_source.created",
+        "context_source.updated",
+        "context_policy.updated",
+        "context_selection.created",
+        "context_pack.created"
+      ],
+      "behavior_tests": [
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T6",
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D9-DEPLOYMENT-021",
+      "domain": "evidence",
+      "name": "Deployment, browser and viewport evidence in CAS",
+      "status": "released",
+      "owner_modules": [
+        "deployment",
+        "evidence",
+        "operations"
+      ],
+      "source_files": [
+        "deployment-evidence-verifier.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/p8/repository.mjs",
+        "apps/api/src/clean/p8/artifact-operations.mjs",
+        "apps/web/src/features/operations/OperationsPage.tsx",
+        "scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+        "Dockerfile",
+        ".dockerignore"
+      ],
+      "tables": [
+        "deployment_candidates",
+        "deployment_verifications",
+        "operations",
+        "events"
+      ],
+      "apis": [
+        "/api/v2/system/deployment",
+        "/api/v2/system/deployment/candidates/{id}",
+        "/api/v2/system/deployment/candidates/{id}/verify"
+      ],
+      "ui": [
+        "Operations",
+        "Deployment"
+      ],
+      "events": [
+        "deployment.candidate.created",
+        "deployment.verification.queued",
+        "deployment.verified"
+      ],
+      "behavior_tests": [
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/operations-p8.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p8-delivery-deployment-importer-20260825/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T6",
+        "T8",
+        "tests/p8/deployment-backup.test.mjs",
+        "tests/p8/http-contract.test.mjs",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "scripts/v3-clean-p8-deployment-rollback-probe.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D9-EVIDENCE-019",
+      "domain": "evidence",
+      "name": "CAS asset, attestation, relation, trace, digest and code evidence",
+      "status": "released",
+      "owner_modules": [
+        "evidence"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+        "apps/api/src/clean/evidence-service.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "packages/contracts/src/clean-v2.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/evidence-service.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/web/src/features/evidence",
+        "apps/web/src/features/execution/ExecutionP7Panels.tsx"
+      ],
+      "tables": [
+        "assets",
+        "asset_versions",
+        "asset_blobs",
+        "asset_relations",
+        "asset_attestations",
+        "traces",
+        "digests",
+        "code_changes",
+        "test_results"
+      ],
+      "apis": [
+        "/api/v2/projects/{project_id}/assets",
+        "/api/v2/assets/{id}",
+        "/api/v2/assets/{id}/versions",
+        "/api/v2/assets/{id}/versions/{version_id}/content",
+        "/api/v2/assets/{id}/relations",
+        "/api/v2/assets/{id}/attestations",
+        "/api/v2/assets/{id}/tombstone",
+        "/api/v2/executions/{id}/evidence",
+        "/api/v2/executions/{id}/traces",
+        "/api/v2/executions/{id}/digests",
+        "/api/v2/executions/{id}/test-results",
+        "/api/v2/executions/{id}/code-changes"
+      ],
+      "ui": [
+        "Evidence assets",
+        "Execution Evidence",
+        "Trace",
+        "Digest",
+        "Attestation"
+      ],
+      "events": [
+        "asset.*",
+        "evidence.*",
+        "trace.*",
+        "digest.*",
+        "code_change.*",
+        "test_result.*"
+      ],
+      "behavior_tests": [
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "apps/web/src/test/execution-p7.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T6",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/http-contract.test.mjs",
+        "apps/web/src/test/evidence-p7.test.tsx",
+        "apps/web/src/test/execution-p7.test.tsx",
+        "scripts/v3-clean-p7-cas-tamper-probe.mjs",
+        "scripts/v3-clean-p7-performance.mjs",
+        "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D9-PROJECTION-018",
+      "domain": "context",
+      "name": "Recoverable Context projection worker and deterministic index rebuild",
+      "status": "released",
+      "owner_modules": [
+        "projection",
+        "context",
+        "platform",
+        "operations"
+      ],
+      "source_files": [
+        "apps/api/src/clean/context-service.mjs",
+        "apps/api/src/clean/operations.mjs",
+        "apps/api/src/clean/migrations/004-context-projection-mcp.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/context-service.mjs",
+        "apps/api/src/clean/operations.mjs",
+        "apps/api/src/clean/http.mjs",
+        "apps/web/src/features/context/ContextPage.tsx",
+        "scripts/v3-clean-p4-performance.mjs"
+      ],
+      "tables": [
+        "context_projection_jobs",
+        "context_index_snapshots",
+        "operations",
+        "operation_links",
+        "events",
+        "aggregate_heads"
+      ],
+      "apis": [
+        "/api/v2/projects/{id}/context/status",
+        "/api/v2/projects/{id}/context/rebuild",
+        "/api/v2/projects/{id}/context/jobs",
+        "/api/v2/projects/{id}/context/jobs/{job_id}",
+        "/api/v2/projects/{id}/context/jobs/{job_id}/events",
+        "/api/v2/projects/{id}/context/jobs/{job_id}/cancel",
+        "/api/v2/projects/{id}/context/jobs/{job_id}/retry"
+      ],
+      "ui": [
+        "Context projection status",
+        "Projection recovery"
+      ],
+      "events": [
+        "context_projection.queued",
+        "context_projection.completed",
+        "context_projection.failed",
+        "context_projection.cancelled"
+      ],
+      "behavior_tests": [
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p4-context-mcp-20260820/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T6",
+        "T8",
+        "tests/p4/context-projection.test.mjs",
+        "tests/p4/migration.test.mjs",
+        "tests/p4/active-entrypoint.test.mjs",
+        "tests/p4/governance-sync.test.mjs",
+        "apps/web/src/test/context.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D9-QUALITY-020",
+      "domain": "quality",
+      "name": "Isolated multi-format quality review and human semantic threshold",
+      "status": "released",
+      "owner_modules": [
+        "parser",
+        "quality",
+        "evidence"
+      ],
+      "source_files": [
+        "apps/api/src/clean/migrations/007-evidence-quality-parser-outcome.mjs",
+        "apps/api/src/clean/parser-service.mjs",
+        "apps/api/src/clean/parser-protocol.mjs",
+        "apps/api/src/clean/quality-service.mjs",
+        "apps/parser-worker/worker.mjs"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/parser-service.mjs",
+        "apps/api/src/clean/quality-service.mjs",
+        "apps/runner-broker/clean-server.mjs",
+        "apps/parser-worker",
+        "apps/web/src/features/execution/ExecutionP7Panels.tsx",
+        "apps/parser-worker/archive-worker.mjs",
+        "apps/web/src/features/execution/QualityPolicyPanel.tsx"
+      ],
+      "tables": [
+        "parser_formats",
+        "parser_runs",
+        "quality_review_runs",
+        "quality_review_reports",
+        "quality_review_events",
+        "human_reviews",
+        "test_results"
+      ],
+      "apis": [
+        "/api/v2/parser/formats",
+        "/api/v2/assets/{id}/versions/{version_id}/parse",
+        "/api/v2/parser-runs/{id}",
+        "/api/v2/parser-runs/{id}/retry",
+        "/api/v2/parser-runs/{id}/cancel",
+        "/api/v2/executions/{id}/quality-reviews",
+        "/api/v2/quality-reviews/{id}",
+        "/api/v2/quality-reviews/{id}/events",
+        "/api/v2/quality-reviews/{id}/report",
+        "/api/v2/quality-reviews/{id}/decision",
+        "/api/v2/quality-reviews/{id}/cancel",
+        "/api/v2/quality-reviews/{id}/retry"
+      ],
+      "ui": [
+        "Execution / Quality",
+        "Evidence parser status",
+        "Rubric scoring"
+      ],
+      "events": [
+        "parser_format.*",
+        "parser_run.*",
+        "quality_review.*"
+      ],
+      "behavior_tests": [
+        "tests/p7/governance-protocol.test.mjs",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/broker-restart-tamper.test.mjs",
+        "tests/p10/quality-parity.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/execution-p7.test.tsx",
+        "apps/web/src/test/p10-business-parity.test.tsx"
+      ],
+      "evidence": [
+        "docs/evidence/v3-clean-p7-evidence-quality-outcome-20260824/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T6",
+        "T8",
+        "tests/p7/governance-protocol.test.mjs",
+        "tests/p7/parser-evidence.test.mjs",
+        "tests/p7/quality-outcome.test.mjs",
+        "tests/p7/broker-restart-tamper.test.mjs",
+        "apps/web/src/test/execution-p7.test.tsx",
+        "scripts/v3-clean-p7-parser-probe.mjs",
+        "scripts/v3-clean-p7-quality-outcome-probe.mjs",
+        "scripts/v3-clean-p7-restart-probe.mjs",
+        "scripts/e2e.mjs",
+        "tests/p10/quality-parity.test.mjs",
+        "apps/web/src/test/p10-business-parity.test.tsx",
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    },
+    {
+      "id": "REC-D1-CONTRACTS-023",
+      "domain": "contracts",
+      "name": "Forward-only migrations and V3 public contracts",
+      "status": "released",
+      "owner_modules": [
+        "platform"
+      ],
+      "source_files": [
+        "current V3 schema fingerprint"
+      ],
+      "target_modules": [
+        "apps/api/src/clean/migration-service.mjs",
+        "apps/api/src/clean/registry.mjs",
+        "apps/api/src/clean/http.mjs",
+        "packages/contracts/src/clean-v2.mjs",
+        "apps/web/src/api.ts",
+        "apps/api/src/clean/migrations/009-final-business-parity-governance.mjs",
+        "apps/api/src/clean/p10-service.mjs",
+        "packages/contracts/src/codex-device-auth.mjs"
+      ],
+      "tables": [
+        "schema_migrations"
+      ],
+      "apis": [
+        "/api/v2",
+        "/api/v2/events"
+      ],
+      "ui": [
+        "Complete V3-Clean Web"
+      ],
+      "events": [
+        "migration.applied"
+      ],
+      "behavior_tests": [
+        "tests/p9/foundation.test.mjs",
+        "tests/p9/events-cors.test.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "tests/p10/http-contract.test.mjs",
+        "tests/p10/migration.test.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "ui_tests": [
+        "apps/web/src/test/offline-p9.test.ts",
+        "apps/web/src/test/workflows-p9.test.tsx",
+        "scripts/e2e.mjs"
+      ],
+      "evidence": [
+        "docs/evidence/v3-r0-r1-governance-20260810/verification.json",
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "release_receipts": [
+        "docs/evidence/v3-clean-p9-web-release-20260826/verification.json"
+      ],
+      "tests": [
+        "T1",
+        "tests/unit/database.test.mjs",
+        "tests/unit/migrations.test.mjs",
+        "tests/unit/contracts.test.mjs",
+        "tests/unit/recovery-golden.test.mjs",
+        "tests/p9/web-governance.test.mjs",
+        "scripts/v3-clean-p9-release-probe.mjs",
+        "tests/p10/http-contract.test.mjs",
+        "tests/p10/migration.test.mjs",
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "tests/p10/post-closure-restoration.test.mjs"
+      ],
+      "runtime_surface": "v3-clean",
+      "parity_receipts": [
+        "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
+      ],
+      "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
+      "parity_phase": "P10"
+    }
+  ],
+  "active_runtime": "v3-clean",
+  "index_schema_version": "aiws.v3.feature_catalog.index.v1",
+  "catalogs": {
+    "clean": "feature-catalog.clean.json",
+    "historical": "feature-catalog.historical.json"
+  }
+}

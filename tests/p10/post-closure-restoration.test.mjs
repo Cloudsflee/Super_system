@@ -338,7 +338,8 @@ test('GitHub Manifest callback binds returned secrets server-side, is replayable
       idempotency_key: 'post-close-github-manifest-start', expected_revision: 0
     }, state.principal);
     assert.equal(started.status, 'authorization_required');
-    assert.equal(started.manifest.redirect_url, 'http://127.0.0.1:5175/?github_callback=manifest#/setup');
+    assert.equal(started.manifest.redirect_url, 'http://127.0.0.1:5175/?github_callback=manifest&return_path=setup');
+    assert.equal(Object.hasOwn(started.manifest, 'hook_attributes'), false);
     const converted = await state.runtime.githubSetup.manifest({
       action: 'callback', code: 'manifest-code-fixture', state: started.state,
       idempotency_key: 'post-close-github-manifest-callback', expected_revision: 0

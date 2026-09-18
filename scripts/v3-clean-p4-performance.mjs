@@ -24,7 +24,9 @@ try {
   for (let index = 0; index < 1000; index += 1) {
     await runtime.context.createSource(project.id, {
       kind: 'note', title: `Node ${String(index).padStart(4, '0')}`, uri: `performance/node-${String(index).padStart(4, '0')}`,
-      content: `stable projection search evidence ${index}`, source_revision: 'r1',
+      // Reuse one bounded payload so this probe measures projection/search
+      // throughput rather than repeatedly hashing distinct CAS objects.
+      content: 'stable projection search evidence', source_revision: 'r1',
       idempotency_key: `p4-performance-source-${String(index).padStart(4, '0')}`
     }, principal);
   }

@@ -70,7 +70,6 @@ export class CleanGithubSetupService {
     const manifest = {
       name: `AIWS Local ${nonce.slice(0, 8)}`,
       url: callbackBase,
-      hook_attributes: { url: `${callbackBase}/api/v2/webhooks/github`, active: false },
       redirect_url: callback,
       setup_url: setup,
       setup_on_update: true,
@@ -84,6 +83,9 @@ export class CleanGithubSetupService {
       },
       default_events: []
     };
+    if (!isLoopbackOrigin(callbackBase)) {
+      manifest.hook_attributes = { url: `${callbackBase}/api/v2/webhooks/github`, active: false };
+    }
     return setupReceipt({
       action: 'manifest', status: 'authorization_required', app: this.#publicApp(), state, manifest,
       manifestUrl: `https://github.com/settings/apps/new?state=${encodeURIComponent(state)}&manifest=${encodeURIComponent(JSON.stringify(manifest))}`
@@ -404,9 +406,14 @@ export class CleanGithubSetupService {
   #profileContext(principal, requestedProfileId = null) {
     const credentials = new Map(this.identity.credentials(principal).map((item) => [item.id, item]));
     const profiles = this.identity.profiles(principal).filter((item) => item.provider === 'github' && item.lifecycle_status !== 'disabled');
+    const hostedAppId = String(this.config.githubApp?.appId || '');
+    const hostedProfile = hostedAppId
+      ? profiles.find((item) => String(item.config?.app_id || '') === hostedAppId)
+      : null;
     const profile = requestedProfileId
       ? profiles.find((item) => item.id === String(requestedProfileId))
-      : profiles.find((item) => item.status === 'available' && credentials.get(item.credential_ref_id)?.status === 'active')
+      : hostedProfile
+        || profiles.find((item) => item.status === 'available' && credentials.get(item.credential_ref_id)?.status === 'active')
         || profiles.find((item) => credentials.get(item.credential_ref_id)?.status === 'active')
         || null;
     if (requestedProfileId && !profile) throw new PlatformError('github_profile_not_found', 'GitHub App profile was not found', {}, 404);
@@ -591,8 +598,16 @@ function callbackOrigin(input, configured) {
   return parsed.origin;
 }
 
+function isLoopbackOrigin(value) {
+  const hostname = new URL(value).hostname;
+  return ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(hostname);
+}
+
 function callbackUrl(origin, returnPath, kind) {
-  return `${origin}/?github_callback=${kind}#/${returnPath}`;
+  const url = new URL('/', origin);
+  url.searchParams.set('github_callback', kind);
+  url.searchParams.set('return_path', returnPath);
+  return url.toString();
 }
 
 function returnPathOf(value) {

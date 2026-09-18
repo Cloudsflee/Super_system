@@ -91,9 +91,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
   const cleanBlocking = selection.unclassified_paths.map((changedPath) => ({ code: 'unclassified_changed_path', path: changedPath }));
   const historicalAdvisory = [];
   if (!cleanBlocking.length) {
-    for (const command of selection.commands) {
-      const budget = gateBudget('development', Date.now() - started);
-      if (budget.remaining_ms <= 0) { cleanBlocking.push({ code: 'development_time_budget_exceeded' }); break; }
+    const runOne = async (command, budget) => {
       process.stdout.write(`\n== dev:${command.id} ==\n`);
       const result = await (dependencies.runGateCommand || runGateCommand)(command.invocation, {
         cwd: root,
@@ -114,13 +112,36 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
       }
       const advisory = result.ok && layered?.status === 'advisory';
       const { invocation, env, ...selectionMetadata } = command;
-      const record = { ...selectionMetadata, ...result, layered_status: layered?.status || null, advisory };
-      records.push(record);
-      if (advisory) historicalAdvisory.push({ command: command.id, receipt: layered.receipt || null });
-      if (!result.ok || (!command.historical && layered?.status === 'failed')) {
-        cleanBlocking.push({ code: result.error_code || 'gate_command_failed', command: command.id });
-        break;
+      return { record: { ...selectionMetadata, ...result, layered_status: layered?.status || null, advisory }, advisory, failure: !result.ok || (!command.historical && layered?.status === 'failed') ? { code: result.error_code || 'gate_command_failed', command: command.id } : null };
+    };
+    // The performance probe uses isolated temporary state, so overlap it with
+    // the repository-sensitive sequential gates. This keeps the fixed wall
+    // budget while avoiding races in workspace inventory tests.
+    if (!dependencies.runGateCommand) {
+      const performance = selection.commands.filter((command) => command.id.endsWith('-performance'));
+      const regular = selection.commands.filter((command) => !command.id.endsWith('-performance'));
+      const initialBudget = gateBudget('development', Date.now() - started);
+      const performanceRuns = performance.map((command) => runOne(command, initialBudget));
+      for (const command of regular) {
+        const budget = gateBudget('development', Date.now() - started);
+        if (budget.remaining_ms <= 0) { cleanBlocking.push({ code: 'development_time_budget_exceeded' }); break; }
+        const item = await runOne(command, budget);
+        records.push(item.record);
+        if (item.advisory) historicalAdvisory.push({ command: item.record.id, receipt: null });
+        if (item.failure) cleanBlocking.push(item.failure);
       }
+      for (const item of await Promise.all(performanceRuns)) {
+        records.push(item.record);
+        if (item.advisory) historicalAdvisory.push({ command: item.record.id, receipt: null });
+        if (item.failure) cleanBlocking.push(item.failure);
+      }
+    } else for (const command of selection.commands) {
+      const budget = gateBudget('development', Date.now() - started);
+      if (budget.remaining_ms <= 0) { cleanBlocking.push({ code: 'development_time_budget_exceeded' }); break; }
+      const item = await runOne(command, budget);
+      records.push(item.record);
+      if (item.advisory) historicalAdvisory.push({ command: item.record.id, receipt: null });
+      if (item.failure) { cleanBlocking.push(item.failure); break; }
     }
   }
   const budget = gateBudget('development', Date.now() - started);

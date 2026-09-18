@@ -103,3 +103,45 @@ it('renders a bounded Offline shell when bootstrap cannot reach the API', async 
   expect(screen.queryByTestId('system-onboarding')).toBeNull();
   online.mockRestore();
 });
+
+it.each(['projects', 'brief', 'repository', 'workflow', 'context', 'evidence', 'execution', 'settings', 'operations', 'assist', 'terminals', 'approvals'])('opens global Assist from %s without a project or session mutation', async (route) => {
+  location.hash = `#/${route}`;
+  localStorage.setItem(systemOnboardingKey('account_shell'), '1');
+  const fetch = emptyShellFetch();
+  vi.stubGlobal('fetch', fetch);
+  render(<App />);
+  const opener = await screen.findByRole('button', { name: 'Assist' });
+  expect(opener).toBeEnabled();
+  fireEvent.click(opener);
+  const dialog = await screen.findByRole('dialog', { name: 'Assist 抽屉' });
+  expect(dialog).toBeVisible();
+  expect(within(dialog).getByText(/选择项目后将自动恢复项目级会话/)).toBeVisible();
+  expect(fetch.mock.calls.every(([input]) => !String(input).includes('/assist/sessions'))).toBe(true);
+  expect(screen.getByRole('button', { name: '终端' })).toBeDisabled();
+});
+
+it('toggles Assist with Ctrl/Cmd J, traps focus and retains the drawer through route changes', async () => {
+  localStorage.setItem(systemOnboardingKey('account_shell'), '1');
+  vi.stubGlobal('fetch', emptyShellFetch());
+  render(<App />);
+  const opener = await screen.findByRole('button', { name: 'Assist' });
+  opener.focus();
+  fireEvent.keyDown(document, { key: 'j', ctrlKey: true });
+  const dialog = await screen.findByRole('dialog', { name: 'Assist 抽屉' });
+  const close = within(dialog).getByRole('button', { name: '关闭工具抽屉' });
+  const full = within(dialog).getByRole('button', { name: '打开完整页面' });
+  close.focus(); fireEvent.keyDown(close, { key: 'Tab' });
+  expect(full).toHaveFocus();
+  fireEvent.keyDown(full, { key: 'Tab', shiftKey: true });
+  expect(close).toHaveFocus();
+  location.hash = '#/settings';
+  await waitFor(() => expect(document.querySelector('.app-shell')).toHaveAttribute('data-route', 'settings'));
+  expect(screen.getByRole('dialog', { name: 'Assist 抽屉' })).toBeVisible();
+  fireEvent.keyDown(document, { key: 'j', metaKey: true });
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Assist 抽屉' })).toBeNull());
+  await waitFor(() => expect(opener).toHaveFocus());
+  fireEvent.keyDown(document, { key: 'j', metaKey: true });
+  await screen.findByRole('dialog', { name: 'Assist 抽屉' });
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await waitFor(() => expect(opener).toHaveFocus());
+});

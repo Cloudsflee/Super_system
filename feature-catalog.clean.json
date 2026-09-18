@@ -45,6 +45,7 @@
         "docs/architecture/v3-clean-development-plan.md",
         "docs/testing.md",
         "scripts/lib/v3-clean-p1-scope.mjs",
+        "scripts/production-lifecycle.mjs",
         "scripts/v3-clean-workspace-audit.mjs",
         "scripts/v3-clean-architecture-scan.mjs",
         "scripts/catalog-loader.mjs",
@@ -212,7 +213,9 @@
         "apps/web/src/features/execution/index.ts",
         "apps/web/src/features/project/index.ts",
         "apps/web/src/features/settings/index.ts",
-        "apps/web/src/features/setup/index.ts"
+        "apps/web/src/features/setup/index.ts",
+        "apps/web/src/features/projects/preparation/index.tsx",
+        "apps/web/src/test/project-preparation.test.tsx"
       ],
       "tables": [],
       "apis": [
@@ -1228,14 +1231,16 @@
       "source_files": [
         "apps/api/src/clean/migrations/003-project-workflow.mjs",
         "apps/api/src/clean/project-workflow.mjs",
-        "apps/api/src/clean/provider-adapters.mjs"
+        "apps/api/src/clean/provider-adapters.mjs",
+        "apps/api/src/clean/github-repository-adapter.mjs"
       ],
       "target_modules": [
         "apps/api/src/clean/project-workflow.mjs",
         "apps/api/src/clean/http.mjs",
         "apps/api/src/clean/registry.mjs",
         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
-        "apps/api/src/clean/p10-service.mjs"
+        "apps/api/src/clean/p10-service.mjs",
+        "apps/api/src/clean/github-repository-adapter.mjs"
       ],
       "tables": [
         "repository_connections",
@@ -1270,7 +1275,9 @@
       "behavior_tests": [
         "tests/p3/migration.test.mjs",
         "tests/p3/project-workflow.test.mjs",
-        "tests/p10/business-parity.test.mjs"
+        "tests/p10/business-parity.test.mjs",
+        "tests/p10/remote-workspace-auth.test.mjs",
+        "scripts/v3-clean-p10-github-deletion-probe.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/project-workflow-clean.test.tsx"
@@ -1289,7 +1296,8 @@
         "tests/p9/web-governance.test.mjs",
         "scripts/v3-clean-p9-release-probe.mjs",
         "tests/p10/business-parity.test.mjs",
-        "scripts/v3-clean-p10-release-probe.mjs"
+        "scripts/v3-clean-p10-release-probe.mjs",
+        "scripts/v3-clean-p9-github-delivery-probe.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [
@@ -1773,7 +1781,9 @@
         "apps/api/src/clean/http.mjs",
         "apps/web/src/features/context/ContextPage.tsx",
         "apps/web/src/features/context/types.ts",
-        "apps/api/src/modules/context/index.mjs"
+        "apps/api/src/modules/context/index.mjs",
+        "apps/web/src/features/projects/preparation/index.tsx",
+        "apps/web/src/test/project-preparation.test.tsx"
       ],
       "tables": [
         "context_sources",
@@ -2317,7 +2327,8 @@
         "scripts/v3-clean-p8-github-delivery-probe.mjs",
         "tests/p9/web-governance.test.mjs",
         "scripts/v3-clean-p9-release-probe.mjs",
-        "tests/p10/post-closure-restoration.test.mjs"
+        "tests/p10/post-closure-restoration.test.mjs",
+        "scripts/v3-clean-p9-github-delivery-probe.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [

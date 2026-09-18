@@ -1,0 +1,9 @@
+{
+  "dry_run_stdout": "{\"schema_version\":\"aiws.post-p10.remote-workspace.rollback.v1\",\"mode\":\"dry-run\",\"writes\":0,\"removes\":0,\"planned_writes\":13,\"planned_removes\":2,\"byte_exact_mismatches\":[]}",
+  "dry_run_exit": 0,
+  "apply_stdout": "{\"schema_version\":\"aiws.post-p10.remote-workspace.rollback.v1\",\"mode\":\"apply\",\"writes\":13,\"removes\":2,\"planned_writes\":13,\"planned_removes\":2,\"byte_exact_mismatches\":[]}",
+  "apply_exit": 0,
+  "byte_exact_mismatches": [],
+  "adapter_removed": true,
+  "test_removed": true
+}

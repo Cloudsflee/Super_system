@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   AlertTriangle, Check, ChevronRight, CircleAlert, FileText, Github, LoaderCircle,
-  Play, RefreshCw, RotateCcw, Save, Sparkles, Workflow as WorkflowIcon
+  MessageSquare, Play, RefreshCw, RotateCcw, Save, Sparkles, Workflow as WorkflowIcon
 } from 'lucide-react';
 import { ApiError, apiV2, mutateV2 } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
@@ -64,7 +64,7 @@ function Status({ value }: { value?: string }) {
   return <span className={`status ${tone}`}><span />{statusLabel(status)}</span>;
 }
 
-export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProject, notify }: WorkspacePageProps) {
+export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProject, notify, openAssist, registerAssistContext }: WorkspacePageProps) {
   const [project, setProject] = useState<ProjectRecord | null>(null);
   const [intake, setIntake] = useState<Intake | null>(null);
   const [brief, setBrief] = useState<BriefHead | null>(null);
@@ -219,6 +219,17 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
   })();
 
   const step = deriveProjectOnboardingStep(project, intake);
+  const briefSaved = Boolean(brief?.current_revision && brief.current?.content_sha256);
+  const briefDirty = !briefSaved || JSON.stringify(briefDraft) !== JSON.stringify(draftFromContent(brief?.current?.content));
+  const briefAssistContext = { route: 'onboarding' as const, projectId: projectId || null,
+    resourceType: briefDirty ? undefined : 'brief', resourceId: briefDirty ? undefined : projectId,
+    revision: brief?.current_revision || null, contentHash: brief?.current?.content_sha256 || null,
+    label: briefDirty ? '未保存 Brief 草稿' : '当前 Brief' };
+  useEffect(() => {
+    if (loadState !== 'ready' || step === 1) return;
+    registerAssistContext?.(briefAssistContext);
+    return () => registerAssistContext?.(undefined);
+  }, [loadState, step, projectId, briefDirty, brief?.current_revision, brief?.current?.content_sha256, registerAssistContext]);
   const complete = project?.status === 'active' && project.onboarding_state === 'confirmed';
   useEffect(() => {
     if (complete && continueAfterConfirm) navigateProject?.(projectId, 'workflow');
@@ -229,6 +240,7 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
 
   return <div className="page project-onboarding-page" data-testid="project-onboarding" data-step={step}>
     <div className="project-onboarding-heading"><div><p className="eyebrow">项目引导</p><h1>{project?.name}</h1><span>Brief 与 Workflow 初始化</span></div><Status value={complete ? 'confirmed' : project?.status} /></div>
+    {step > 1 && openAssist && <button className="button" onClick={() => openAssist(briefAssistContext, !briefDirty)}><MessageSquare size={15} />在 Assist 中审阅当前 Brief</button>}
     <ol className="project-stepper" aria-label="项目引导进度">{['项目来源', '完整 Brief', 'Workflow 审查'].map((label, index) => <li key={label} className={step === index + 1 ? 'active' : step > index + 1 || complete ? 'complete' : ''}><span>{step > index + 1 || complete ? <Check size={13} /> : index + 1}</span><strong>{label}</strong></li>)}</ol>
     {conflict && <div className="state-banner conflict" data-testid="project-onboarding-conflict"><AlertTriangle size={17} /><span>{conflict}</span><button className="button" onClick={() => void load()}>重新加载</button></div>}
     {failure && <div className="state-banner error" role="alert"><CircleAlert size={17} /><span>{failure}</span></div>}

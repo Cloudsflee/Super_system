@@ -40,22 +40,23 @@ async function externalProbe() {
   const bundle = JSON.parse(process.env.AIWS_P8_GITHUB_APP_BUNDLE);
   const privateKey = Buffer.from(String(bundle.private_key || ''), 'utf8');
   const adapter = new GitHubAppAdapter();
-  const auth = { appId: bundle.app_id, installationId: bundle.installation_id, privateKey };
+  const privateKeyText = String(bundle.private_key || '');
+  const auth = () => ({ appId: bundle.app_id, installationId: bundle.installation_id, privateKey: Buffer.from(privateKeyText, 'utf8') });
   try {
-    const discovered = await adapter.listRepositories(auth, { limit: 100 });
+    const discovered = await adapter.listRepositories(auth(), { limit: 100 });
     const repository = String(bundle.repository || '');
     if (!repository || repository.toLowerCase() === String(bundle.origin_repository || '').toLowerCase()) throw new Error('github_fixture_not_isolated');
     if (!discovered.repositories.some((item) => item.full_name.toLowerCase() === repository.toLowerCase())) throw new Error('github_fixture_not_discovered');
     if (!bundle.allow_merge) return { status: 'identity_verified', repository, discovery_count: discovered.repositories.length, provisional: true };
     const branch = String(bundle.branch || `aiws/p8-probe-${Date.now()}`);
-    await adapter.createBranch(auth, { repository, branch, headSha: bundle.head_sha });
-    const pull = await adapter.createDraft(auth, { repository, title: 'AIWS P8 delivery probe', body: 'P8 fixed-identity delivery verification', head: branch, base: bundle.base || 'main' });
-    const checks = await adapter.checks(auth, { repository, ref: bundle.head_sha });
+    await adapter.createBranch(auth(), { repository, branch, headSha: bundle.head_sha });
+    const pull = await adapter.createDraft(auth(), { repository, title: 'AIWS P8 delivery probe', body: 'P8 fixed-identity delivery verification', head: branch, base: bundle.base || 'main' });
+    const checks = await adapter.checks(auth(), { repository, ref: bundle.head_sha });
     const required = Array.isArray(bundle.required_checks) ? bundle.required_checks.map(String) : [];
     if (required.some((name) => !checks.some((check) => check.name === name && check.status === 'completed' && ['success', 'neutral', 'skipped'].includes(check.conclusion)))) throw new Error('github_required_checks_failed');
-    await adapter.markReady(auth, { repository, pullNumber: pull.number });
-    const merge = await adapter.merge(auth, { repository, pullNumber: pull.number, headSha: bundle.head_sha, method: 'squash' });
-    const reconciled = await adapter.reconcile(auth, { repository, pullNumber: pull.number });
+    await adapter.markReady(auth(), { repository, pullNumber: pull.number });
+    const merge = await adapter.merge(auth(), { repository, pullNumber: pull.number, headSha: bundle.head_sha, method: 'squash' });
+    const reconciled = await adapter.reconcile(auth(), { repository, pullNumber: pull.number });
     if (!merge.merged || !reconciled.merged) throw new Error('github_merge_reconcile_failed');
     return { status: 'verified', repository, discovery_count: discovered.repositories.length, pull_number: pull.number, merge_sha: merge.sha, checks: required, provisional: false };
   } finally { privateKey.fill(0); }

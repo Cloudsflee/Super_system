@@ -11,8 +11,8 @@ from xml.sax.saxutils import escape
 from zipfile import ZipFile
 
 
-SOURCE = Path(r"E:\00_desktop\毕业论文（设计）任务书20260723-v1.2.docx")
 BASE_DIR = Path(__file__).resolve().parent.parent
+SOURCE = BASE_DIR / "毕业论文（设计）任务书20260723-v1.2.docx"
 OUTPUT = BASE_DIR / "毕业论文（设计）任务书20260723-v1.3.docx"
 MATERIALS_DIR = BASE_DIR / "文献核验材料（v1.3）"
 REPORT = MATERIALS_DIR / "OOXML结构核验报告.json"

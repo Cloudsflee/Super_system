@@ -1,0 +1,65 @@
+{
+  "schema_version": "aiws.post-p10.remote-workspace.v1",
+  "status": "passed",
+  "baseline_commit": "0fd9eb91a14dc53ac944e8ada608c8d958728ff8",
+  "target": "GitHub authenticated Repository transport and Workspace materialization",
+  "commands": [
+    {
+      "stdout": "{\"remove\":[\"apps/api/src/clean/github-repository-adapter.mjs\"],\"files\":6,\"mode\":\"dry-run\"}",
+      "stderr": "",
+      "command": "powershell -File rollback.ps1 -DryRun",
+      "exit_status": 0
+    },
+    {
+      "stdout": "{\"removed\":\"apps/api/src/clean/github-repository-adapter.mjs\",\"files\":6,\"mode\":\"apply\"}",
+      "stderr": "",
+      "command": "powershell -File rollback.ps1",
+      "exit_status": 0
+    }
+  ],
+  "byte_exact_comparison": [
+    {
+      "path": "apps/api/src/clean/p8/github-adapter.mjs",
+      "expected": "F44F16C91C0818AAFCF5A1658521287150B64A768437D8DB2A5F4A2521E3405E",
+      "actual": "F44F16C91C0818AAFCF5A1658521287150B64A768437D8DB2A5F4A2521E3405E",
+      "match": true
+    },
+    {
+      "path": "apps/api/src/clean/runtime.mjs",
+      "expected": "7735F0471BD6E86DAC05E7277D7FBAE852CC00E4751F02A185ACA36A86131AE0",
+      "actual": "7735F0471BD6E86DAC05E7277D7FBAE852CC00E4751F02A185ACA36A86131AE0",
+      "match": true
+    },
+    {
+      "path": "apps/api/src/clean/project-workflow.mjs",
+      "expected": "0A41E0B5AD93040B46224423FE25CE4DC1912A6E46393A362E8B77D0D0062AA8",
+      "actual": "0A41E0B5AD93040B46224423FE25CE4DC1912A6E46393A362E8B77D0D0062AA8",
+      "match": true
+    },
+    {
+      "path": "packages/contracts/src/clean-v2.mjs",
+      "expected": "E3B316D0F6A9385D20DADA49B137BFA8F6B5E5D9AA5CF5D6AAAB14E731350BAE",
+      "actual": "E3B316D0F6A9385D20DADA49B137BFA8F6B5E5D9AA5CF5D6AAAB14E731350BAE",
+      "match": true
+    },
+    {
+      "path": "feature-catalog.clean.json",
+      "expected": "78CAD3BD7B28133260E026649AB3DE76C8A02DAABCE7FE4E7CA38E9EEEEE5693",
+      "actual": "78CAD3BD7B28133260E026649AB3DE76C8A02DAABCE7FE4E7CA38E9EEEEE5693",
+      "match": true
+    },
+    {
+      "path": "feature-catalog.json",
+      "expected": "F9309BDED75B2F2A9B0A30F74B5F42162F49655D44BB9E4A721038FE71E534C6",
+      "actual": "F9309BDED75B2F2A9B0A30F74B5F42162F49655D44BB9E4A721038FE71E534C6",
+      "match": true
+    }
+  ],
+  "removed_new_file": true,
+  "modified_artifact_sha256": "ffb5ceda88ab9141cf3a8724a82156117577a50da73a5d1e07ee56af43db2c00",
+  "patch_sha256": "89f82425e78f55ea5bb035126e09ef1bbf7a806e4fae8238aeb1d865608d4aa1",
+  "verification_failures": [
+    "verify:dev security-clean timed out at 17982 ms in the existing maintenance baseline; overall 120000 ms budget exceeded",
+    "pnpm verify evidence-p10 exited 1 with literal failures upstream_head and worktree_clean because the workspace contains pending changes"
+  ]
+}

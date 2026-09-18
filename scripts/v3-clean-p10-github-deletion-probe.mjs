@@ -10,13 +10,14 @@ const API = 'https://api.github.com';
 
 await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
   const fixture = loadAppFixture();
-  const privateKey = Buffer.from(String(fixture.private_key || ''), 'utf8');
+  const privateKeyText = String(fixture.private_key || '');
+  const privateKey = Buffer.from(privateKeyText, 'utf8');
   const credential = loadGitCredential();
   const token = Buffer.from(credential.password, 'utf8');
   fixture.private_key = '';
   credential.password = '';
   const adapter = new GitHubAppAdapter();
-  const auth = { appId: fixture.app_id, installationId: fixture.installation_id, privateKey };
+  const auth = () => ({ appId: fixture.app_id, installationId: fixture.installation_id, privateKey: Buffer.from(privateKeyText, 'utf8') });
   let created = null;
   let stage = 'identity';
 
@@ -62,7 +63,7 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
     stage = 'delete';
     let deleted;
     try {
-      deleted = await adapter.deleteRepository(auth, {
+      deleted = await adapter.deleteRepository(auth(), {
         repository: created.full_name,
         repositoryId: created.id,
         branch: created.default_branch,
@@ -70,14 +71,14 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
       });
     } catch (error) {
       if (error?.code !== 'external_result_unknown') throw error;
-      const reconciledAfterUnknown = await adapter.reconcileRepositoryDeletion(auth, { repository: created.full_name, repositoryId: created.id });
+      const reconciledAfterUnknown = await adapter.reconcileRepositoryDeletion(auth(), { repository: created.full_name, repositoryId: created.id });
       if (reconciledAfterUnknown.exists) throw error;
       deleted = { deleted: true, repository_id: created.id, full_name: created.full_name, head_sha: head, reconciled_after_unknown: true };
     }
     if (deleted.deleted !== true || String(deleted.repository_id) !== created.id) throw new Error('github_fixture_delete_identity_mismatch');
 
     stage = 'reconcile';
-    const reconciled = await adapter.reconcileRepositoryDeletion(auth, { repository: created.full_name, repositoryId: created.id });
+    const reconciled = await adapter.reconcileRepositoryDeletion(auth(), { repository: created.full_name, repositoryId: created.id });
     if (reconciled.exists !== false || String(reconciled.repository_id) !== created.id) throw new Error('github_fixture_delete_reconcile_failed');
 
     const receipt = {
@@ -165,7 +166,7 @@ async function waitForAppDiscovery(adapter, auth, repository) {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     let cursor = null;
     for (let page = 0; page < 20; page += 1) {
-      const result = await adapter.listRepositories(auth, { cursor, limit: 100 });
+      const result = await adapter.listRepositories(auth(), { cursor, limit: 100 });
       if (result.repositories.some((item) => String(item.id) === repository.id && item.full_name.toLowerCase() === repository.full_name.toLowerCase())) {
         return { repository_selection: 'all', discovered: true };
       }

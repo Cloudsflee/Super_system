@@ -7,23 +7,24 @@ import { emitProbe } from './lib/v3-clean-p6-runner-probe.mjs';
 
 await emitProbe('aiws.v3-clean.p9-github-delivery-probe.v1', async () => {
   const fixture = loadFixture();
-  const privateKey = Buffer.from(fixture.private_key, 'utf8');
+  const privateKeyText = String(fixture.private_key || '');
+  const privateKey = Buffer.from(privateKeyText, 'utf8');
   let installationToken = null;
   let pullNumber = null;
   let merged = false;
   let stage = 'discovery';
   const branch = `aiws/p9-release-${Date.now()}`;
   const adapter = new GitHubAppAdapter();
-  const auth = { appId: fixture.app_id, installationId: fixture.installation_id, privateKey };
+  const auth = () => ({ appId: fixture.app_id, installationId: fixture.installation_id, privateKey: Buffer.from(privateKeyText, 'utf8') });
   try {
-    const repositories = await adapter.listRepositories(auth, { limit: 100 });
+    const repositories = await adapter.listRepositories(auth(), { limit: 100 });
     if (!repositories.repositories.some((row) => row.full_name.toLowerCase() === fixture.repository.toLowerCase())) throw new Error('github_fixture_not_discovered');
     stage = 'repository'; const repository = await publicJson(`/repos/${fixture.repository}`);
     const base = String(repository.default_branch || 'main');
     const baseRef = await publicJson(`/repos/${fixture.repository}/git/ref/heads/${encodeURIComponent(base)}`);
     const baseSha = String(baseRef.object?.sha || '');
     if (!/^[a-f0-9]{40}$/.test(baseSha)) throw new Error('github_fixture_base_sha_missing');
-    stage = 'branch'; await adapter.createBranch(auth, { repository: fixture.repository, branch, headSha: baseSha });
+    stage = 'branch'; await adapter.createBranch(auth(), { repository: fixture.repository, branch, headSha: baseSha });
     stage = 'token'; installationToken = await installationTokenFor(fixture, privateKey);
     const marker = `p9-release-${Date.now()}.txt`;
     stage = 'commit'; const committed = await githubJson(`/repos/${fixture.repository}/contents/.aiws-release/${marker}`, installationToken, {
@@ -31,12 +32,12 @@ await emitProbe('aiws.v3-clean.p9-github-delivery-probe.v1', async () => {
     });
     const headSha = String(committed.commit?.sha || '');
     if (!/^[a-f0-9]{40}$/.test(headSha) || headSha === baseSha) throw new Error('github_fixture_commit_missing');
-    stage = 'draft'; const pull = await adapter.createDraft(auth, { repository: fixture.repository, title: 'AIWS P9 delivery probe', body: 'P9 fixed-identity isolated delivery verification', head: branch, base });
+    stage = 'draft'; const pull = await adapter.createDraft(auth(), { repository: fixture.repository, title: 'AIWS P9 delivery probe', body: 'P9 fixed-identity isolated delivery verification', head: branch, base });
     pullNumber = pull.number;
-    stage = 'checks'; const checks = await adapter.checks(auth, { repository: fixture.repository, ref: headSha });
-    stage = 'ready'; await adapter.markReady(auth, { repository: fixture.repository, pullNumber });
-    stage = 'merge'; const merge = await adapter.merge(auth, { repository: fixture.repository, pullNumber, headSha, method: 'squash' });
-    stage = 'reconcile'; const reconciled = await adapter.reconcile(auth, { repository: fixture.repository, pullNumber });
+    stage = 'checks'; const checks = await adapter.checks(auth(), { repository: fixture.repository, ref: headSha });
+    stage = 'ready'; await adapter.markReady(auth(), { repository: fixture.repository, pullNumber });
+    stage = 'merge'; const merge = await adapter.merge(auth(), { repository: fixture.repository, pullNumber, headSha, method: 'squash' });
+    stage = 'reconcile'; const reconciled = await adapter.reconcile(auth(), { repository: fixture.repository, pullNumber });
     if (!merge.merged || !reconciled.merged) throw new Error('github_merge_reconcile_failed');
     merged = true;
     stage = 'branch-delete'; await deleteBranch(fixture.repository, branch, installationToken);
