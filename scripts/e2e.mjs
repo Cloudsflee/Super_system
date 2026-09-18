@@ -10,7 +10,7 @@ const root = process.cwd();
 // The formal Gate starts the release probe in parallel. Windows may hand two
 // immediately released port probes the same ephemeral port, so let the
 // release probe reserve its pair before this browser journey allocates ports.
-await new Promise((resolve) => setTimeout(resolve, 1500));
+await new Promise((resolve) => setTimeout(resolve, 10_000));
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-e2e-'));
 const apiPort = await freePort();
 const webPort = await freePort();
