@@ -69,15 +69,17 @@ export class CleanAssistService {
     const scopeId = String(input.scope_id || projectId);
     const project = this.db.get('SELECT * FROM projects WHERE id=?', [projectId]);
     if (!project) throw new PlatformError('not_found', 'project not found', {}, 404);
-    if (scope === 'project' && scopeId !== projectId) throw new PlatformError('assist_scope_invalid', 'scope does not belong to project', {}, 422);
-    const pack = this.db.get('SELECT * FROM context_packs WHERE id=? AND project_id=? AND status=?', [String(input.context_pack_id || ''), projectId, 'sealed']);
+    this.validateScope(projectId, scope, scopeId);
+    const requestedPack = this.db.get('SELECT * FROM context_packs WHERE id=?', [String(input.context_pack_id || '')]);
+    if (requestedPack && String(requestedPack.project_id) !== projectId) throw new PlatformError('scope_denied', 'Context Pack is outside the project', {}, 403);
+    const pack = requestedPack?.status === 'sealed' ? requestedPack : null;
     if (!pack) throw new PlatformError('context_pack_required', 'a sealed Context Pack is required', {}, 422);
     const profile = this.profileFor(input.profile_id, principal);
     const credential = this.credentialFor(profile, principal);
     const workspace = input.repository_workspace_id
       ? this.db.get('SELECT * FROM repository_workspaces WHERE id=? AND project_id=?', [String(input.repository_workspace_id), projectId])
       : this.db.get("SELECT * FROM repository_workspaces WHERE project_id=? AND status IN ('ready','released') ORDER BY created_at,id LIMIT 1", [projectId]);
-    if (input.repository_workspace_id && !workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
+    if (input.repository_workspace_id && !workspace) throw new PlatformError('scope_denied', 'repository workspace is outside the project', {}, 403);
     const now = time(this.clock);
     const idempotencyKey = requireIdempotency(input.idempotency_key);
     const hash = requestHash({ project_id: projectId, scope, scope_id: scopeId, context_pack_id: pack.id, profile_id: profile.id, repository_workspace_id: workspace?.id || null });
@@ -188,6 +190,7 @@ export class CleanAssistService {
     if (!turn) throw new PlatformError('not_found', 'Assist turn not found', {}, 404);
     const session = this.sessionRow(turn.session_id);
     const actor = principal || { actorId: turn.created_by_actor_id, effectiveActorId: turn.created_by_actor_id, scopes: ['*'] };
+    this.assertAssistSessionUsable(actor, session, 'run');
     const operation = this.db.get('SELECT * FROM operations WHERE id=?', [turn.operation_id]);
     if (!operation || TURN_TERMINAL.has(turn.status)) return this.turnView(turn);
     this.running.set(turn.id, true);
@@ -589,13 +592,17 @@ export class CleanAssistService {
     const referenceId = boundedString(input.reference_id, 256, { required: true }); const referenceRevision = input.reference_revision == null ? null : Number(input.reference_revision);
     if (referenceRevision != null && (!Number.isInteger(referenceRevision) || referenceRevision < 0)) throw new PlatformError('schema_invalid', 'Assist reference revision is invalid', {}, 422);
     const referenceHash = String(input.reference_hash || '').toLowerCase(); if (referenceHash && !/^[a-f0-9]{64}$/.test(referenceHash)) throw new PlatformError('schema_invalid', 'Assist reference hash is invalid', {}, 422);
+    // Resolve once before the write for a useful early error, then resolve
+    // again inside the transaction so a concurrent revision cannot be bound.
+    const resolved = this.resolveReference(this.db, row.project_id, referenceType, referenceId, referenceRevision, referenceHash);
     const metadata = canonicalPayload(input.metadata || {}); const now = time(this.clock); const commandId = 'assist.reference.create';
-    const hash = requestHash({ session_id: row.id, expected_revision: expected, reference_type: referenceType, reference_id: referenceId, reference_revision: referenceRevision, reference_hash: referenceHash, metadata_sha256: metadata.sha256 });
+    const hash = requestHash({ session_id: row.id, expected_revision: expected, reference_type: referenceType, reference_id: referenceId, reference_revision: resolved.revision, reference_hash: resolved.hash, metadata_sha256: metadata.sha256 });
     return this.db.withTransaction((tx) => {
       const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, now }); if (prior) return prior;
-      const current = tx.get('SELECT * FROM assist_sessions WHERE id=?', [sessionId]); assertRevision(current, expected);
+      const current = tx.get('SELECT * FROM assist_sessions WHERE id=?', [sessionId]); this.assertSession(principal, current, 'write'); assertRevision(current, expected);
+      const binding = this.resolveReference(tx, current.project_id, referenceType, referenceId, referenceRevision, referenceHash);
       const id = opaqueId('assist_reference'); const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId, resourceType: 'assist_session', resourceId: sessionId, projectId: current.project_id, requestHash: hash, status: 'succeeded', now }); const next = Number(current.revision) + 1;
-      tx.run('INSERT INTO assist_references(id,session_id,reference_type,reference_id,reference_revision,reference_hash,metadata_json,metadata_sha256,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?,?)', [id, sessionId, referenceType, referenceId, referenceRevision, referenceHash, metadata.json, metadata.sha256, now, principal.actorId]);
+      tx.run('INSERT INTO assist_references(id,session_id,reference_type,reference_id,reference_revision,reference_hash,metadata_json,metadata_sha256,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?,?)', [id, sessionId, referenceType, referenceId, binding.revision, binding.hash, metadata.json, metadata.sha256, now, principal.actorId]);
       tx.run('UPDATE assist_sessions SET revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [next, now, principal.actorId, sessionId, expected], 1);
       appendAggregate(this.events, tx, { aggregateType: 'assist_session', aggregateId: sessionId, revision: next, operationId: op.id, actorId: principal.actorId, projectId: current.project_id, type: 'assist_reference.created', data: { session_id: sessionId, reference_id: id }, payload: { id: sessionId, status: current.status, revision: next }, now });
       this.operations.linkInTransaction(tx, op.id, [['assist_session', sessionId], ['assist_reference', id]], now);
@@ -603,6 +610,67 @@ export class CleanAssistService {
       saveResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, response, operationId: op.id, status: 201, now });
       return response;
     });
+  }
+
+  resolveReference(db, projectId, referenceType, referenceId, expectedRevision = null, expectedHash = '') {
+    const project = String(projectId);
+    const id = String(referenceId);
+    let currentRevision = null;
+    let currentHash = '';
+    let row = null;
+    if (referenceType === 'brief') {
+      const brief = db.get('SELECT * FROM briefs WHERE id=? AND project_id=?', [id, project]);
+      const revision = brief && brief.current_revision ? db.get('SELECT * FROM brief_revisions WHERE brief_id=? AND revision=?', [brief.id, brief.current_revision]) : null;
+      if (!brief || !revision) throw new PlatformError('scope_denied', 'Brief is outside the project', {}, 403);
+      row = brief; currentRevision = Number(revision.revision); currentHash = String(revision.content_sha256);
+    } else if (referenceType === 'workflow') {
+      const workflow = db.get('SELECT * FROM workflows WHERE id=? AND project_id=?', [id, project]);
+      const revision = workflow && workflow.current_revision ? db.get('SELECT * FROM workflow_revisions WHERE workflow_id=? AND revision=?', [workflow.id, workflow.current_revision]) : null;
+      if (!workflow || !revision) throw new PlatformError('scope_denied', 'Workflow is outside the project', {}, 403);
+      row = workflow; currentRevision = Number(revision.revision); currentHash = String(revision.graph_sha256);
+    } else if (referenceType === 'repository') {
+      row = db.get('SELECT * FROM repository_connections WHERE id=? AND project_id=?', [id, project]);
+      if (row) {
+        currentRevision = Number(row.revision); currentHash = String(row.source_hash || '');
+      } else {
+        row = db.get('SELECT * FROM repository_lines WHERE id=? AND project_id=?', [id, project]);
+        if (row) { currentRevision = Number(row.revision); currentHash = String(row.source_hash || ''); }
+        else {
+          row = db.get('SELECT w.*,l.source_hash AS line_source_hash FROM repository_workspaces w JOIN repository_lines l ON l.id=w.line_id WHERE w.id=? AND w.project_id=?', [id, project]);
+          if (row) { currentRevision = Number(row.revision); currentHash = String(row.line_source_hash || ''); }
+        }
+      }
+      if (!row) throw new PlatformError('scope_denied', 'Repository resource is outside the project', {}, 403);
+      if (!currentHash) currentHash = sha256Hex(canonicalJson({ id, revision: currentRevision, kind: 'repository' }));
+    } else if (referenceType === 'context_pack') {
+      row = db.get("SELECT * FROM context_packs WHERE id=? AND project_id=? AND status='sealed'", [id, project]);
+      if (!row) throw new PlatformError('scope_denied', 'Context Pack is outside the project', {}, 403);
+      currentRevision = Number(row.revision); currentHash = String(row.pack_hash);
+    } else if (referenceType === 'attachment') {
+      row = db.get("SELECT * FROM attachments WHERE id=? AND project_id=? AND status<>'deleted'", [id, project]);
+      if (!row) throw new PlatformError('scope_denied', 'Attachment is outside the project', {}, 403);
+      currentRevision = Number(row.revision); currentHash = String(row.content_sha256);
+    } else if (referenceType === 'file') {
+      row = db.get("SELECT * FROM file_refs WHERE id=? AND project_id=? AND status='current'", [id, project]);
+      if (!row) throw new PlatformError('scope_denied', 'File reference is outside the project', {}, 403);
+      currentRevision = Number(row.revision); currentHash = String(row.content_sha256);
+    } else if (referenceType === 'operation') {
+      row = db.get("SELECT * FROM operations WHERE id=? AND project_id=? AND status IN ('succeeded','failed','cancelled','expired')", [id, project]);
+      if (!row) throw new PlatformError('scope_denied', 'Operation is outside the project or not terminal', {}, 403);
+      currentRevision = Number(row.revision);
+      const terminal = db.get('SELECT output_sha256 FROM terminal_sessions WHERE operation_id=? AND output_sha256<>\'\' ORDER BY updated_at DESC,id LIMIT 1', [id]);
+      if (terminal?.output_sha256) currentHash = String(terminal.output_sha256);
+      else currentHash = sha256Hex(canonicalJson(this.operations.summary(row)));
+    } else {
+      throw new PlatformError('schema_invalid', 'Assist reference type is invalid', {}, 422);
+    }
+    if (expectedRevision != null && Number(expectedRevision) !== currentRevision) {
+      throw new PlatformError('reference_stale', 'Assist reference revision is stale', { expected_revision: Number(expectedRevision), actual_revision: currentRevision }, 409);
+    }
+    if (expectedHash && String(expectedHash).toLowerCase() !== currentHash.toLowerCase()) {
+      throw new PlatformError('reference_stale', 'Assist reference hash is stale', { expected_hash: String(expectedHash), actual_hash: currentHash }, 409);
+    }
+    return { revision: currentRevision, hash: currentHash };
   }
 
   // Interaction owner -----------------------------------------------------
@@ -662,9 +730,11 @@ export class CleanAssistService {
   async createInteraction(kind, input, principal) {
     requirePrincipal(principal); const projectId = String(input.project_id); assertProject(this.authorization, principal, 'run', projectId, { resource: 'assist' }); const expected = requireRevision(input.expected_revision, { allowZero: true }); const key = requireIdempotency(input.idempotency_key); const now = time(this.clock); const ttl = Math.max(1, Math.min(86400, Number(input.ttl_seconds || 900))); const expires = new Date(Date.parse(now) + ttl * 1000).toISOString(); const commandId = kind === 'approval' ? 'approval.create' : 'user.input.create'; const id = opaqueId(kind === 'approval' ? 'approval' : 'user_input');
     const action = kind === 'approval' ? boundedString(input.action, 160, { required: true }) : null; const request = kind === 'approval' ? canonicalPayload(input.request || {}) : null; const prompt = kind === 'input' ? boundedString(input.prompt_summary, 1000, { required: true }) : null; const schema = kind === 'input' ? canonicalPayload(input.input_schema || {}) : null;
+    this.validateInteractionLinks(projectId, input, principal, this.db);
     const hash = requestHash({ kind, project_id: projectId, expected_revision: expected, operation_id: input.operation_id || null, assist_turn_id: input.assist_turn_id || null, action, request_sha256: request?.sha256 || null, prompt_summary: prompt, input_schema_sha256: schema?.sha256 || null, ttl_seconds: ttl });
     return this.db.withTransaction((tx) => {
       const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, now }); if (prior) return prior;
+      this.validateInteractionLinks(projectId, input, principal, tx);
       const resourceType = kind === 'approval' ? 'runtime_approval' : 'runtime_user_input'; const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId, resourceType, resourceId: id, projectId, requestHash: hash, status: 'succeeded', now }); const ownerOperationId = input.operation_id || op.id;
       if (kind === 'approval') tx.run('INSERT INTO runtime_approvals(id,project_id,operation_id,assist_turn_id,action,action_sha256,request_json,request_sha256,status,requested_revision,expires_at,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,?,?,?,?,?,\'pending\',?,?,?,?,?,?,?)', [id, projectId, ownerOperationId, input.assist_turn_id || null, action, sha256Hex(action), request.json, request.sha256, expected, expires, 1, now, now, principal.actorId, principal.actorId]);
       else tx.run('INSERT INTO runtime_user_inputs(id,project_id,operation_id,assist_turn_id,prompt_summary,input_schema_json,input_schema_sha256,status,requested_revision,expires_at,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,?,?,?,?,\'pending\',?,?,?,?,?,?,?)', [id, projectId, ownerOperationId, input.assist_turn_id || null, prompt, schema.json, schema.sha256, expected, expires, 1, now, now, principal.actorId, principal.actorId]);
@@ -672,18 +742,59 @@ export class CleanAssistService {
       const response = kind === 'approval' ? { approval: approvalView(tx.get('SELECT * FROM runtime_approvals WHERE id=?', [id])), operation: this.operations.summary(op) } : { input: inputView(tx.get('SELECT * FROM runtime_user_inputs WHERE id=?', [id])), operation: this.operations.summary(op) }; saveResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, response, operationId: op.id, status: 201, now }); return response;
     });
   }
+  validateInteractionLinks(projectId, input, principal, db = this.db) {
+    const project = String(projectId);
+    let turn = null;
+    if (input.assist_turn_id) {
+      turn = db.get('SELECT t.*,s.project_id AS session_project_id FROM assist_turns t JOIN assist_sessions s ON s.id=t.session_id WHERE t.id=?', [String(input.assist_turn_id)]);
+      if (!turn || String(turn.session_project_id) !== project) throw new PlatformError('scope_denied', 'Assist turn is outside the project', {}, 403);
+      const turnSession = db.get('SELECT * FROM assist_sessions WHERE id=?', [String(turn.session_id)]);
+      if (turnSession?.deleted_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'deleted' }, 409);
+      if (turnSession?.archived_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'archived' }, 409);
+      if (input.operation_id && String(turn.operation_id) !== String(input.operation_id)) throw new PlatformError('scope_denied', 'Assist turn and operation do not match', {}, 403);
+    }
+    if (input.operation_id) {
+      const operation = db.get('SELECT * FROM operations WHERE id=?', [String(input.operation_id)]);
+      if (!operation || String(operation.project_id || '') !== project) throw new PlatformError('scope_denied', 'Operation is outside the project', {}, 403);
+      if (turn && String(operation.id) !== String(turn.operation_id)) throw new PlatformError('scope_denied', 'Assist turn and operation do not match', {}, 403);
+    }
+    const requestHasTerminalShape = input.request && typeof input.request === 'object'
+      && ['workspace_id', 'runtime', 'cwd', 'cols', 'rows'].some((field) => Object.hasOwn(input.request, field));
+    const requestedSessionId = input.assist_session_id || (requestHasTerminalShape && input.request.assist_session_id);
+    if (requestedSessionId) {
+      const session = db.get('SELECT * FROM assist_sessions WHERE id=?', [String(requestedSessionId)]);
+      if (!session || String(session.project_id) !== project) throw new PlatformError('scope_denied', 'Assist session is outside the project', {}, 403);
+      this.assertAssistSessionUsable(principal, session, 'run');
+      if (turn && String(turn.session_id) !== String(session.id)) throw new PlatformError('scope_denied', 'Assist session and turn do not match', {}, 403);
+    }
+    return true;
+  }
   async decideInteraction(kind, id, input, principal) {
-    const table = kind === 'approval' ? 'runtime_approvals' : 'runtime_user_inputs'; const resourceType = kind === 'approval' ? 'runtime_approval' : 'runtime_user_input'; const row = this.db.get(`SELECT * FROM ${table} WHERE id=?`, [String(id)]); if (!row) throw new PlatformError('not_found', `${kind} not found`, {}, 404); assertProject(this.authorization, principal, kind === 'approval' ? 'approve' : 'write', row.project_id, { resource: 'assist' }); const expected = requireRevision(input.expected_revision); const key = requireIdempotency(input.idempotency_key); const status = input.decision === 'approved' ? 'approved' : input.decision === 'rejected' ? 'rejected' : 'cancelled'; if (kind === 'approval' && !['approved', 'rejected'].includes(status)) throw new PlatformError('schema_invalid', 'approval decision is invalid', {}, 422); const commandId = kind === 'approval' ? 'approval.decide' : status === 'cancelled' ? 'user.input.cancel' : 'user.input.answer'; const responsePayload = kind === 'input' ? canonicalPayload(input.response || {}) : null; const hash = requestHash({ id: row.id, expected_revision: expected, status, reason: String(input.reason || ''), response_sha256: responsePayload?.sha256 || null }); const now = time(this.clock);
+    const table = kind === 'approval' ? 'runtime_approvals' : 'runtime_user_inputs'; const resourceType = kind === 'approval' ? 'runtime_approval' : 'runtime_user_input'; const row = this.db.get(`SELECT * FROM ${table} WHERE id=?`, [String(id)]); if (!row) throw new PlatformError('not_found', `${kind} not found`, {}, 404); assertProject(this.authorization, principal, kind === 'approval' ? 'approve' : 'write', row.project_id, { resource: 'assist' });
+    this.validateInteractionLinks(row.project_id, row, principal, this.db);
+    if (row.assist_turn_id) {
+      const turn = this.db.get('SELECT s.* FROM assist_turns t JOIN assist_sessions s ON s.id=t.session_id WHERE t.id=?', [String(row.assist_turn_id)]);
+      this.assertAssistSessionUsable(principal, turn, kind === 'approval' ? 'approve' : 'write');
+    }
+    const expected = requireRevision(input.expected_revision); const key = requireIdempotency(input.idempotency_key); const status = input.decision === 'approved' ? 'approved' : input.decision === 'rejected' ? 'rejected' : 'cancelled'; if (kind === 'approval' && !['approved', 'rejected'].includes(status)) throw new PlatformError('schema_invalid', 'approval decision is invalid', {}, 422); const commandId = kind === 'approval' ? 'approval.decide' : status === 'cancelled' ? 'user.input.cancel' : 'user.input.answer'; const responsePayload = kind === 'input' ? canonicalPayload(input.response || {}) : null; const hash = requestHash({ id: row.id, expected_revision: expected, status, reason: String(input.reason || ''), response_sha256: responsePayload?.sha256 || null }); const now = time(this.clock);
     return this.db.withTransaction((tx) => {
       const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, now }); if (prior) return prior;
-      const current = tx.get(`SELECT * FROM ${table} WHERE id=?`, [row.id]); assertRevision(current, expected); if (INTERACTION_TERMINAL.has(current.status)) throw new PlatformError('state_conflict', 'interaction is already decided', {}, 409); const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId, resourceType, resourceId: row.id, projectId: row.project_id, requestHash: hash, status: 'succeeded', now }); const next = Number(current.revision) + 1;
+      const current = tx.get(`SELECT * FROM ${table} WHERE id=?`, [row.id]); assertRevision(current, expected); if (INTERACTION_TERMINAL.has(current.status)) throw new PlatformError('state_conflict', 'interaction is already decided', {}, 409); this.validateInteractionLinks(current.project_id, current, principal, tx); if (current.assist_turn_id) this.assertAssistSessionUsable(principal, tx.get('SELECT s.* FROM assist_turns t JOIN assist_sessions s ON s.id=t.session_id WHERE t.id=?', [String(current.assist_turn_id)]), kind === 'approval' ? 'approve' : 'write'); const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId, resourceType, resourceId: row.id, projectId: row.project_id, requestHash: hash, status: 'succeeded', now }); const next = Number(current.revision) + 1;
       if (kind === 'approval') tx.run('UPDATE runtime_approvals SET status=?,decision_actor_id=?,decision_reason=?,revision=?,updated_at=?,decided_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [status, principal.actorId, String(input.reason || ''), next, now, now, principal.actorId, row.id, expected], 1); else tx.run('UPDATE runtime_user_inputs SET status=?,response_json=?,response_sha256=?,answered_by_actor_id=?,revision=?,updated_at=?,answered_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [status, responsePayload.json, responsePayload.sha256, principal.actorId, next, now, now, principal.actorId, row.id, expected], 1);
       appendAggregate(this.events, tx, { aggregateType: resourceType, aggregateId: row.id, revision: next, operationId: op.id, actorId: principal.actorId, projectId: row.project_id, type: `${resourceType}.${status}`, data: { id: row.id, status }, payload: { id: row.id, project_id: row.project_id, status, revision: next }, now }); const links = [[resourceType, row.id]]; if (row.operation_id && row.operation_id !== op.id) links.push(['operation', row.operation_id, 'parent']); this.operations.linkInTransaction(tx, op.id, links, now);
       const response = kind === 'approval' ? { approval: approvalView(tx.get('SELECT * FROM runtime_approvals WHERE id=?', [row.id])), operation: this.operations.summary(op) } : { input: inputView(tx.get('SELECT * FROM runtime_user_inputs WHERE id=?', [row.id])), operation: this.operations.summary(op) }; saveResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, response, operationId: op.id, status: 200, now }); return response;
     });
   }
   expireInteractions() { const now = time(this.clock); this.db.run("UPDATE runtime_approvals SET status='expired',revision=revision+1,updated_at=?,decided_at=? WHERE status='pending' AND expires_at<=?", [now, now, now]); this.db.run("UPDATE runtime_user_inputs SET status='expired',revision=revision+1,updated_at=?,answered_at=? WHERE status='pending' AND expires_at<=?", [now, now, now]); }
-  resumeForInteraction(kind, id, principal) { const table = kind === 'approval' ? 'runtime_approvals' : 'runtime_user_inputs'; const row = this.db.get(`SELECT assist_turn_id FROM ${table} WHERE id=?`, [String(id)]); if (row?.assist_turn_id) queueMicrotask(() => this.executeTurn(row.assist_turn_id, principal, { resume: true }).catch(() => undefined)); }
+  resumeForInteraction(kind, id, principal) {
+    const table = kind === 'approval' ? 'runtime_approvals' : 'runtime_user_inputs';
+    const row = this.db.get(`SELECT * FROM ${table} WHERE id=?`, [String(id)]);
+    if (!row?.assist_turn_id) return;
+    const turn = this.db.get('SELECT * FROM assist_turns WHERE id=?', [String(row.assist_turn_id)]);
+    const session = turn ? this.sessionRow(turn.session_id) : null;
+    this.assertAssistSessionUsable(principal, session, 'run');
+    queueMicrotask(() => this.executeTurn(row.assist_turn_id, principal, { resume: true }).catch(() => undefined));
+  }
 
   interactionResolution(turnId) {
     const rows = this.db.query(`SELECT status FROM runtime_approvals WHERE assist_turn_id=?
@@ -711,7 +822,30 @@ export class CleanAssistService {
   async close() { await this.provider?.close?.(); }
 
   sessionRow(id) { const row = this.db.get('SELECT * FROM assist_sessions WHERE id=?', [String(id)]); if (!row) throw new PlatformError('not_found', 'Assist session not found', {}, 404); return row; }
-  assertSession(principal, row, action) { assertProject(this.authorization, principal, action, row.project_id, { resource: 'assist', operationId: null }); }
+  assertSession(principal, row, action) { this.assertAssistSessionUsable(principal, row, action); }
+  assertAssistSessionUsable(principal, row, action = 'read', { allowDeleted = false, allowArchived = false } = {}) {
+    if (!row) throw new PlatformError('not_found', 'Assist session not found', {}, 404);
+    assertProject(this.authorization, principal, action, row.project_id, { resource: 'assist', operationId: null });
+    if (row.deleted_at && !allowDeleted) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'deleted' }, 409);
+    if (row.archived_at && !allowArchived && action !== 'read') throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'archived' }, 409);
+    return row;
+  }
+  validateScope(projectId, scope, scopeId, db = this.db) {
+    const id = String(projectId || '');
+    const target = String(scopeId || '');
+    let valid = false;
+    if (scope === 'project') valid = target === id && Boolean(db.get('SELECT id FROM projects WHERE id=?', [id]));
+    else if (scope === 'workflow') valid = Boolean(db.get('SELECT id FROM workflows WHERE id=? AND project_id=?', [target, id]) || db.get('SELECT workflow_id FROM workflow_revisions WHERE id=? AND project_id=?', [target, id]));
+    else if (scope === 'workstream' || scope === 'task') {
+      const expectedKind = scope === 'workstream' ? 'workstream' : 'task';
+      valid = Boolean(db.get(`SELECT n.id FROM workflow_nodes n
+        JOIN workflow_revisions r ON r.id=n.workflow_revision_id
+        JOIN workflows w ON w.id=r.workflow_id AND w.current_revision=r.revision
+        WHERE (n.id=? OR n.node_key=?) AND r.project_id=? AND n.node_kind=?`, [target, target, id, expectedKind]));
+    }
+    if (!valid) throw new PlatformError('scope_denied', 'Assist scope is outside the project', { project_id: id, scope, scope_id: target }, 403);
+    return true;
+  }
   profileFor(id, principal) {
     const row = id
       ? this.db.get('SELECT * FROM provider_profiles WHERE id=? AND owner_actor_id=?', [String(id), principal.actorId])

@@ -1,6 +1,4 @@
 import { randomBytes } from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import MiniSearch from 'minisearch';
 import { canonicalJson, opaqueId, sha256Hex, utcNow } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
@@ -23,17 +21,17 @@ const INDEX_OPTIONS = Object.freeze({
  * publish and never a partially visible projection.
  */
 export class CleanContextService {
-  constructor({ db, cas, events, operations, authorization, policy, clock = utcNow, bootstrapActorId = 'actor_system_bootstrap', config = {} } = {}) {
+  constructor({ db, cas, events, operations, authorization, policy, files = null, clock = utcNow, bootstrapActorId = 'actor_system_bootstrap', config = {} } = {}) {
     if (!db || !cas || !events || !operations) throw new TypeError('clean_context_dependencies_required');
     this.db = db;
     this.cas = cas;
     this.events = events;
     this.operations = operations;
     this.authorization = authorization;
+    this.files = files;
     this.redactionPolicy = policy;
     this.clock = clock;
     this.bootstrapActorId = bootstrapActorId;
-    this.workspaceRoot = path.resolve(String(config.workspaceRoot || config.home || process.cwd()));
     this.recoveryStarted = false;
   }
 
@@ -64,17 +62,16 @@ export class CleanContextService {
     let content = String(input.content ?? input.body ?? '');
     let fileRef = null;
     if (input.file_ref_id) {
-      fileRef = this.db.get('SELECT * FROM file_refs WHERE id=? AND project_id=?', [String(input.file_ref_id), id]);
-      if (!fileRef) throw new PlatformError('not_found', 'file reference not found', {}, 404);
-      if (input.expected_file_revision != null && Number(input.expected_file_revision) !== Number(fileRef.revision)) throw new PlatformError('file_stale', 'file reference revision does not match', { expected_revision: Number(input.expected_file_revision), actual_revision: Number(fileRef.revision) }, 409);
-      if (input.expected_file_hash && String(input.expected_file_hash).toLowerCase() !== String(fileRef.content_sha256).toLowerCase()) throw new PlatformError('file_stale', 'file reference hash does not match', {}, 409);
-      const workspace = this.db.get('SELECT relative_path FROM repository_workspaces WHERE id=? AND project_id=?', [fileRef.workspace_id, id]);
-      if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
-      const filePath = path.resolve(this.workspaceRoot, workspace.relative_path, fileRef.relative_path);
-      if (!filePath.startsWith(path.resolve(this.workspaceRoot) + path.sep) || !fs.existsSync(filePath)) throw new PlatformError('file_unavailable', 'file reference content is unavailable', {}, 409);
-      const bytes = fs.readFileSync(filePath);
-      const actualHash = sha256Hex(bytes);
-      if (actualHash !== fileRef.content_sha256) throw new PlatformError('file_stale', 'workspace file changed since indexing', { expected_hash: fileRef.content_sha256, actual_hash: actualHash }, 409);
+      if (!this.files?.readIndexedFile) throw new PlatformError('files_owner_unavailable', 'Files owner is unavailable for file-backed context', {}, 503);
+      const checked = this.files.readIndexedFile(
+        id,
+        String(input.file_ref_id),
+        input.expected_file_revision,
+        input.expected_file_hash,
+        principal
+      );
+      fileRef = checked.file;
+      const bytes = checked.bytes;
       if (bytes.includes(0)) throw new PlatformError('file_not_previewable', 'binary files cannot be selected as context', {}, 422);
       content = bytes.toString('utf8');
     }
@@ -87,7 +84,8 @@ export class CleanContextService {
     const now = this.time();
     const actorId = actorOf(principal, this.bootstrapActorId);
     const key = requireKey(input.idempotency_key || options.idempotencyKey);
-    const request = { project_id: id, source_type: sourceType, canonical_uri: canonicalUri, title, source_revision: String(input.source_revision || fileRef?.revision || ''), source_hash: contentHash, cas_hash: casObject.hash, sensitivity, metadata, file_ref_id: fileRef?.id || null };
+    const sourceRevision = fileRef ? String(fileRef.revision) : String(input.source_revision || '');
+    const request = { project_id: id, source_type: sourceType, canonical_uri: canonicalUri, title, source_revision: sourceRevision, source_hash: contentHash, cas_hash: casObject.hash, sensitivity, metadata, file_ref_id: fileRef?.id || null };
     const requestHash = sha256Hex(canonicalJson(request));
     return this.db.withTransaction((tx) => {
       const prior = this.operations.getIdempotencyInTransaction(tx, { actorId, commandId: 'context.source.create', idempotencyKey: key, requestHash, now });
@@ -102,10 +100,10 @@ export class CleanContextService {
       const operation = this.operations.createInTransaction(tx, { actorId, commandId: 'context.source.create', kind: 'context.source.create', resourceType: 'context_source', resourceId: sourceId, projectId: id, requestHash, idempotencyKey: key, status: 'succeeded' }, now);
       const revision = Number(existing?.revision || 0) + 1;
       if (existing) {
-        tx.run(`UPDATE context_sources SET source_type=?,title=?,adapter=?,source_revision=?,source_hash=?,cas_hash=?,sensitivity=?,freshness_status='current',metadata_json=?,metadata_sha256=?,status='active',revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?`, [sourceType, title, String(input.adapter || sourceType), String(input.source_revision || ''), contentHash, casObject.hash, sensitivity, metadataJson, sha256Hex(metadataJson), revision, now, actorId, sourceId, Number(existing.revision)], 1);
+        tx.run(`UPDATE context_sources SET source_type=?,title=?,adapter=?,source_revision=?,source_hash=?,cas_hash=?,sensitivity=?,freshness_status='current',metadata_json=?,metadata_sha256=?,status='active',revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?`, [sourceType, title, String(input.adapter || sourceType), sourceRevision, contentHash, casObject.hash, sensitivity, metadataJson, sha256Hex(metadataJson), revision, now, actorId, sourceId, Number(existing.revision)], 1);
       } else {
         tx.run(`INSERT INTO context_sources(id,project_id,source_type,canonical_uri,title,adapter,source_revision,source_hash,cas_hash,sensitivity,freshness_status,metadata_json,metadata_sha256,status,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'active',1,?,?,?,?)`, [sourceId, id, sourceType, canonicalUri, title, String(input.adapter || sourceType), String(input.source_revision || ''), contentHash, casObject.hash, sensitivity, 'current', metadataJson, sha256Hex(metadataJson), now, now, actorId, actorId]);
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'active',1,?,?,?,?)`, [sourceId, id, sourceType, canonicalUri, title, String(input.adapter || sourceType), sourceRevision, contentHash, casObject.hash, sensitivity, 'current', metadataJson, sha256Hex(metadataJson), now, now, actorId, actorId]);
       }
       const row = tx.get('SELECT * FROM context_sources WHERE id=?', [sourceId]);
       const payload = sourcePayload(row);

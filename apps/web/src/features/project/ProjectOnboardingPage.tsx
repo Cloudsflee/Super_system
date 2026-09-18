@@ -13,8 +13,8 @@ type ProjectRecord = {
   current_workflow_revision: number; revision: number;
 };
 type Intake = { id: string; status: string; mode: 'brainstorm' | 'existing'; source_kind?: string; source_revision?: string; source_hash?: string; error_code?: string; attempt: number; revision: number };
-type BriefRevision = { revision: number; content: Record<string, unknown>; content_sha256?: string; template_id?: string | null; template_revision?: number | null };
-type BriefHead = { current_revision: number; confirmed_revision?: number | null; current?: BriefRevision | null };
+type BriefRevision = { id: string; brief_id: string; revision: number; content: Record<string, unknown>; content_sha256?: string; template_id?: string | null; template_revision?: number | null };
+type BriefHead = { id: string; brief_id?: string; project_id: string; current_revision: number; confirmed_revision?: number | null; current?: BriefRevision | null };
 type Workflow = { id: string; status: string; current_revision: number; revision: number; current?: { graph?: Record<string, unknown>; graph_sha256?: string } | null };
 type Generation = { id: string; phase: string; revision: number; proposal_id?: string | null; error_code?: string; attempt: number };
 type BriefTemplate = { id: string; name: string; description?: string; current_revision: number; revision: number; content: Record<string, unknown> };
@@ -114,7 +114,8 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
       if (sequence !== loadSequence.current) return;
       setProject(nextProject);
       setIntake(intakeResult.data.intake || null);
-      setBrief(detailBrief || { current_revision: currentRevision, confirmed_revision: nextProject.confirmed_brief_revision || null, current: revisions.find((item) => item.revision === currentRevision) || null });
+      const currentRecord = revisions.find((item) => item.revision === currentRevision) || null;
+      setBrief(detailBrief || (currentRecord ? { id: currentRecord.brief_id, brief_id: currentRecord.brief_id, project_id: projectId, current_revision: currentRevision, confirmed_revision: nextProject.confirmed_brief_revision || null, current: currentRecord } : null));
       setWorkflow(nextWorkflow);
       setGenerations(generationResult.data.generations || []);
       setTemplates(templateResult.data.templates || []);
@@ -222,7 +223,7 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
   const briefSaved = Boolean(brief?.current_revision && brief.current?.content_sha256);
   const briefDirty = !briefSaved || JSON.stringify(briefDraft) !== JSON.stringify(draftFromContent(brief?.current?.content));
   const briefAssistContext = { route: 'onboarding' as const, projectId: projectId || null,
-    resourceType: briefDirty ? undefined : 'brief', resourceId: briefDirty ? undefined : projectId,
+    resourceType: briefDirty ? undefined : 'brief', resourceId: briefDirty ? undefined : (brief?.id || brief?.brief_id || (brief?.current && projectId) || undefined),
     revision: brief?.current_revision || null, contentHash: brief?.current?.content_sha256 || null,
     label: briefDirty ? '未保存 Brief 草稿' : '当前 Brief' };
   useEffect(() => {

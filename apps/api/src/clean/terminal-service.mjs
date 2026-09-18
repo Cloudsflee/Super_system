@@ -45,21 +45,39 @@ export class CleanTerminalService {
 
   async open(input = {}, principal) {
     requirePrincipal(principal); const projectId = String(input.project_id || ''); assertProject(this.authorization, principal, 'run', projectId, { resource: 'terminal' });
-    const approval = this.db.get('SELECT * FROM runtime_approvals WHERE id=? AND project_id=?', [String(input.approval_id || ''), projectId]);
+    const approval = this.db.get('SELECT * FROM runtime_approvals WHERE id=?', [String(input.approval_id || '')]);
     if (!approval || approval.status !== 'approved' || approval.action !== 'terminal.open') throw new PlatformError('approval_required', 'an approved terminal.open request is required', {}, 403);
+    if (String(approval.project_id) !== projectId) throw new PlatformError('scope_denied', 'terminal approval is outside the project', {}, 403);
     if (Date.parse(approval.expires_at) <= Date.parse(time(this.clock))) throw new PlatformError('approval_expired', 'terminal approval expired', {}, 409);
-    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=? AND project_id=?', [String(input.workspace_id || ''), projectId]);
+    const approvedRequest = JSON.parse(approval.request_json);
+    const legacyApproval = Object.keys(approvedRequest).every((field) => ['workspace_id', 'assist_session_id', 'command'].includes(field));
+    const strictApproval = !legacyApproval;
+    for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
+      // P5 persisted minimal approval fixtures predate the explicit terminal
+      // shape. They remain readable with bounded defaults; any approval that
+      // carries the new shape is strict and must be replayed exactly.
+      if (field === 'workspace_id') {
+        if (!Object.hasOwn(input, field) || !input[field]) throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
+      } else if (strictApproval && !Object.hasOwn(input, field)) {
+        throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
+      }
+    }
+    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [String(input.workspace_id || '')]);
     if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
+    if (String(workspace.project_id) !== projectId) throw new PlatformError('scope_denied', 'repository workspace is outside the project', {}, 403);
     const requestedRuntime = String(input.runtime || this.capabilities().default_runtime); const capability = this.capabilities()[requestedRuntime];
     if (!capability?.available) throw new PlatformError('terminal_runtime_unavailable', 'requested terminal runtime is unavailable', { runtime: requestedRuntime }, 422);
     const cwdRelative = safeCwd(input.cwd || '');
     const cols = boundedInt(input.cols, 20, 400, 120); const rows = boundedInt(input.rows, 5, 200, 32);
     const assistSessionId = input.assist_session_id ? String(input.assist_session_id) : null;
-    const approvedRequest = JSON.parse(approval.request_json);
     if ((approvedRequest.assist_session_id || null) !== assistSessionId) throw new PlatformError('approval_request_mismatch', 'terminal Assist association differs from approval', {}, 409);
-    const assistSession = assistSessionId ? this.db.get('SELECT * FROM assist_sessions WHERE id=? AND project_id=?', [assistSessionId, projectId]) : null;
-    if (assistSessionId) assertProject(this.authorization, principal, 'run', projectId, { resource: 'assist' });
-    if (assistSessionId && (!assistSession || assistSession.deleted_at)) throw new PlatformError('assist_session_mismatch', 'terminal Assist session belongs to another project or was deleted', {}, 409);
+    const assistSession = assistSessionId ? this.db.get('SELECT * FROM assist_sessions WHERE id=?', [assistSessionId]) : null;
+    if (assistSessionId) {
+      assertProject(this.authorization, principal, 'run', projectId, { resource: 'assist' });
+      if (!assistSession || String(assistSession.project_id) !== projectId) throw new PlatformError(strictApproval ? 'scope_denied' : 'assist_session_mismatch', 'terminal Assist session is outside the project', {}, 403);
+      if (assistSession.deleted_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'deleted' }, 409);
+      if (assistSession.archived_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'archived' }, 409);
+    }
     const approvedFields = { workspace_id: workspace.id, runtime: requestedRuntime, cwd: cwdRelative, cols, rows };
     for (const [field, value] of Object.entries(approvedFields)) {
       if (Object.hasOwn(approvedRequest, field) && (field === 'cwd' ? safeCwd(approvedRequest[field]) : approvedRequest[field]) !== value) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field }, 409);

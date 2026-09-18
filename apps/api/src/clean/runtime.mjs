@@ -132,14 +132,16 @@ export function createCleanRuntime(options = {}) {
     : null);
   const projectWorkflow = targetVersion >= 3 ? new ProjectWorkflowService({ db, events, operations, policy, authorization, clock: options.now || undefined, repositoryAdapter, identity, cas, config, generator: workflowGenerator, critic: workflowCritic }) : null;
   const registry = createCleanCommandRegistry({ targetVersion, runtimePhase });
-  const context = targetVersion >= 4 ? new CleanContextService({ db, cas, events, operations, authorization, policy, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id, config }) : null;
+  // Files owns all host-workspace reads.  Construct it before Context so a
+  // file-backed source can only cross that owner boundary.
+  const files = targetVersion >= 5 ? new CleanFilesService({ db, cas, events, operations, authorization, projectWorkflow, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id, config }) : null;
+  const context = targetVersion >= 4 ? new CleanContextService({ db, cas, events, operations, authorization, policy, files, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id, config }) : null;
   const mcp = targetVersion >= 4 ? new CleanMcpExchangeService({ db, context, operations, authorization, registry, policy, clock: options.now || undefined, pepper: options.mcpPepper || config.mcpPepper, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const gateway = targetVersion >= 4 ? new CleanGatewayService({ db, policy, clock: options.now || undefined, secret: options.gatewaySecret || config.gatewaySecret, gatewayId: options.gatewayId || config.gatewayId || 'gateway-local' }) : null;
   const assistProvider = targetVersion >= 5
     ? (options.providerAdapter || createAssistProvider(options, config))
     : null;
   const assist = targetVersion >= 5 ? new CleanAssistService({ db, cas, events, operations, authorization, vault, clock: options.now || undefined, providerAdapter: assistProvider, providerAdapters: options.providerAdapters || {}, bootstrapActorId: initialized.metadata.bootstrap_actor_id, config }) : null;
-  const files = targetVersion >= 5 ? new CleanFilesService({ db, cas, events, operations, authorization, projectWorkflow, clock: options.now || undefined, bootstrapActorId: initialized.metadata.bootstrap_actor_id, config }) : null;
   const terminal = targetVersion >= 5 ? new CleanTerminalService({ db, cas, events, operations, authorization, projectWorkflow, clock: options.now || undefined, config, pty: options.pty }) : null;
   const bridge = targetVersion >= 5 ? new CleanBridgeService({ db, events, operations, authorization, vault, clock: options.now || undefined, adapter: options.bridgeAdapter, config }) : null;
   const runnerAdapters = targetVersion >= 6 ? createRunnerAdapters({ options, config, bridge, db, vault }) : null;

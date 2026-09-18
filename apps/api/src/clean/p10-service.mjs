@@ -395,13 +395,13 @@ export class CleanP10Service {
   }
 
   restoreAssistSession(id, input = {}, principal) {
-    const row = this.assistSessionRow(id, principal, 'write');
+    const row = this.assistSessionRow(id, principal, 'write', { allowArchived: true });
     if (!row.archived_at || row.deleted_at) throw new PlatformError('state_conflict', 'Assist session is not restorable from archive', {}, 409);
     return this.mutateAssistSession(row, 'assist.session.restore', input, principal, { archived_at: null }, 'assist_session.restored');
   }
 
   deleteAssistSession(id, input = {}, principal) {
-    const row = this.assistSessionRow(id, principal, 'write');
+    const row = this.assistSessionRow(id, principal, 'write', { allowArchived: true });
     if (row.deleted_at) throw new PlatformError('state_conflict', 'Assist session is already deleted', {}, 409);
     if (row.status === 'active' && this.db.get("SELECT 1 AS ok FROM assist_turns WHERE session_id=? AND status IN ('queued','running','awaiting_input') LIMIT 1", [row.id])) throw new PlatformError('assist_session_busy', 'active Assist work must finish before deletion', {}, 409);
     const now = time(this.clock);
@@ -409,9 +409,9 @@ export class CleanP10Service {
   }
 
   restoreDeletedAssistSession(id, input = {}, principal) {
-    const row = this.assistSessionRow(id, principal, 'write');
+    const row = this.assistSessionRow(id, principal, 'write', { allowDeleted: true, allowArchived: true });
     if (!row.deleted_at) throw new PlatformError('state_conflict', 'Assist session is not deleted', {}, 409);
-    return this.mutateAssistSession(row, 'assist.session.restore_deleted', input, principal, { deleted_at: null }, 'assist_session.delete_restored');
+    return this.mutateAssistSession(row, 'assist.session.restore_deleted', input, principal, { deleted_at: null, archived_at: null }, 'assist_session.delete_restored');
   }
 
   async forkAssistSession(id, input = {}, principal, mode = 'fork') {
@@ -695,17 +695,18 @@ export class CleanP10Service {
     }
   }
 
-  assistSessionRow(id, principal, action) {
+  assistSessionRow(id, principal, action, lifecycleOptions = {}) {
     const row = this.db.get('SELECT * FROM assist_sessions WHERE id=?', [String(id)]);
     if (!row) throw new PlatformError('not_found', 'Assist session not found', {}, 404);
-    this.authorization.assert(requirePrincipal(principal), action, row.project_id, { resource: 'assist' });
-    return row;
+    return this.assist.assertAssistSessionUsable(requirePrincipal(principal), row, action, lifecycleOptions);
   }
 
   assistTurnRow(id, principal, action) {
     const row = this.db.get('SELECT t.*,s.project_id FROM assist_turns t JOIN assist_sessions s ON s.id=t.session_id WHERE t.id=?', [String(id)]);
     if (!row) throw new PlatformError('not_found', 'Assist turn not found', {}, 404);
     this.authorization.assert(requirePrincipal(principal), action, row.project_id, { resource: 'assist_review' });
+    const session = this.db.get('SELECT * FROM assist_sessions WHERE id=?', [row.session_id]);
+    this.assist.assertAssistSessionUsable(principal, session, action);
     return row;
   }
 

@@ -5,8 +5,8 @@ import { ApiError, apiV2, mutateV2 } from '../../../api';
 export type PreparationStep = 'source' | 'workspace' | 'context' | 'pack';
 type SourceKind = 'local' | 'github';
 type Connection = { id: string; provider: string; source_kind: string; source_revision?: string; source_hash?: string; status: string; revision: number; metadata?: Record<string, unknown> };
-type Line = { id: string; status: string; source_revision?: string; source_hash?: string; revision: number };
-type Workspace = { id: string; line_id: string; status: string; relative_path: string; revision: number };
+type Line = { id: string; status: string; line_kind?: string; source_revision?: string; source_hash?: string; revision: number; updated_at?: string; fault_code?: string; fault?: Record<string, unknown> };
+type Workspace = { id: string; line_id: string; status: string; relative_path: string; revision: number; updated_at?: string; error_code?: string };
 type FileRef = { id: string; path: string; relative_path?: string; media_type: string; byte_length: number; content_sha256: string; status: string; revision: number };
 type Pack = { id: string; status: string; pack_hash: string; revision: number; memory_manifest?: { token_budget?: number; token_used?: number } };
 type Profile = { id: string; provider: string; status: string; lifecycle_status?: string };
@@ -35,8 +35,9 @@ export function SourceSelector({ kind, onKindChange, locator, branch, onLocatorC
   </div>;
 }
 
-export function WorkspaceStatus({ workspace, onRefresh, busy }: { workspace: Workspace | null; onRefresh: () => void; busy?: boolean }) {
-  return <div className="preparation-workspace-status" data-testid="preparation-workspace-status"><div><strong>工作区状态</strong><span className={`status ${workspace?.status === 'ready' ? 'positive' : 'working'}`}><span />{workspace?.status || '未创建'}</span></div>{workspace && <><small className="mono">{workspace.relative_path} · r{workspace.revision}</small><button className="button" disabled={busy || workspace.status === 'locked'} onClick={onRefresh}><RefreshCw size={14} />刷新</button></>}</div>;
+export function WorkspaceStatus({ workspace, onRefresh, onRetry, onBack, busy }: { workspace: Workspace | null; onRefresh: () => void; onRetry?: () => void; onBack?: () => void; busy?: boolean }) {
+  const orphaned = workspace?.status === 'orphaned';
+  return <div className="preparation-workspace-status" data-testid="preparation-workspace-status"><div><strong>工作区状态</strong><span className={`status ${workspace?.status === 'ready' || workspace?.status === 'released' ? 'positive' : orphaned ? 'negative' : 'working'}`}><span />{workspace?.status || '未创建'}</span></div>{workspace && <><small className="mono">{workspace.relative_path} · r{workspace.revision}</small>{workspace.error_code && <small className="fault-text">{workspace.error_code}</small>}{orphaned ? <div className="form-actions"><button className="button" disabled={busy} onClick={onRetry}>重试物化</button><button className="button" disabled={busy} onClick={onBack}>返回来源</button></div> : <button className="button" disabled={busy || workspace.status === 'locked'} onClick={onRefresh}><RefreshCw size={14} />刷新</button>}</>}</div>;
 }
 
 export function ContextPreparation({ files, selected, onToggle, budget, onBudgetChange, excluded }: { files: FileRef[]; selected: Set<string>; onToggle: (id: string) => void; budget: number; onBudgetChange: (value: number) => void; excluded: Record<string, string> }) {
@@ -49,26 +50,178 @@ export function ReadinessSummary({ ready, missing, onOpen }: { ready: boolean; m
 
 export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId: string; onReady?: (packId: string) => void; onOpenStep?: (step: PreparationStep) => void }) {
   const [step, setStep] = useState<PreparationStep>('source');
-  const [kind, setKind] = useState<SourceKind>('local'); const [locator, setLocator] = useState(''); const [branch, setBranch] = useState('main');
-  const [profiles, setProfiles] = useState<Profile[]>([]); const [repositories, setRepositories] = useState<Array<{ id: number; full_name: string; default_branch?: string }>>([]); const [selectedRepository, setSelectedRepository] = useState('');
-  const [connections, setConnections] = useState<Connection[]>([]); const [lines, setLines] = useState<Line[]>([]); const [workspace, setWorkspace] = useState<Workspace | null>(null); const [files, setFiles] = useState<FileRef[]>([]); const [selected, setSelected] = useState<Set<string>>(new Set()); const [packs, setPacks] = useState<Pack[]>([]); const [budget, setBudget] = useState(4096); const [busy, setBusy] = useState(''); const [error, setError] = useState('');
+  const [kind, setKind] = useState<SourceKind>('local');
+  const [locator, setLocator] = useState('');
+  const [branch, setBranch] = useState('main');
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [repositories, setRepositories] = useState<Array<{ id: number; full_name: string; default_branch?: string }>>([]);
+  const [selectedRepository, setSelectedRepository] = useState('');
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [selectedConnectionId, setSelectedConnectionId] = useState(() => readSelection(projectId, 'connection'));
+  const [selectedLineId, setSelectedLineId] = useState(() => readSelection(projectId, 'line'));
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(() => readSelection(projectId, 'workspace'));
+  const [files, setFiles] = useState<FileRef[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [packs, setPacks] = useState<Pack[]>([]);
+  const [budget, setBudget] = useState(4096);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
   const base = `/api/v2/projects/${encodeURIComponent(projectId)}`;
-  const load = useCallback(async () => { if (!projectId) return; try { const [c, l, w, p, prof] = await Promise.all([apiV2<{ connections: Connection[] }>(`${base}/repository-connections`), apiV2<{ lines: Line[] }>(`${base}/repository-lines`), apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`), apiV2<{ packs: Pack[] }>(`${base}/context/packs`), apiV2<{ profiles: Profile[] }>('/api/v2/profiles')]); setConnections(c.data.connections || []); setLines(l.data.lines || []); setWorkspace((w.data.workspaces || []).find(item => ['ready', 'released', 'locked'].includes(item.status)) || null); setPacks(p.data.packs || []); setProfiles(prof.data.profiles || []); } catch (e) { setError(e instanceof Error ? e.message : '准备状态加载失败'); } }, [base, projectId]);
+  const selectedConnection = connections.find(item => item.id === selectedConnectionId) || null;
+  const selectedLine = lines.find(item => item.id === selectedLineId) || null;
+  const workspace = workspaces.find(item => item.id === selectedWorkspaceId) || null;
+
+  const load = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const [c, l, w, p, prof] = await Promise.all([
+        apiV2<{ connections: Connection[] }>(`${base}/repository-connections`),
+        apiV2<{ lines: Line[] }>(`${base}/repository-lines`),
+        apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`),
+        apiV2<{ packs: Pack[] }>(`${base}/context/packs`),
+        apiV2<{ profiles: Profile[] }>('/api/v2/profiles')
+      ]);
+      setConnections(c.data.connections || []);
+      setLines(l.data.lines || []);
+      setWorkspaces(w.data.workspaces || []);
+      setPacks(p.data.packs || []);
+      setProfiles(prof.data.profiles || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '准备状态加载失败');
+    }
+  }, [base, projectId]);
   useEffect(() => { void load(); }, [load]);
-  const run = async (name: string, action: () => Promise<void>) => { setBusy(name); setError(''); try { await action(); await load(); } catch (e) { setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : '操作失败'); } finally { setBusy(''); } };
-  const discover = () => void run('discover', async () => { const profile = profiles.find(item => item.provider === 'github' && item.status === 'available' && item.lifecycle_status !== 'disabled'); if (!profile) throw new Error('没有可用的 GitHub Profile'); const result = await apiV2<{ repositories: Array<{ id: number; full_name: string; default_branch?: string }> }>(`/api/v2/provider-profiles/${encodeURIComponent(profile.id)}/repositories`); setRepositories(result.data.repositories || []); });
+
+  useEffect(() => {
+    if (!selectedConnectionId) return;
+    const connection = connections.find(item => item.id === selectedConnectionId);
+    if (!connection) {
+      setSelectedConnectionId(persistSelection(projectId, 'connection', ''));
+      setSelectedLineId(persistSelection(projectId, 'line', ''));
+      setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+      return;
+    }
+    const candidates = lines.filter(line => line.line_kind === 'external_readonly'
+      && line.source_revision === connection.source_revision
+      && line.source_hash === connection.source_hash)
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')) || b.id.localeCompare(a.id));
+    const selectedLine = lines.find(line => line.id === selectedLineId);
+    const selectedMatches = selectedLine && selectedLine.line_kind === 'external_readonly'
+      && selectedLine.source_revision === connection.source_revision
+      && selectedLine.source_hash === connection.source_hash;
+    if (!selectedMatches) {
+      const match = candidates[0];
+      setSelectedLineId(persistSelection(projectId, 'line', match?.id || ''));
+      setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+    }
+  }, [connections, lines, projectId, selectedConnectionId, selectedLineId]);
+
+  useEffect(() => {
+    if (!selectedLineId) return;
+    const candidates = workspaces.filter(item => item.line_id === selectedLineId)
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')) || b.id.localeCompare(a.id));
+    const selectedWorkspace = workspaces.find(item => item.id === selectedWorkspaceId);
+    if (!selectedWorkspace || selectedWorkspace.line_id !== selectedLineId) {
+      const match = candidates[0];
+      setSelectedWorkspaceId(persistSelection(projectId, 'workspace', match?.id || ''));
+    }
+  }, [projectId, selectedLineId, selectedWorkspaceId, workspaces]);
+
+  useEffect(() => {
+    setSelected(current => new Set([...current].filter(id => {
+      const file = files.find(item => item.id === id);
+      return Boolean(file && file.status === 'current' && safeRelative(file.relative_path || file.path));
+    })));
+  }, [files]);
+
+  const run = async (name: string, action: () => Promise<void>) => {
+    setBusy(name); setError('');
+    try { await action(); await load(); }
+    catch (e) { setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : '操作失败'); }
+    finally { setBusy(''); }
+  };
+  const discover = () => void run('discover', async () => {
+    const profile = profiles.find(item => item.provider === 'github' && item.status === 'available' && item.lifecycle_status !== 'disabled');
+    if (!profile) throw new Error('没有可用的 GitHub Profile');
+    const result = await apiV2<{ repositories: Array<{ id: number; full_name: string; default_branch?: string }> }>(`/api/v2/provider-profiles/${encodeURIComponent(profile.id)}/repositories`);
+    setRepositories(result.data.repositories || []);
+  });
   const chooseRepo = (value: string) => { setSelectedRepository(value); const repo = repositories.find(item => item.full_name === value); setLocator(value); setBranch(repo?.default_branch || 'main'); };
-  const createConnection = () => void run('source', async () => { const githubProfile = profiles.find(item => item.provider === 'github' && item.status === 'available' && item.lifecycle_status !== 'disabled'); const result = await mutateV2<{ connection: Connection }>(`${base}/repository-connections`, { provider: kind === 'github' ? 'git' : 'local', source_kind: kind === 'github' ? 'git' : 'local', source_locator: locator.trim(), branch: branch.trim() || 'main', read_only: true, ...(githubProfile ? { provider_profile_id: githubProfile.id } : {}) }, 'POST', 0); setConnections([result.data.connection]); setStep('workspace'); });
-  const createWorkspace = () => void run('workspace', async () => { const line = lines[0]; const connection = connections[0]; if (!line || !connection) throw new Error('请先完成来源检查'); const result = await mutateV2<{ workspace: Workspace; operation?: { operation_id?: string } }>(`${base}/repository-workspaces`, { line_id: line.id, relative_path: `projects/${projectId}/workspace`, defer: true }, 'POST', 0); let current = result.data.workspace; for (let attempt = 0; attempt < 40 && !['ready', 'orphaned'].includes(current.status); attempt += 1) { await new Promise(resolve => setTimeout(resolve, 250)); const listed = await apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`); current = (listed.data.workspaces || []).find(item => item.id === current.id) || current; } setWorkspace(current); if (current.status === 'orphaned') throw new Error('工作区物化失败，旧副本仍保留'); setStep('context'); });
-  const loadFiles = () => void run('files', async () => { if (!workspace) throw new Error('工作区尚未就绪'); const result = await apiV2<{ files: FileRef[] }>(`${base}/files?workspace_id=${encodeURIComponent(workspace.id)}&limit=100&offset=0`); setFiles(result.data.files || []); setStep('context'); });
+  const chooseConnection = (value: string) => { setSelectedConnectionId(persistSelection(projectId, 'connection', value)); setSelectedLineId(persistSelection(projectId, 'line', '')); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); };
+  const chooseLine = (value: string) => { setSelectedLineId(persistSelection(projectId, 'line', value)); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); };
+  const chooseWorkspace = (value: string) => setSelectedWorkspaceId(persistSelection(projectId, 'workspace', value));
+  const createConnection = () => void run('source', async () => {
+    const githubProfile = profiles.find(item => item.provider === 'github' && item.status === 'available' && item.lifecycle_status !== 'disabled');
+    const result = await mutateV2<{ connection: Connection }>(`${base}/repository-connections`, { provider: kind === 'github' ? 'git' : 'local', source_kind: kind === 'github' ? 'git' : 'local', source_locator: locator.trim(), branch: branch.trim() || 'main', read_only: true, ...(githubProfile ? { provider_profile_id: githubProfile.id } : {}) }, 'POST', 0);
+    setSelectedConnectionId(persistSelection(projectId, 'connection', result.data.connection.id));
+    setSelectedLineId(persistSelection(projectId, 'line', ''));
+    setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+    setFiles([]); setSelected(new Set()); setStep('workspace');
+  });
+  const pollWorkspace = async (id: string, current: Workspace) => {
+    let latest = current;
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      if (['ready', 'released', 'orphaned'].includes(latest.status)) return latest;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const listed = await apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`);
+      latest = (listed.data.workspaces || []).find(item => item.id === id) || latest;
+    }
+    throw new Error('workspace_provisioning_timeout');
+  };
+  const createWorkspace = () => void run('workspace', async () => {
+    if (!selectedLine || selectedLine.status !== 'ready') throw new Error('请选择当前可用的仓库分支');
+    const result = await mutateV2<{ workspace: Workspace; operation?: { operation_id?: string } }>(`${base}/repository-workspaces`, { line_id: selectedLine.id, relative_path: `projects/${projectId}/workspace`, defer: true }, 'POST', 0);
+    const current = await pollWorkspace(result.data.workspace.id, result.data.workspace);
+    setSelectedWorkspaceId(persistSelection(projectId, 'workspace', current.id));
+    if (current.status === 'orphaned') { setStep('workspace'); throw new Error(current.error_code || 'workspace_orphaned'); }
+    if (!['ready', 'released'].includes(current.status)) { setStep('workspace'); return; }
+    setStep('context');
+  });
+  const retryWorkspace = () => void run('workspace-retry', async () => {
+    if (!workspace) throw new Error('workspace_not_selected');
+    const result = await mutateV2<{ workspace: Workspace }>(`${base}/repository-workspaces/${encodeURIComponent(workspace.id)}/refresh`, {}, 'POST', workspace.revision);
+    const current = await pollWorkspace(result.data.workspace.id, result.data.workspace);
+    setSelectedWorkspaceId(persistSelection(projectId, 'workspace', current.id));
+    if (current.status === 'orphaned') throw new Error(current.error_code || 'workspace_orphaned');
+    if (['ready', 'released'].includes(current.status)) setStep('context');
+  });
+  const loadFiles = () => void run('files', async () => {
+    if (!workspace || !['ready', 'released'].includes(workspace.status)) throw new Error('工作区尚未就绪');
+    const loaded: FileRef[] = []; let offset = 0;
+    while (loaded.length < 10000) {
+      const result = await apiV2<{ files: FileRef[]; next_cursor?: number | null; total?: number }>(`${base}/files?workspace_id=${encodeURIComponent(workspace.id)}&limit=500&offset=${offset}`);
+      const page = result.data.files || []; loaded.push(...page.slice(0, 10000 - loaded.length));
+      const next = result.data.next_cursor == null ? null : Number(result.data.next_cursor);
+      if (next == null || !page.length || next <= offset) break;
+      offset = next;
+    }
+    setFiles(loaded); setStep('context');
+  });
   const toggle = (id: string) => setSelected(current => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
-  const sealPack = () => void run('pack', async () => { const refs = files.filter(file => selected.has(file.id)); if (!refs.length) throw new Error('至少选择一个文本文件'); for (const file of refs) await mutateV2(`${base}/context/sources`, { source_type: 'file', title: file.relative_path || file.path, canonical_uri: `file/${file.id}`, file_ref_id: file.id, expected_file_revision: file.revision, expected_file_hash: file.content_sha256 }, 'POST', 0); const rebuild = await mutateV2<{ operation?: { operation_id?: string } }>(`${base}/context/rebuild`, { mode: 'incremental' }, 'POST', 0); const operationId = rebuild.data.operation?.operation_id; if (operationId) await waitOperation(operationId); const selection = await mutateV2<{ selection: { id: string } }>(`${base}/context/selections`, { token_budget: budget }, 'POST', 0); const pack = await mutateV2<{ pack: Pack }>(`${base}/context/packs`, { selection_id: selection.data.selection.id, require_authoritative: false }, 'POST', 0); setPacks([pack.data.pack]); setStep('pack'); onReady?.(pack.data.pack.id); });
-  const latestPack = packs[0]; const excluded = useMemo(() => Object.fromEntries(files.filter(file => !/^text\//i.test(file.media_type) || file.byte_length > 256 * 1024).map(file => [file.id, /^text\//i.test(file.media_type) ? '文件过大' : '二进制文件'])), [files]); const missing = useMemo(() => [!connections.length || !lines.some(line => line.status === 'ready') ? 'source' : '', !workspace || !['ready', 'released', 'locked'].includes(workspace.status) ? 'workspace' : '', !latestPack ? 'context' : '', !latestPack ? 'pack' : ''].filter(Boolean) as PreparationStep[], [connections.length, latestPack, lines, workspace]);
+  const sealPack = () => void run('pack', async () => {
+    const refs = files.filter(file => selected.has(file.id) && file.status === 'current' && !excluded[file.id]);
+    if (!refs.length) throw new Error('至少选择一个文本文件');
+    for (const file of refs) await mutateV2(`${base}/context/sources`, { source_type: 'file', title: file.relative_path || file.path, canonical_uri: `file/${file.id}`, file_ref_id: file.id, expected_file_revision: file.revision, expected_file_hash: file.content_sha256 }, 'POST', 0);
+    const rebuild = await mutateV2<{ operation?: { operation_id?: string } }>(`${base}/context/rebuild`, { mode: 'incremental' }, 'POST', 0);
+    const operationId = rebuild.data.operation?.operation_id; if (operationId) await waitOperation(operationId);
+    const selection = await mutateV2<{ selection: { id: string } }>(`${base}/context/selections`, { token_budget: budget }, 'POST', 0);
+    const pack = await mutateV2<{ pack: Pack }>(`${base}/context/packs`, { selection_id: selection.data.selection.id, require_authoritative: false }, 'POST', 0);
+    setPacks([pack.data.pack]); setStep('pack'); onReady?.(pack.data.pack.id);
+  });
+  const latestPack = packs.slice().sort((a, b) => Number(b.revision || 0) - Number(a.revision || 0))[0];
+  const excluded = useMemo(() => Object.fromEntries(files.filter(file => !/^text\//i.test(file.media_type) || file.byte_length > 256 * 1024).map(file => [file.id, /^text\//i.test(file.media_type) ? '文件过大' : '二进制文件'])), [files]);
+  const missing = useMemo(() => [!selectedConnection || !selectedLine || selectedLine.status !== 'ready' ? 'source' : '', !workspace || !['ready', 'released'].includes(workspace.status) ? 'workspace' : '', !latestPack ? 'context' : '', !latestPack ? 'pack' : ''].filter(Boolean) as PreparationStep[], [latestPack, selectedConnection, selectedLine, workspace]);
   const ready = Boolean(workspace && latestPack?.status === 'sealed' && !missing.includes('source') && !missing.includes('workspace'));
   const open = (value: PreparationStep) => { setStep(value); onOpenStep?.(value); };
-  const manifest = (connections[0]?.metadata?.manifest || {}) as { commit_sha?: string; file_count?: number };
-  return <section className="panel project-preparation-panel" data-testid="project-preparation"><div className="section-title"><div><h2>项目准备</h2><span>来源 → 工作区 → 上下文 → Pack</span></div><ReadinessSummary ready={ready} missing={missing} onOpen={open} /></div>{error && <div className="state-banner error" role="alert">{error}</div>}<ol className="project-stepper" aria-label="项目准备进度">{steps.map((item, index) => <li key={item.id} className={step === item.id ? 'active' : missing.indexOf(item.id) < 0 ? 'complete' : ''}><span>{missing.indexOf(item.id) < 0 ? <Check size={13} /> : index + 1}</span><strong>{item.label}</strong></li>)}</ol>{step === 'source' && <><SourceSelector kind={kind} onKindChange={setKind} locator={locator} branch={branch} onLocatorChange={setLocator} onBranchChange={setBranch} profiles={profiles} onDiscover={discover} repositories={repositories} selectedRepository={selectedRepository} onRepositoryChange={chooseRepo} />{connections[0] && <div className="readonly-note"><Check size={13} />已检查提交 <span className="mono">{manifest.commit_sha || connections[0].source_revision || '待返回'}</span> · 文件 {manifest.file_count ?? '待返回'}</div>}<button className="button primary" disabled={Boolean(busy) || !locator.trim()} onClick={createConnection}>{busy === 'source' ? <LoaderCircle className="spin" size={15} /> : <ChevronRight size={15} />}检查并保存来源</button></>}{step === 'workspace' && <><WorkspaceStatus workspace={workspace} busy={Boolean(busy)} onRefresh={() => workspace && void run('refresh', async () => { await mutateV2(`${base}/repository-workspaces/${encodeURIComponent(workspace.id)}/refresh`, {}, 'POST', workspace.revision); })} /><div className="form-actions"><button className="button" onClick={() => open('source')}><ChevronLeft size={15} />返回来源</button><button className="button primary" disabled={Boolean(busy) || !lines.length} onClick={createWorkspace}><FolderGit2 size={15} />创建托管工作区</button></div></>}{step === 'context' && <><ContextPreparation files={files} selected={selected} onToggle={toggle} budget={budget} onBudgetChange={setBudget} excluded={excluded} /><div className="form-actions"><button className="button" onClick={() => open('workspace')}><ChevronLeft size={15} />返回工作区</button><button className="button" onClick={loadFiles} disabled={!workspace || Boolean(busy)}>加载文件</button><button className="button primary" onClick={() => open('pack')} disabled={!selected.size}>继续封存</button></div></>}{step === 'pack' && <><div className="preparation-pack-summary"><FileText size={18} /><strong>{selected.size} 项 · {budget.toLocaleString()} tokens 预算</strong><small>{latestPack ? `Pack ${latestPack.id} · ${latestPack.status}` : '尚未封存'}</small></div><div className="form-actions"><button className="button" onClick={() => open('context')}><ChevronLeft size={15} />调整选择</button><button className="button primary" disabled={Boolean(busy) || !selected.size} onClick={sealPack}>{busy === 'pack' ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}封存 Context Pack</button></div></>}</section>;
+  const manifest = (selectedConnection?.metadata?.manifest || {}) as { commit_sha?: string; file_count?: number };
+  return <section className="panel project-preparation-panel" data-testid="project-preparation"><div className="section-title"><div><h2>项目准备</h2><span>来源 → 工作区 → 上下文 → Pack</span></div><ReadinessSummary ready={ready} missing={missing} onOpen={open} /></div>{error && <div className="state-banner error" role="alert">{error}</div>}<ol className="project-stepper" aria-label="项目准备进度">{steps.map((item, index) => <li key={item.id} className={step === item.id ? 'active' : missing.indexOf(item.id) < 0 ? 'complete' : ''}><span>{missing.indexOf(item.id) < 0 ? <Check size={13} /> : index + 1}</span><strong>{item.label}</strong></li>)}</ol>{step === 'source' && <><SourceSelector kind={kind} onKindChange={setKind} locator={locator} branch={branch} onLocatorChange={setLocator} onBranchChange={setBranch} profiles={profiles} onDiscover={discover} repositories={repositories} selectedRepository={selectedRepository} onRepositoryChange={chooseRepo} />{connections.length > 0 && <label><span>仓库连接</span><select aria-label="仓库连接" value={selectedConnectionId} onChange={event => chooseConnection(event.target.value)}><option value="">选择连接</option>{connections.map(connection => <option value={connection.id} key={connection.id}>{connection.source_revision || connection.id}</option>)}</select></label>}{selectedConnection && <div className="readonly-note"><Check size={13} />已检查提交 <span className="mono">{manifest.commit_sha || selectedConnection.source_revision || '待返回'}</span> · 文件 {manifest.file_count ?? '待返回'}</div>}<button className="button primary" disabled={Boolean(busy) || !locator.trim()} onClick={createConnection}>{busy === 'source' ? <LoaderCircle className="spin" size={15} /> : <ChevronRight size={15} />}检查并保存来源</button></>}{step === 'workspace' && <><WorkspaceStatus workspace={workspace} busy={Boolean(busy)} onRefresh={() => workspace && void run('refresh', async () => { await mutateV2(`${base}/repository-workspaces/${encodeURIComponent(workspace.id)}/refresh`, {}, 'POST', workspace.revision); })} onRetry={retryWorkspace} onBack={() => open('source')} />{lines.length > 0 && <label><span>仓库分支</span><select aria-label="准备分支" value={selectedLineId} onChange={event => chooseLine(event.target.value)}><option value="">选择分支</option>{lines.filter(line => line.line_kind === 'external_readonly').map(line => <option value={line.id} key={line.id}>{line.source_revision || line.id} · {line.status}</option>)}</select></label>}{workspaces.filter(item => item.line_id === selectedLineId).length > 0 && <label><span>托管工作区</span><select aria-label="托管工作区" value={selectedWorkspaceId} onChange={event => chooseWorkspace(event.target.value)}><option value="">选择工作区</option>{workspaces.filter(item => item.line_id === selectedLineId).map(item => <option value={item.id} key={item.id}>{item.status} · {item.id}</option>)}</select></label>}<div className="form-actions"><button className="button" onClick={() => open('source')}><ChevronLeft size={15} />返回来源</button><button className="button primary" disabled={Boolean(busy) || !selectedLineId || selectedLine?.status !== 'ready'} onClick={createWorkspace}><FolderGit2 size={15} />创建托管工作区</button></div></>}{step === 'context' && <><ContextPreparation files={files} selected={selected} onToggle={toggle} budget={budget} onBudgetChange={setBudget} excluded={excluded} /><div className="form-actions"><button className="button" onClick={() => open('workspace')}><ChevronLeft size={15} />返回工作区</button><button className="button" onClick={loadFiles} disabled={!workspace || Boolean(busy)}>加载文件</button><button className="button primary" onClick={() => open('pack')} disabled={!selected.size}>继续封存</button></div></>}{step === 'pack' && <><div className="preparation-pack-summary"><FileText size={18} /><strong>{selected.size} 项 · {budget.toLocaleString()} tokens 预算</strong><small>{latestPack ? `Pack ${latestPack.id} · ${latestPack.status}` : '尚未封存'}</small></div><div className="form-actions"><button className="button" onClick={() => open('context')}><ChevronLeft size={15} />调整选择</button><button className="button primary" disabled={Boolean(busy) || !selected.size} onClick={sealPack}>{busy === 'pack' ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}封存 Context Pack</button></div></>}</section>;
 }
+
+function readSelection(projectId: string, kind: string) { try { return sessionStorage.getItem(`aiws:preparation:${projectId}:${kind}`) || ''; } catch { return ''; } }
+function persistSelection(projectId: string, kind: string, value: string) { try { if (value) sessionStorage.setItem(`aiws:preparation:${projectId}:${kind}`, value); else sessionStorage.removeItem(`aiws:preparation:${projectId}:${kind}`); } catch {} return value; }
+function safeRelative(value: string) { const text = String(value || '').replaceAll('\\', '/'); return Boolean(text && !text.startsWith('/') && !/^[A-Za-z]:\//.test(text) && !text.split('/').includes('..') && !text.split('/').some(part => !part || part === '.' || part.includes(':'))); }
 
 async function waitOperation(operationId: string) { for (let attempt = 0; attempt < 40; attempt += 1) { const result = await apiV2<{ status: string }>(`/api/v2/operations/${encodeURIComponent(operationId)}`); if (['succeeded', 'failed', 'cancelled', 'expired'].includes(result.data.status)) { if (result.data.status !== 'succeeded') throw new Error(`操作未完成：${result.data.status}`); return; } await new Promise(resolve => setTimeout(resolve, 250)); } throw new Error('操作等待超时，可从操作中心继续'); }
 

@@ -246,6 +246,35 @@ Catalog status, or formal P10 Evidence mutation. The focused acceptance command
 is `pnpm test:p10`; the complete maintenance inventory and the four append-only
 artifact roles remain unchanged.
 
+### Files, Context, Assist and preparation boundary maintenance
+
+The P1/P2 boundary maintenance slice keeps the v9 schema and the shared
+Operation/Event/CAS/ACL owners. Files is the sole owner of workspace indexing
+and indexed-file reads; Context receives bytes only through that owner and
+returns `files_owner_unavailable` when the owner is absent. Indexing skips
+links/reparse/special paths and is bounded to 10,000 files and 100 MiB. Assist
+session scope, lifecycle, reference revision/hash bindings, and interaction
+project/turn/operation links are rechecked inside their write transactions;
+P10 lifecycle and review handlers use the same session predicate. Terminal
+open requests bind the complete workspace/runtime/cwd/size/session shape when
+the approval carries the strict shape. The Web preparation journey persists
+connection/line/workspace selections, matches lines by source fingerprint,
+waits up to 120 one-second polls, and consumes Files pages at 500 rows up to
+10,000 entries while removing stale selections.
+
+The synchronized focused regression inventory is:
+
+```text
+pnpm test:p4
+pnpm test:p5
+pnpm test:p10
+pnpm --filter @aiws/web test
+pnpm --filter @aiws/web build
+```
+
+These checks are maintenance evidence only. They do not promote Catalog rows,
+rewrite migrations, or mutate any P1-P10 formal Evidence receipt.
+
 P3 Evidence is immutable at
 `docs/evidence/v3-clean-p3-project-workflow-20260819/`; only its final
 non-provisional verification receipt may promote the four P3 implementation

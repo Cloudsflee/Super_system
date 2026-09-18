@@ -12,6 +12,8 @@ import {
 const MAX_ATTACHMENT = 10 * 1024 * 1024;
 const MAX_PREVIEW = 256 * 1024;
 const MAX_FILE = 1024 * 1024;
+const MAX_WORKSPACE_FILES = 10_000;
+const MAX_WORKSPACE_BYTES = 100 * 1024 * 1024;
 const MAX_BATCH_FILES = 100;
 const MAX_BATCH_BYTES = 10 * 1024 * 1024;
 const SECRET_SENTINEL = /(api[_-]?key|access[_-]?token|secret|password|private[_-]?key|authorization\s*:)/i;
@@ -36,7 +38,7 @@ export class CleanFilesService {
     this.workspaceRoot = path.resolve(String(config.workspaceRoot || config.home || process.cwd()));
   }
 
-  listFiles(projectId, input = {}, principal) {
+  async listFiles(projectId, input = {}, principal) {
     assertProject(this.authorization, principal, 'read', projectId, { resource: 'files' });
     const workspaceId = input.workspace_id ? String(input.workspace_id) : null;
     const query = input.path ? safeRelative(input.path) : null;
@@ -44,36 +46,100 @@ export class CleanFilesService {
     const offset = Math.max(0, Number(input.offset) || 0);
     const params = [String(projectId), ...(workspaceId ? [workspaceId] : []), ...(query ? [`%${query}%`] : [])];
     const where = `project_id=? ${workspaceId ? 'AND workspace_id=?' : ''} ${query ? 'AND relative_path LIKE ?' : ''}`;
-    if (workspaceId && !this.db.get('SELECT 1 AS present FROM file_refs WHERE workspace_id=? LIMIT 1', [workspaceId])) this.indexWorkspace(workspaceId, principal);
+    if (workspaceId) {
+      // Resolve the workspace through the requested project before deciding
+      // whether the first-list index is needed.  This keeps a foreign
+      // workspace from becoming an implicit input to the indexer.
+      this.workspaceRow(workspaceId, String(projectId));
+      if (!this.db.get("SELECT 1 AS present FROM file_refs WHERE workspace_id=? AND status='current' LIMIT 1", [workspaceId])) {
+        await this.indexWorkspace(workspaceId, String(projectId), principal);
+      }
+    }
     const total = Number(this.db.get(`SELECT COUNT(*) AS count FROM file_refs WHERE ${where}`, params)?.count || 0);
     const rows = this.db.query(`SELECT * FROM file_refs WHERE ${where} ORDER BY relative_path,id LIMIT ? OFFSET ?`, [...params, limit, offset]);
     return { files: rows.map(fileView), total, next_cursor: offset + rows.length < total ? offset + rows.length : null };
   }
 
-  indexWorkspace(workspaceId, principal) {
-    const workspace = this.workspaceRow(workspaceId);
+  async indexWorkspace(workspaceId, projectId, principal) {
+    // Keep a small compatibility bridge for internal callers that used the
+    // pre-P10 `(workspaceId, principal)` shape; all new callers pass the
+    // project explicitly and are checked below.
+    if (principal == null && projectId && typeof projectId === 'object') {
+      principal = projectId;
+      projectId = null;
+    }
+    const workspace = this.workspaceRow(workspaceId, projectId);
     assertProject(this.authorization, principal, 'read', workspace.project_id, { resource: 'files' });
     const directory = this.workspaceDirectory(workspace);
     if (!fs.existsSync(directory)) return 0;
     const entries = [];
+    let totalBytes = 0;
+    let bounded = false;
     const walk = (root, prefix = '') => {
-      for (const item of fs.readdirSync(root, { withFileTypes: true })) {
+      if (entries.length >= MAX_WORKSPACE_FILES || totalBytes >= MAX_WORKSPACE_BYTES) {
+        bounded = true;
+        return;
+      }
+      let items;
+      try {
+        items = fs.readdirSync(root, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name));
+      } catch {
+        return;
+      }
+      for (const item of items) {
+        if (entries.length >= MAX_WORKSPACE_FILES || totalBytes >= MAX_WORKSPACE_BYTES) {
+          bounded = true;
+          return;
+        }
         const relative = prefix ? `${prefix}/${item.name}` : item.name;
         if (item.name === '.git' || item.name === 'node_modules') continue;
         const full = path.join(root, item.name);
-        if (item.isDirectory()) walk(full, relative);
-        else if (item.isFile()) { const bytes = fs.readFileSync(full); if (bytes.byteLength <= MAX_FILE && entries.length < 10000) entries.push({ relative, bytes }); }
+        let stat;
+        try { stat = fs.lstatSync(full); } catch { continue; }
+        // Dirent.isDirectory() follows some Windows reparse points.  Use the
+        // lstat result and reject every non-regular entry before opening it.
+        if (stat.isSymbolicLink() || isSpecialStat(stat)) continue;
+        if (stat.isDirectory()) {
+          walk(full, relative);
+        } else if (stat.isFile()) {
+          if (stat.size > MAX_FILE) continue;
+          if (totalBytes + stat.size > MAX_WORKSPACE_BYTES) {
+            bounded = true;
+            return;
+          }
+          let bytes;
+          try { bytes = fs.readFileSync(full); } catch { continue; }
+          if (bytes.byteLength > MAX_FILE) continue;
+          if (totalBytes + bytes.byteLength > MAX_WORKSPACE_BYTES) {
+            bounded = true;
+            return;
+          }
+          entries.push({ relative, bytes });
+          totalBytes += bytes.byteLength;
+        }
       }
     };
     walk(directory);
     const now = time(this.clock); let count = 0;
     this.db.withTransaction((tx) => {
+      const seen = new Set(entries.map((entry) => entry.relative));
       for (const entry of entries) {
         const hash = sha256Hex(entry.bytes); const current = tx.get('SELECT * FROM file_refs WHERE workspace_id=? AND relative_path=?', [workspace.id, entry.relative]);
         if (current && current.content_sha256 === hash && current.status === 'current') continue;
         if (current) tx.run("UPDATE file_refs SET content_sha256=?,byte_length=?,media_type=?,status='current',revision=revision+1,updated_at=?,updated_by_actor_id=? WHERE id=?", [hash, entry.bytes.byteLength, detectMime(entry.relative), now, principal.actorId, current.id]);
         else tx.run('INSERT INTO file_refs(id,project_id,workspace_id,relative_path,content_sha256,byte_length,media_type,status,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,?,?,?,?,?,1,?,?,?,?)', [opaqueId('file_ref'), workspace.project_id, workspace.id, entry.relative, hash, entry.bytes.byteLength, detectMime(entry.relative), 'current', now, now, principal.actorId, principal.actorId]);
         count += 1;
+      }
+      // A complete scan can safely retire refs for files removed from disk.
+      // When a bound stopped traversal, leave unseen refs untouched so a
+      // later bounded page can still recover them.
+      if (!bounded) {
+        for (const row of tx.query("SELECT id FROM file_refs WHERE workspace_id=? AND status='current'", [workspace.id])) {
+          const current = tx.get('SELECT relative_path FROM file_refs WHERE id=?', [row.id]);
+          if (current && !seen.has(current.relative_path)) {
+            tx.run("UPDATE file_refs SET status='stale',revision=revision+1,updated_at=?,updated_by_actor_id=? WHERE id=?", [now, principal.actorId, row.id]);
+          }
+        }
       }
     });
     return count;
@@ -82,15 +148,41 @@ export class CleanFilesService {
   getFile(projectId, fileId, input = {}, principal) {
     assertProject(this.authorization, principal, 'read', projectId, { resource: 'files' });
     const id = String(fileId || '');
-    let row = this.db.get('SELECT * FROM file_refs WHERE id=? AND project_id=?', [id, String(projectId)]);
+    let row = this.db.get('SELECT * FROM file_refs WHERE id=?', [id]);
+    if (row && String(row.project_id) !== String(projectId)) throw new PlatformError('scope_denied', 'file reference is outside the project', {}, 403);
     if (!row && input.path) row = this.db.get('SELECT * FROM file_refs WHERE project_id=? AND relative_path=?', [String(projectId), safeRelative(input.path)]);
     if (!row) throw new PlatformError('not_found', 'file reference not found', {}, 404);
-    const bytes = this.readWorkspaceFile(row.workspace_id, row.relative_path);
-    const actual = sha256Hex(bytes);
-    if (actual !== row.content_sha256) throw new PlatformError('file_stale', 'workspace file changed since indexing', { expected_sha256: row.content_sha256, actual_sha256: actual }, 409);
+    const checked = this.readIndexedFile(String(projectId), row.id, input.expected_revision ?? input.expected_file_revision, input.expected_hash ?? input.expected_file_hash, principal);
+    const bytes = checked.bytes;
+    const file = checked.file;
     const content = bytes.byteLength <= MAX_PREVIEW && isText(bytes) && !containsRestricted(bytes)
       ? bytes.toString('utf8') : null;
-    return { file: fileView({ ...row, content_sha256: actual }), content, download_only: content == null };
+    return { file, content, download_only: content == null };
+  }
+
+  /**
+   * Read an indexed file through the Files owner.  Context and Assist callers
+   * receive bytes only after project, revision/hash, status, path-boundary and
+   * on-disk drift checks have all passed.
+   */
+  readIndexedFile(projectId, fileRefId, expectedRevision, expectedHash, principal) {
+    assertProject(this.authorization, principal, 'read', projectId, { resource: 'files' });
+    const row = this.db.get('SELECT * FROM file_refs WHERE id=?', [String(fileRefId || '')]);
+    if (!row) throw new PlatformError('not_found', 'file reference not found', {}, 404);
+    if (String(row.project_id) !== String(projectId)) throw new PlatformError('scope_denied', 'file reference is outside the project', {}, 403);
+    if (row.status !== 'current') throw new PlatformError('file_stale', 'file reference is not current', { status: row.status, actual_revision: Number(row.revision) }, 409);
+    if (expectedRevision != null && Number(expectedRevision) !== Number(row.revision)) {
+      throw new PlatformError('file_stale', 'file reference revision does not match', { expected_revision: Number(expectedRevision), actual_revision: Number(row.revision) }, 409);
+    }
+    if (expectedHash != null && String(expectedHash).toLowerCase() !== String(row.content_sha256).toLowerCase()) {
+      throw new PlatformError('file_stale', 'file reference hash does not match', { expected_hash: String(expectedHash), actual_hash: row.content_sha256 }, 409);
+    }
+    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [String(row.workspace_id)]);
+    if (!workspace || String(workspace.project_id) !== String(projectId)) throw new PlatformError('scope_denied', 'file workspace is outside the project', {}, 403);
+    const bytes = this.readWorkspaceFile(workspace.id, row.relative_path);
+    const actual = sha256Hex(bytes);
+    if (actual !== row.content_sha256) throw new PlatformError('file_stale', 'workspace file changed since indexing', { expected_hash: row.content_sha256, actual_hash: actual }, 409);
+    return { file: fileView({ ...row, content_sha256: actual }), bytes };
   }
 
   listAttachments(projectId, input = {}, principal) {
@@ -401,7 +493,12 @@ export class CleanFilesService {
   }
   async releaseLease(lease, workspace, principal) { if (lease?.result && this.projectWorkflow?.releaseRepositoryWorkspace) { const current = this.db.get('SELECT revision FROM repository_workspaces WHERE id=?', [workspace.id]); if (current) await this.projectWorkflow.releaseRepositoryWorkspace(workspace.id, { expected_revision: current.revision, idempotency_key: `files-release-${opaqueId('key')}` }, principal); return; } const now = time(this.clock); this.db.withTransaction((tx) => { tx.run("UPDATE repository_locks SET status='released',updated_at=? WHERE workspace_id=? AND status='active'", [now, workspace.id]); tx.run("UPDATE repository_workspaces SET status='released',revision=revision+1,updated_at=?,updated_by_actor_id=? WHERE id=? AND status='locked'", [now, principal.actorId, workspace.id]); }); }
 
-  workspaceRow(id, projectId) { const row = this.db.get('SELECT * FROM repository_workspaces WHERE id=? AND project_id=?', [String(id || ''), String(projectId)]); if (!row) throw new PlatformError('not_found', 'repository workspace not found', {}, 404); return row; }
+  workspaceRow(id, projectId = null) {
+    const row = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [String(id || '')]);
+    if (!row) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
+    if (projectId != null && String(row.project_id) !== String(projectId)) throw new PlatformError('scope_denied', 'repository workspace is outside the project', {}, 403);
+    return row;
+  }
   attachmentRow(id) { const row = this.db.get('SELECT * FROM attachments WHERE id=?', [String(id)]); if (!row) throw new PlatformError('not_found', 'attachment not found', {}, 404); return row; }
   batchRow(id) { const row = this.db.get('SELECT * FROM file_change_batches WHERE id=?', [String(id)]); if (!row) throw new PlatformError('not_found', 'change batch not found', {}, 404); return row; }
   workspaceDirectory(workspace) { return resolveWithin(this.workspaceRoot, workspace.relative_path || `projects/${workspace.project_id}/workspace`); }
@@ -424,6 +521,9 @@ export class CleanFilesService {
 function validateFilename(value) { const filename = boundedString(value, 240, { required: true }); if (filename.includes('\\') || filename.includes('/') || filename === '.' || filename === '..' || filename.includes('\0')) throw new PlatformError('filename_invalid', 'attachment filename is invalid', {}, 422); return filename; }
 function decodeContent(value, max) { if (typeof value !== 'string') throw new PlatformError('content_required', 'base64 content is required', {}, 422); const normalized = value.replace(/\s+/g, ''); if (normalized && (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) || normalized.length % 4 !== 0)) throw new PlatformError('content_invalid', 'content encoding is invalid', {}, 422); let bytes; try { bytes = Buffer.from(normalized, 'base64'); } catch { throw new PlatformError('content_invalid', 'content encoding is invalid', {}, 422); } if (bytes.toString('base64').replace(/=+$/, '') !== normalized.replace(/=+$/, '')) throw new PlatformError('content_invalid', 'content encoding is invalid', {}, 422); if (bytes.byteLength > max) throw new PlatformError('file_too_large', 'content exceeds the size limit', {}, 422); return bytes; }
 function decodeChangeContent(change) { return change.content_base64 != null ? decodeContent(change.content_base64, MAX_FILE) : Buffer.from(String(change.content || ''), 'utf8'); }
+function isSpecialStat(stat) {
+  return stat.isSocket?.() || stat.isFIFO?.() || stat.isBlockDevice?.() || stat.isCharacterDevice?.();
+}
 function safeRelative(value) { const text = String(value || '').replaceAll('\\', '/'); const parts = text.split('/'); if (!text || text.startsWith('/') || /^[A-Za-z]:\//.test(text) || parts.includes('..') || parts.some((part) => !part || part === '.' || part.includes(':') || /[. ]$/.test(part))) throw new PlatformError('path_policy_denied', 'workspace path must be relative', {}, 422); if (text.startsWith('.git/') || text === '.git' || text.includes('/.git/')) throw new PlatformError('path_policy_denied', 'git metadata is not addressable', {}, 422); return text; }
 function resolveWithin(root, relative) { const clean = safeRelative(relative); const base = path.resolve(root); const target = path.resolve(base, clean); if (target !== base && !target.startsWith(`${base}${path.sep}`)) throw new PlatformError('path_policy_denied', 'path escapes the workspace', {}, 422); return target; }
 function rejectSpecialPath(target) { const parts = target.split(path.sep); let current = parts[0] === '' ? path.sep : parts[0]; for (const part of parts.slice(1)) { current = path.join(current, part); if (!fs.existsSync(current)) break; const stat = fs.lstatSync(current); if (stat.isSymbolicLink() || stat.isDirectory() && part === '.git') throw new PlatformError('path_policy_denied', 'special workspace path is not addressable', {}, 422); } }
