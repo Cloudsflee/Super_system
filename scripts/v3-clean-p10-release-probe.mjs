@@ -14,8 +14,10 @@ const reportRoot = path.join(root, '.ai-workspace', 'p10-release-probe');
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-release-'));
 const apiHome = path.join(temporaryRoot, 'runtime');
 const activePointer = path.join(temporaryRoot, 'active.pointer');
-const apiPort = await freePort();
-const originPort = await freePort();
+const apiLease = await reservePort();
+const originLease = await reservePort();
+const apiPort = apiLease.port;
+const originPort = originLease.port;
 const dynamicOrigin = `http://127.0.0.1:${originPort}`;
 const base = `http://127.0.0.1:${apiPort}`;
 let child = null;
@@ -28,6 +30,8 @@ try {
   const snapshots = createSnapshots(bundle);
   child = startApi();
   await waitFor(`${base}/readyz`);
+  apiLease.release();
+  originLease.release();
   const httpReceipt = await verifyHttp();
   const browserReceipt = await verifyBrowser();
   const image = process.argv.includes('--skip-docker') ? { status: 'skipped', provisional: true } : await dockerRelease();
@@ -70,6 +74,8 @@ try {
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
   process.exitCode = 1;
 } finally {
+  apiLease.release();
+  originLease.release();
   if (browser) await browser.close().catch(() => undefined);
   if (child) await stop(child);
   removeTree(temporaryRoot);
@@ -466,12 +472,19 @@ function tarExecutable() {
   return process.platform === 'win32' && fs.existsSync(systemTar) ? systemTar : 'tar';
 }
 
-async function freePort() {
-  const server = net.createServer();
-  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-  const port = server.address().port;
-  await new Promise((resolve) => server.close(resolve));
-  return port;
+async function reservePort() {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const server = net.createServer();
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    const port = server.address().port;
+    await new Promise((resolve) => server.close(resolve));
+    const lockPath = path.join(os.tmpdir(), `aiws-p10-port-${port}.lock`);
+    try {
+      const descriptor = fs.openSync(lockPath, 'wx');
+      return { port, release: () => { try { fs.closeSync(descriptor); } catch {} try { fs.unlinkSync(lockPath); } catch {} } };
+    } catch { /* another parallel probe reserved this port */ }
+  }
+  throw new Error('p10_release_port_reservation_failed');
 }
 
 async function waitFor(url, timeout = 60_000) {

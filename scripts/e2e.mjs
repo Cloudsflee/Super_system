@@ -7,13 +7,11 @@ import AxeBuilder from '@axe-core/playwright';
 import { executableInvocation, spawnGateProcess, terminateProcessTree } from './lib/gate-process.mjs';
 
 const root = process.cwd();
-// The formal Gate starts the release probe in parallel. Windows may hand two
-// immediately released port probes the same ephemeral port, so let the
-// release probe reserve its pair before this browser journey allocates ports.
-await new Promise((resolve) => setTimeout(resolve, 10_000));
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-e2e-'));
-const apiPort = await freePort();
-const webPort = await freePort();
+const apiLease = await reservePort();
+const webLease = await reservePort();
+const apiPort = apiLease.port;
+const webPort = webLease.port;
 const vaultKey = 'p10-clean-e2e-vault-key';
 const reportDir = path.join(root, '.ai-workspace', 'e2e-clean-p10');
 fs.rmSync(reportDir, { recursive: true, force: true });
@@ -35,6 +33,7 @@ const api = start(process.execPath, ['apps/api/server.mjs'], {
 });
 children.push(api);
 await waitFor(`http://127.0.0.1:${apiPort}/readyz`);
+apiLease.release();
 
 const viteEntry = path.join(root, 'apps', 'web', 'node_modules', 'vite', 'bin', 'vite.js');
 const web = start(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], {
@@ -43,6 +42,7 @@ const web = start(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port',
 children.push(web);
 const base = `http://127.0.0.1:${webPort}`;
 await waitFor(`${base}/`);
+webLease.release();
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -529,6 +529,8 @@ try {
   }, null, 2)}\n`);
   process.stdout.write(`P10 Clean E2E passed: 19 business groups and complete workflow routes across 3 viewports; overlaps=0; /api/v1 requests=0\n`);
 } finally {
+  apiLease.release();
+  webLease.release();
   await browser.close();
   for (const child of children.reverse()) await stop(child);
   removeTree(home);
@@ -684,12 +686,19 @@ async function waitFor(url, timeout = 30_000) {
   throw new Error(`startup_timeout:${url}`);
 }
 
-async function freePort() {
-  const server = net.createServer();
-  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-  const port = server.address().port;
-  await new Promise((resolve) => server.close(resolve));
-  return port;
+async function reservePort() {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const server = net.createServer();
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    const port = server.address().port;
+    await new Promise((resolve) => server.close(resolve));
+    const lockPath = path.join(os.tmpdir(), `aiws-p10-port-${port}.lock`);
+    try {
+      const descriptor = fs.openSync(lockPath, 'wx');
+      return { port, release: () => { try { fs.closeSync(descriptor); } catch {} try { fs.unlinkSync(lockPath); } catch {} } };
+    } catch { /* another parallel probe reserved this port */ }
+  }
+  throw new Error('e2e_port_reservation_failed');
 }
 
 function assert(condition, message) { if (!condition) throw new Error(`e2e_assertion_failed:${message}`); }
