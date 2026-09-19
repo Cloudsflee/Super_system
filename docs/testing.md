@@ -183,6 +183,11 @@ pnpm evidence:p10 -- --verify
 git diff --check
 ```
 
+Gate child environments strip Git hook context variables (`GIT_DIR`,
+`GIT_WORK_TREE`, index/prefix/object overrides) before running temporary-clone
+and nested test commands. This preserves the exact pending HEAD check while
+ensuring `git -C <fixture>` operates on its declared fixture repository.
+
 The single layered integration/security executions satisfy their Clean,
 Historical, and combined command references without duplicate test work. The
 formal `pnpm test` call is Unit-only because Web already ran; standalone

@@ -8,7 +8,8 @@ import { canonicalJson, sha256Hex } from '../../apps/api/src/clean/canonical.mjs
 import {
   GATE_ERROR_CODES,
   pnpmInvocation,
-  runGateCommand
+  runGateCommand,
+  gateEnvironment
 } from '../../scripts/lib/gate-process.mjs';
 import { gateBudget, gateRecordFailure, GATE_BUDGETS_MS } from '../../scripts/lib/gate-process.mjs';
 import { formalInputFailure } from '../../scripts/verify.mjs';
@@ -39,6 +40,22 @@ test('hard gate limits are fixed and over-budget success is rejected', () => {
   assert.throws(() => gateBudget('formal', NaN), /gate_budget_invalid/);
   assert.throws(() => gateBudget('formal', -1), /gate_budget_invalid/);
   assert.throws(() => gateBudget('override', 1), /gate_budget_invalid/);
+});
+
+test('gate child environments do not inherit Git hook repository context', () => {
+  const previous = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE, GIT_PREFIX: process.env.GIT_PREFIX, CUSTOM: process.env.CUSTOM };
+  process.env.GIT_DIR = 'outer/.git'; process.env.GIT_WORK_TREE = 'outer'; process.env.GIT_PREFIX = 'outer-prefix'; process.env.CUSTOM = 'keep';
+  try {
+    const env = gateEnvironment({ CUSTOM: 'override', GIT_DIR: 'attempted-override' });
+    assert.equal(env.GIT_DIR, undefined);
+    assert.equal(env.GIT_WORK_TREE, undefined);
+    assert.equal(env.GIT_PREFIX, undefined);
+    assert.equal(env.CUSTOM, 'override');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value == null) delete process.env[key]; else process.env[key] = value;
+    }
+  }
 });
 
 test('a self-reported ok flag never masks nonzero exit, signal, truncation or redaction failure', () => {
