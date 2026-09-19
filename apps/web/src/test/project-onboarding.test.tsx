@@ -43,8 +43,8 @@ it('runs template Brief, generation, critic, apply, and final confirm in order',
       expect(body.template_id).toBe('template_1');
       expect(body.content).toMatchObject({ objective: '模板目标', users: ['维护者'], acceptance: ['通过'] });
       project = { ...project, current_brief_revision: 1, revision: 2 };
-      briefRevision = { revision: 1, content: body.content, content_sha256: 'a'.repeat(64), template_id: 'template_1', template_revision: 2 };
-      briefHead = { current_revision: 1, confirmed_revision: null, current: briefRevision };
+      briefRevision = { id: 'brief_revision_1', brief_id: 'brief_1', revision: 1, content: body.content, content_sha256: 'a'.repeat(64), template_id: 'template_1', template_revision: 2 };
+      briefHead = { id: 'brief_1', brief_id: 'brief_1', current_revision: 1, confirmed_revision: null, current: briefRevision };
       return envelope({ brief: briefHead, revision_record: briefRevision }, 201);
     }
     if (url.endsWith('/workflow-draft')) {
@@ -185,10 +185,10 @@ it('surfaces a Brief revision conflict without advancing onboarding', async () =
 
 it.each([false, true])('opens Assist from the complete Brief surface with saved=%s and preserves draft content', async (saved) => {
   const pageProps = { ...props(), openAssist: vi.fn() };
-  const revision = saved ? { revision: 1, content: { objective: 'Saved objective', users: ['Maintainer'], acceptance: ['Pass'] }, content_sha256: 'a'.repeat(64) } : null;
+  const revision = saved ? { id: 'brief_revision_1', brief_id: 'brief_1', revision: 1, content: { objective: 'Saved objective', users: ['Maintainer'], acceptance: ['Pass'] }, content_sha256: 'a'.repeat(64) } : null;
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.endsWith('/api/v2/projects/project_1')) return envelope({ project: { id: 'project_1', name: 'Brief review', status: 'draft', current_brief_revision: saved ? 1 : 0, current_workflow_revision: 0, revision: 2 }, brief: { current_revision: saved ? 1 : 0, current: revision } });
+    if (url.endsWith('/api/v2/projects/project_1')) return envelope({ project: { id: 'project_1', name: 'Brief review', status: 'draft', current_brief_revision: saved ? 1 : 0, current_workflow_revision: 0, revision: 2 }, brief: { id: 'brief_1', brief_id: 'brief_1', current_revision: saved ? 1 : 0, current: revision } });
     if (url.endsWith('/intake')) return envelope({ intake: { id: 'intake_1', status: 'ready', mode: 'brainstorm', revision: 3 } });
     if (url.endsWith('/briefs')) return envelope({ briefs: revision ? [revision] : [] });
     if (url.endsWith('/workflow-draft')) return envelope({ workflow: { id: 'workflow_1', status: 'draft', current_revision: 0, revision: 1 } });
@@ -201,7 +201,7 @@ it.each([false, true])('opens Assist from the complete Brief surface with saved=
   const button = await screen.findByRole('button', { name: '在 Assist 中审阅当前 Brief' });
   if (!saved) fireEvent.change(screen.getByLabelText('目标'), { target: { value: 'Unsaved draft content' } });
   fireEvent.click(button);
-  if (saved) expect(pageProps.openAssist).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project_1', resourceType: 'brief', resourceId: 'project_1', revision: 1, contentHash: 'a'.repeat(64) }), true);
+    if (saved) expect(pageProps.openAssist).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project_1', resourceType: 'brief', resourceId: 'brief_1', revision: 1, contentHash: 'a'.repeat(64) }), true);
   else {
     expect(pageProps.openAssist).toHaveBeenCalledWith(expect.objectContaining({ label: '未保存 Brief 草稿', resourceId: undefined }), false);
     expect(screen.getByLabelText('目标')).toHaveValue('Unsaved draft content');

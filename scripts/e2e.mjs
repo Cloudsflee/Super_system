@@ -1,17 +1,17 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import net from 'node:net';
 import { chromium } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { executableInvocation, spawnGateProcess, terminateProcessTree } from './lib/gate-process.mjs';
+import { acquirePortLease, launchWithPortLease, waitForHttpReady } from './lib/port-lease.mjs';
 
 const root = process.cwd();
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-e2e-'));
-const apiLease = await reservePort();
-const webLease = await reservePort();
-const apiPort = apiLease.port;
-const webPort = webLease.port;
+let apiLease = await acquirePortLease({ lockPrefix: 'aiws-p10-e2e-api' });
+let webLease = await acquirePortLease({ lockPrefix: 'aiws-p10-e2e-web' });
+let apiPort = apiLease.port;
+let webPort = webLease.port;
 const vaultKey = 'p10-clean-e2e-vault-key';
 const reportDir = path.join(root, '.ai-workspace', 'e2e-clean-p10');
 fs.rmSync(reportDir, { recursive: true, force: true });
@@ -24,25 +24,43 @@ const accessibilityReceipts = [];
 const drawerReceipts = [];
 const onboardingLayoutReceipts = [];
 
-const api = start(process.execPath, ['apps/api/server.mjs'], {
-  AIWS_CLEAN_PORT: String(apiPort), AIWS_CLEAN_HOME: home,
-  AIWS_CLEAN_CORS_ORIGINS: `http://127.0.0.1:${webPort}`,
-  AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_BUILD: 'v3-clean-p10-e2e',
-  AIWS_CLEAN_MCP_PEPPER: 'p10-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p10-clean-e2e-gateway-secret',
-  AIWS_CLEAN_PROVIDER_MODE: 'deterministic', AIWS_RUNNER_POLL_INTERVAL_MS: '10'
+const apiLaunch = await launchWithPortLease({
+  lease: apiLease,
+  acquire: () => acquirePortLease({ lockPrefix: 'aiws-p10-e2e-api' }),
+  start: (lease) => start(process.execPath, ['apps/api/server.mjs'], {
+    AIWS_CLEAN_PORT: String(lease.port), AIWS_CLEAN_HOME: home,
+    AIWS_CLEAN_CORS_ORIGINS: `http://127.0.0.1:${webPort}`,
+    AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_BUILD: 'v3-clean-p10-e2e',
+    AIWS_CLEAN_MCP_PEPPER: 'p10-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p10-clean-e2e-gateway-secret',
+    AIWS_CLEAN_PROVIDER_MODE: 'deterministic', AIWS_RUNNER_POLL_INTERVAL_MS: '10'
+  }),
+  ready: (lease, child) => waitForHttpReady(`http://127.0.0.1:${lease.port}/readyz`, { child }),
+  cleanup: async (child) => {
+    await terminateProcessTree(child);
+    removeTree(home);
+    fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+  }
 });
+apiLease = apiLaunch.lease;
+apiPort = apiLaunch.port;
+const api = apiLaunch.child;
 children.push(api);
-await waitFor(`http://127.0.0.1:${apiPort}/readyz`);
-apiLease.release();
 
 const viteEntry = path.join(root, 'apps', 'web', 'node_modules', 'vite', 'bin', 'vite.js');
-const web = start(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], {
-  AIWS_WEB_API_TARGET: `http://127.0.0.1:${apiPort}`, VITE_AIWS_E2E: '1'
-}, path.join(root, 'apps', 'web'));
+const webLaunch = await launchWithPortLease({
+  lease: webLease,
+  acquire: () => acquirePortLease({ lockPrefix: 'aiws-p10-e2e-web' }),
+  start: (lease) => start(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port', String(lease.port), '--strictPort'], {
+    AIWS_WEB_API_TARGET: `http://127.0.0.1:${apiPort}`, VITE_AIWS_E2E: '1'
+  }, path.join(root, 'apps', 'web')),
+  ready: (lease, child) => waitForHttpReady(`http://127.0.0.1:${lease.port}/`, { child }),
+  cleanup: (child) => terminateProcessTree(child)
+});
+webLease = webLaunch.lease;
+webPort = webLaunch.port;
+const web = webLaunch.child;
 children.push(web);
 const base = `http://127.0.0.1:${webPort}`;
-await waitFor(`${base}/`);
-webLease.release();
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -675,30 +693,6 @@ function start(command, args, env = {}, cwd = root) {
 async function stop(child) {
   if (!child || child.exitCode != null) return;
   await terminateProcessTree(child);
-}
-
-async function waitFor(url, timeout = 30_000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    try { const response = await fetch(url); if (response.ok || response.status === 404) return; } catch { /* process is still starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error(`startup_timeout:${url}`);
-}
-
-async function reservePort() {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const server = net.createServer();
-    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    const port = server.address().port;
-    await new Promise((resolve) => server.close(resolve));
-    const lockPath = path.join(os.tmpdir(), `aiws-p10-port-${port}.lock`);
-    try {
-      const descriptor = fs.openSync(lockPath, 'wx');
-      return { port, release: () => { try { fs.closeSync(descriptor); } catch {} try { fs.unlinkSync(lockPath); } catch {} } };
-    } catch { /* another parallel probe reserved this port */ }
-  }
-  throw new Error('e2e_port_reservation_failed');
 }
 
 function assert(condition, message) { if (!condition) throw new Error(`e2e_assertion_failed:${message}`); }

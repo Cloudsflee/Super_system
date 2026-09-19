@@ -113,3 +113,43 @@ test('Attachments enforce bounded previews and file batches apply and undo under
     assert.equal(state.runtime.db.integrity().semantic.valid, true);
   } finally { await close(state); }
 });
+
+test('Files index workspaces on first list, skips unsafe entries, and binds Context to file revision/hash', async () => {
+  const state = await open();
+  try {
+    const project = await createProject(state, 'file-index');
+    const foreign = await createProject(state, 'file-index-foreign');
+    const { workspace, directory } = await createWorkspace(state, project, 'file-index');
+    fs.mkdirSync(path.join(directory, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(directory, 'node_modules'), { recursive: true });
+    fs.writeFileSync(path.join(directory, 'README.md'), '# indexed\n');
+    fs.writeFileSync(path.join(directory, 'image.bin'), Buffer.from([0, 1, 2, 3]));
+    fs.writeFileSync(path.join(directory, '.git', 'config'), 'hidden');
+    fs.writeFileSync(path.join(directory, 'node_modules', 'hidden.js'), 'hidden');
+    try { fs.symlinkSync(path.join(directory, 'README.md'), path.join(directory, 'README-link.md')); } catch { /* symlink privileges vary by runner */ }
+    const listed = await state.runtime.files.listFiles(project.id, { workspace_id: workspace.id, limit: 500 }, state.principal);
+    const paths = listed.files.map((file) => file.relative_path);
+    assert.ok(paths.includes('README.md'));
+    assert.equal(paths.includes('.git/config'), false);
+    assert.equal(paths.includes('node_modules/hidden.js'), false);
+    const binary = listed.files.find((file) => file.relative_path === 'image.bin');
+    assert.ok(binary);
+    const checked = state.runtime.files.readIndexedFile(project.id, binary.id, binary.revision, binary.content_sha256, state.principal);
+    assert.deepEqual(checked.bytes, Buffer.from([0, 1, 2, 3]));
+    assert.throws(() => state.runtime.files.readIndexedFile(foreign.id, binary.id, binary.revision, binary.content_sha256, state.principal), (error) => error.code === 'scope_denied');
+
+    const text = listed.files.find((file) => file.relative_path === 'README.md');
+    fs.writeFileSync(path.join(directory, 'README.md'), '# drifted\n');
+    assert.throws(() => state.runtime.files.readIndexedFile(project.id, text.id, text.revision, text.content_sha256, state.principal), (error) => error.code === 'file_stale');
+    await assert.rejects(() => state.runtime.context.createSource(project.id, {
+      source_type: 'file', file_ref_id: text.id, expected_file_revision: text.revision,
+      expected_file_hash: text.content_sha256, title: 'drifted', canonical_uri: 'file/readme', idempotency_key: 'p5-file-context-drift'
+    }, state.principal), (error) => error.code === 'file_stale');
+    const priorOwner = state.runtime.context.files;
+    state.runtime.context.files = null;
+    await assert.rejects(() => state.runtime.context.createSource(project.id, {
+      source_type: 'file', file_ref_id: text.id, title: 'owner missing', canonical_uri: 'file/missing-owner', idempotency_key: 'p5-file-owner-missing'
+    }, state.principal), (error) => error.code === 'files_owner_unavailable');
+    state.runtime.context.files = priorOwner;
+  } finally { await close(state); }
+});

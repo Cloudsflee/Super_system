@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import WebSocket from 'ws';
+import { cleanV2Validator } from '@aiws/contracts/clean-v2';
 import { start as startCleanServer } from '../../apps/api/clean-server.mjs';
 import { close, closeServer, createAssistPrerequisites, createProject, createWorkspace, listen, open, waitForOperation } from './helpers.mjs';
 
@@ -13,6 +14,20 @@ function headers(proof, key, revision) {
     'X-Expected-Revision': String(revision)
   };
 }
+
+test('terminal.open.v2 requires the complete strict approval shape', () => {
+  const valid = {
+    project_id: 'project', workspace_id: 'workspace', approval_id: 'approval', assist_session_id: null,
+    runtime: 'linux_native', cwd: '', cols: 120, rows: 32, idempotency_key: 'terminal-contract-key', expected_revision: 0
+  };
+  assert.equal(cleanV2Validator.validate('terminal.open.v2', valid).valid, true);
+  for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
+    const candidate = { ...valid }; delete candidate[field];
+    assert.equal(cleanV2Validator.validate('terminal.open.v2', candidate).valid, false, field);
+  }
+  assert.equal(cleanV2Validator.validate('terminal.open.v2', { ...valid, assist_session_id: null }).valid, true);
+  assert.equal(cleanV2Validator.validate('terminal.open.v2', { ...valid, cwd: null }).valid, false);
+});
 
 async function json(response) {
   const body = await response.json();
@@ -136,12 +151,14 @@ test('P5 terminal HTTP route keeps revision and replay cursor contracts', async 
   try {
     const project = await createProject(state, 'http-terminal');
     const { workspace } = await createWorkspace(state, project, 'http-terminal');
-    const approval = await state.runtime.assist.createApproval({ project_id: project.id, action: 'terminal.open', request: { workspace_id: workspace.id }, expected_revision: 0, idempotency_key: 'p5-http-terminal-approval' }, state.principal);
+    const runtime = process.platform === 'win32' ? 'windows_native' : 'linux_native';
+    const terminalShape = { workspace_id: workspace.id, runtime, cwd: '', cols: 120, rows: 32, assist_session_id: null };
+    const approval = await state.runtime.assist.createApproval({ project_id: project.id, action: 'terminal.open', request: terminalShape, expected_revision: 0, idempotency_key: 'p5-http-terminal-approval' }, state.principal);
     const decided = await state.runtime.assist.decideApproval(approval.approval.id, { decision: 'approved', expected_revision: approval.approval.revision, idempotency_key: 'p5-http-terminal-decision' }, state.principal);
     const opened = await json(await fetch(`${base}/api/v2/terminals`, {
       method: 'POST',
       headers: headers(state.proof, 'p5-http-terminal-open', 0),
-      body: JSON.stringify({ project_id: project.id, workspace_id: workspace.id, approval_id: approval.approval.id, runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native' })
+      body: JSON.stringify({ project_id: project.id, workspace_id: workspace.id, approval_id: approval.approval.id, ...terminalShape })
     }));
     assert.equal(opened.response.status, 201);
     assert.ok(children.length === 1);
@@ -175,8 +192,9 @@ test('P5 terminal WebSocket upgrades, replays cursor and acknowledges sequenced 
   try {
     const project = await createProject(state, 'http-ws');
     const { workspace } = await createWorkspace(state, project, 'http-ws');
+    const runtime = process.platform === 'win32' ? 'windows_native' : 'linux_native';
     const approval = await state.runtime.assist.createApproval({
-      project_id: project.id, action: 'terminal.open', request: { workspace_id: workspace.id },
+      project_id: project.id, action: 'terminal.open', request: { workspace_id: workspace.id, runtime, cwd: '', cols: 120, rows: 32, assist_session_id: null },
       expected_revision: 0, idempotency_key: 'p5-http-ws-approval'
     }, state.principal);
     await state.runtime.assist.decideApproval(approval.approval.id, {
@@ -184,7 +202,7 @@ test('P5 terminal WebSocket upgrades, replays cursor and acknowledges sequenced 
     }, state.principal);
     const opened = await state.runtime.terminal.open({
       project_id: project.id, workspace_id: workspace.id, approval_id: approval.approval.id,
-      runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native', expected_revision: 0,
+      runtime, cwd: '', cols: 120, rows: 32, assist_session_id: null, expected_revision: 0,
       idempotency_key: 'p5-http-ws-open'
     }, state.principal);
     const terminal = opened.terminal;

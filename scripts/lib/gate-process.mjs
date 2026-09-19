@@ -11,6 +11,10 @@ export const GATE_ERROR_CODES = Object.freeze({
 
 const DEFAULT_MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
+const GIT_CONTEXT_VARIABLES = Object.freeze([
+  'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_PREFIX',
+  'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR'
+]);
 
 // Fixed maintenance acceptance limits. No CLI or environment override.
 export const GATE_BUDGETS_MS = Object.freeze({ development: 120_000, formal: 360_000 });
@@ -66,7 +70,7 @@ export async function runGateCommand(invocation, options = {}) {
   const stderrForwarder = lineForwarder(options.stderr === false ? null : (options.stderr || process.stderr), root, options.stderrPrefix || '');
   const child = spawn(String(invocation.command), (invocation.args || []).map(String), {
     cwd,
-    env: { ...process.env, ...(options.env || {}) },
+    env: gateEnvironment(options.env),
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     shell: false,
@@ -147,7 +151,7 @@ export function spawnGateProcess(invocation, options = {}) {
   const root = path.resolve(options.workspaceRoot || options.cwd || process.cwd());
   const child = spawn(String(invocation.command), (invocation.args || []).map(String), {
     cwd: path.resolve(options.cwd || root),
-    env: { ...process.env, ...(options.env || {}) },
+    env: gateEnvironment(options.env),
     stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     shell: false,
@@ -164,6 +168,21 @@ export function spawnGateProcess(invocation, options = {}) {
     child.stderr.on('end', () => forwarder.finish());
   }
   return child;
+}
+
+// Git hooks export repository context variables. Passing those variables into
+// nested temporary-clone tests makes `git -C <temp>` unexpectedly operate on
+// the outer hook repository. Gate children receive a normal environment and
+// use their explicit cwd/ref arguments instead.
+export function gateEnvironment(overrides = {}) {
+  const env = { ...process.env, ...(overrides || {}) };
+  for (const key of GIT_CONTEXT_VARIABLES) delete env[key];
+  for (const [key, value] of Object.entries(overrides || {})) {
+    if (GIT_CONTEXT_VARIABLES.includes(key)) continue;
+    if (value == null) delete env[key];
+    else env[key] = String(value);
+  }
+  return env;
 }
 
 export async function terminateProcessTree(child, graceMs = 1500) {

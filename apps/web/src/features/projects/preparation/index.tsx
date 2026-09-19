@@ -48,7 +48,7 @@ export function ReadinessSummary({ ready, missing, onOpen }: { ready: boolean; m
   return <div className="preparation-readiness" data-testid="preparation-readiness" role="status"><strong>{ready ? '已准备，可继续生成与执行' : '准备条件未完成'}</strong>{missing.length > 0 && <ul>{missing.map(item => <li key={item}><button type="button" className="link-button" onClick={() => onOpen(item as PreparationStep)}>{item}</button></li>)}</ul>}{ready && <Check size={18} aria-label="准备完成" />}</div>;
 }
 
-export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId: string; onReady?: (packId: string) => void; onOpenStep?: (step: PreparationStep) => void }) {
+export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defaultSleep }: { projectId: string; onReady?: (packId: string) => void; onOpenStep?: (step: PreparationStep) => void; sleep?: (milliseconds: number) => Promise<void> }) {
   const [step, setStep] = useState<PreparationStep>('source');
   const [kind, setKind] = useState<SourceKind>('local');
   const [locator, setLocator] = useState('');
@@ -95,7 +95,11 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!selectedConnectionId) return;
+    if (!selectedConnectionId) {
+      setSelectedLineId(persistSelection(projectId, 'line', ''));
+      setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+      return;
+    }
     const connection = connections.find(item => item.id === selectedConnectionId);
     if (!connection) {
       setSelectedConnectionId(persistSelection(projectId, 'connection', ''));
@@ -119,7 +123,10 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
   }, [connections, lines, projectId, selectedConnectionId, selectedLineId]);
 
   useEffect(() => {
-    if (!selectedLineId) return;
+    if (!selectedLineId) {
+      setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+      return;
+    }
     const candidates = workspaces.filter(item => item.line_id === selectedLineId)
       .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')) || b.id.localeCompare(a.id));
     const selectedWorkspace = workspaces.find(item => item.id === selectedWorkspaceId);
@@ -160,16 +167,10 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
     setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
     setFiles([]); setSelected(new Set()); setStep('workspace');
   });
-  const pollWorkspace = async (id: string, current: Workspace) => {
-    let latest = current;
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      if (['ready', 'released', 'orphaned'].includes(latest.status)) return latest;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const listed = await apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`);
-      latest = (listed.data.workspaces || []).find(item => item.id === id) || latest;
-    }
-    throw new Error('workspace_provisioning_timeout');
-  };
+  const pollWorkspace = (id: string, current: Workspace) => pollWorkspaceUntil(id, current, async (workspaceId) => {
+    const listed = await apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`);
+    return (listed.data.workspaces || []).find(item => item.id === workspaceId) || null;
+  }, { sleep });
   const createWorkspace = () => void run('workspace', async () => {
     if (!selectedLine || selectedLine.status !== 'ready') throw new Error('请选择当前可用的仓库分支');
     const result = await mutateV2<{ workspace: Workspace; operation?: { operation_id?: string } }>(`${base}/repository-workspaces`, { line_id: selectedLine.id, relative_path: `projects/${projectId}/workspace`, defer: true }, 'POST', 0);
@@ -224,5 +225,20 @@ function persistSelection(projectId: string, kind: string, value: string) { try 
 function safeRelative(value: string) { const text = String(value || '').replaceAll('\\', '/'); return Boolean(text && !text.startsWith('/') && !/^[A-Za-z]:\//.test(text) && !text.split('/').includes('..') && !text.split('/').some(part => !part || part === '.' || part.includes(':'))); }
 
 async function waitOperation(operationId: string) { for (let attempt = 0; attempt < 40; attempt += 1) { const result = await apiV2<{ status: string }>(`/api/v2/operations/${encodeURIComponent(operationId)}`); if (['succeeded', 'failed', 'cancelled', 'expired'].includes(result.data.status)) { if (result.data.status !== 'succeeded') throw new Error(`操作未完成：${result.data.status}`); return; } await new Promise(resolve => setTimeout(resolve, 250)); } throw new Error('操作等待超时，可从操作中心继续'); }
+
+export async function pollWorkspaceUntil(id: string, initial: Workspace, fetchLatest: (workspaceId: string) => Promise<Workspace | null>, options: { maxAttempts?: number; intervalMs?: number; sleep?: (milliseconds: number) => Promise<void> } = {}) {
+  const maxAttempts = Number.isInteger(options.maxAttempts) && (options.maxAttempts as number) > 0 ? options.maxAttempts as number : 120;
+  const intervalMs = Number.isFinite(options.intervalMs) ? Number(options.intervalMs) : 1000;
+  const pause = options.sleep || defaultSleep;
+  let latest = initial;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (['ready', 'released', 'orphaned'].includes(latest.status)) return latest;
+    await pause(intervalMs);
+    latest = (await fetchLatest(id)) || latest;
+  }
+  throw new Error('workspace_provisioning_timeout');
+}
+
+function defaultSleep(milliseconds: number) { return new Promise<void>(resolve => setTimeout(resolve, milliseconds)); }
 
 export default PreparationPanel;

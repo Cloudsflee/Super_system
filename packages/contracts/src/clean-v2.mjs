@@ -224,7 +224,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
 
   'terminal.capabilities.query.v2': p5Query({}),
   'terminal.query.v2': p5Query({ project_id: id, terminal_id: id, cursor: { anyOf: [{ type: 'integer', minimum: 0 }, p4String] }, limit: { type: 'integer', minimum: 1, maximum: 500 }, format: { enum: ['json'] } }),
-  'terminal.open.v2': p5Mutation({ project_id: id, workspace_id: id, approval_id: id, assist_session_id: id, runtime: { enum: ['windows_native', 'linux_native'] }, cwd: { type: 'string', maxLength: 1024 }, cols: { type: 'integer', minimum: 20, maximum: 400 }, rows: { type: 'integer', minimum: 5, maximum: 200 } }, ['project_id', 'workspace_id', 'approval_id']),
+  'terminal.open.v2': p5Mutation({ project_id: id, workspace_id: id, approval_id: id, assist_session_id: { anyOf: [id, { type: 'null' }] }, runtime: { enum: ['windows_native', 'linux_native'] }, cwd: { type: 'string', maxLength: 1024 }, cols: { type: 'integer', minimum: 20, maximum: 400 }, rows: { type: 'integer', minimum: 5, maximum: 200 } }, ['project_id', 'workspace_id', 'approval_id', 'assist_session_id', 'runtime', 'cwd', 'cols', 'rows']),
   'terminal.action.v2': p5Mutation({ terminal_id: id, client_sequence: { type: 'integer', minimum: 1 }, data: { type: 'string', maxLength: 65536 }, cols: { type: 'integer', minimum: 20, maximum: 400 }, rows: { type: 'integer', minimum: 5, maximum: 200 }, signal: { enum: ['SIGINT'] } }, ['terminal_id']),
   'terminal.capabilities.v2': looseObject,
   'terminals.v2': p5List('terminals'),

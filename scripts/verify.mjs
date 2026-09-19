@@ -106,7 +106,11 @@ export async function main(argv = process.argv.slice(2), root = process.cwd()) {
     const budget = gateBudget('formal', Date.now() - started);
     if (budget.remaining_ms <= 0) { blockingFailure = 'formal_time_budget_exceeded'; break; }
     const specification = plan[index];
-    if (specification.id === 'e2e' && !releasePromise && !blockingFailure && releaseSpec) {
+    // Start the cold Docker release probe before the isolated local-validation
+    // wave. It remains after all deterministic P1-P10 and external adapter
+    // gates, but gets the full remaining budget instead of starting beside E2E
+    // after the Web suite has consumed most of the formal window.
+    if (specification.id === 'web-test' && !releasePromise && !blockingFailure && releaseSpec) {
       releasePromise = executeSpecification(releaseSpec, root, true, gateBudget('formal', Date.now() - started).remaining_ms);
     }
     const group = specification.parallel_group

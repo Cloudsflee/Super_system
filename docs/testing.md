@@ -259,8 +259,15 @@ P10 lifecycle and review handlers use the same session predicate. Terminal
 open requests bind the complete workspace/runtime/cwd/size/session shape when
 the approval carries the strict shape. The Web preparation journey persists
 connection/line/workspace selections, matches lines by source fingerprint,
-waits up to 120 one-second polls, and consumes Files pages at 500 rows up to
-10,000 entries while removing stale selections.
+waits up to 120 one-second polls (with an injectable sleep in component tests),
+and consumes Files pages at 500 rows up to 10,000 entries while removing stale
+selections. Terminal open is a strict closed-shape request: workspace, runtime,
+cwd, dimensions, and the nullable Assist session field are all required and
+must match the approved request exactly; no legacy defaults are accepted.
+E2E and release startup share `scripts/lib/port-lease.mjs`. A lock file and an
+OS listener probe are held until readiness, and only pre-side-effect address
+failures retry with bounded backoff after complete process/temporary-state
+cleanup.
 
 The synchronized focused regression inventory is:
 

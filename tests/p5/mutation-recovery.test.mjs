@@ -32,7 +32,8 @@ test('P5 resource mutations persist one operation receipt and replay without dup
     assert.equal(referenceReplay.operation.operation_id, reference.operation.operation_id);
     assert.equal(state.runtime.db.get('SELECT count(*) AS count FROM assist_references WHERE session_id=?', [session.id]).count, 1);
 
-    const approvalRequest = { project_id: project.id, action: 'terminal.open', request: { purpose: 'test' }, expected_revision: 0, idempotency_key: 'p5-mutation-approval-key' };
+    const { workspace } = await createWorkspace(state, project, 'mutation-receipts');
+    const approvalRequest = { project_id: project.id, action: 'terminal.open', request: { workspace_id: workspace.id, runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native', cwd: '', cols: 120, rows: 32, assist_session_id: session.id }, expected_revision: 0, idempotency_key: 'p5-mutation-approval-key' };
     const approval = await state.runtime.assist.createApproval(approvalRequest, state.principal);
     const approvalReplay = await state.runtime.assist.createApproval(approvalRequest, state.principal);
     assert.equal(approvalReplay.replayed, true);

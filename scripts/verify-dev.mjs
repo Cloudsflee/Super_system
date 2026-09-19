@@ -77,6 +77,10 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
     base_source: repository.base_source,
     head: repository.head,
     changed_paths: repository.changed_paths,
+    base_paths: repository.base_paths || [],
+    worktree_paths: repository.worktree_paths || [],
+    staged_paths: repository.staged_paths || [],
+    untracked_paths: repository.untracked_paths || [],
     catalog_ids: selection.catalog_ids,
     owners: selection.owners,
     selected_commands: selection.commands.map(publicSelection),
@@ -192,16 +196,22 @@ export function parseArguments(argv) {
 export function repositoryState(root, requestedBase = null) {
   const head = resolveGitCommit(root, 'HEAD');
   const base = requestedBase ? validateRequestedBase(root, requestedBase) : defaultBase(root);
-  const changed = new Set();
-  for (const args of [
-    ['diff', '-z', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB', `${base.commit}...${head}`, '--'],
-    ['diff', '-z', '--cached', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB', '--'],
-    ['diff', '-z', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB', '--'],
-    ['ls-files', '-z', '--others', '--exclude-standard']
-  ]) {
-    for (const file of gitText(root, args).split('\0').map(normalizePath).filter(Boolean)) changed.add(file);
-  }
-  return { base: base.commit, base_source: base.source, head, changed_paths: [...changed].sort() };
+  const list = (args) => gitText(root, args).split('\0').map(normalizePath).filter(Boolean).sort();
+  const basePaths = list(['diff', '-z', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB', `${base.commit}...${head}`, '--']);
+  const stagedPaths = list(['diff', '-z', '--cached', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB', '--']);
+  const worktreePaths = list(['diff', '-z', '--name-only', '--no-renames', '--diff-filter=ACDMRTUXB', '--']);
+  const untrackedPaths = list(['ls-files', '-z', '--others', '--exclude-standard']);
+  const changed = new Set([...basePaths, ...stagedPaths, ...worktreePaths, ...untrackedPaths]);
+  return {
+    base: base.commit,
+    base_source: base.source,
+    head,
+    base_paths: basePaths,
+    worktree_paths: worktreePaths,
+    staged_paths: stagedPaths,
+    untracked_paths: untrackedPaths,
+    changed_paths: [...changed].sort()
+  };
 }
 
 export function selectDevCommands({ changedPaths, catalog, all = false }) {
@@ -400,15 +410,35 @@ function collapseLayered(commands, suite) {
   commands.set(suite, pnpmCommand(suite, [`test:${suite}`], [...clean.satisfies, ...historical.satisfies, `pnpm test:${suite}`], [...clean.reasons, ...historical.reasons].join('+'), { layered: true }));
 }
 
-function defaultBase(root) {
-  for (const candidate of ['origin/main', 'main']) {
+export function defaultBase(root) {
+  // The checked-out branch's configured upstream is the authoritative daily
+  // baseline.  Keep the documented fallbacks deterministic for local clones
+  // that have no remote-tracking branch yet.
+  const candidates = ['@{upstream}', 'origin/main', 'main'];
+  const failures = [];
+  for (const candidate of candidates) {
     try {
       resolveGitCommit(root, candidate);
-      const commit = gitText(root, ['merge-base', 'HEAD', candidate]).trim();
-      if (/^[a-f0-9]{40,64}$/i.test(commit)) return { commit, source: `merge-base HEAD ${candidate}` };
-    } catch { /* try the next documented fallback */ }
+      const result = spawnSync('git', ['merge-base', 'HEAD', candidate], {
+        cwd: root, encoding: 'utf8', windowsHide: true, shell: false,
+        maxBuffer: 1024 * 1024
+      });
+      const commit = String(result.stdout || '').trim();
+      if (result.status === 0 && /^[a-f0-9]{40,64}$/i.test(commit)) {
+        return { commit, source: `merge-base HEAD ${candidate}` };
+      }
+      failures.push(`${candidate}:merge-base`);
+    } catch (error) {
+      failures.push(`${candidate}:${error?.code || 'unverifiable'}`);
+    }
   }
-  return { commit: resolveGitCommit(root, 'HEAD^'), source: 'HEAD^' };
+  try {
+    return { commit: resolveGitCommit(root, 'HEAD^'), source: 'HEAD^' };
+  } catch (error) {
+    const failure = baseError('git_base_unverifiable', failures.join(',') || 'HEAD^');
+    failure.details = { candidates: failures, cause: error?.code || error?.message || 'head_parent_missing' };
+    throw failure;
+  }
 }
 
 function validateRequestedBase(root, value) {

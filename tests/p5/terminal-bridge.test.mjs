@@ -23,8 +23,10 @@ test('Terminal consumes one approval, replays by idempotency and persists redact
   try {
     const project = await createProject(state, 'terminal');
     const { workspace } = await createWorkspace(state, project, 'terminal');
+    const runtime = process.platform === 'win32' ? 'windows_native' : 'linux_native';
+    const terminalShape = { workspace_id: workspace.id, runtime, cwd: '', cols: 120, rows: 32, assist_session_id: null };
     const approval = await state.runtime.assist.createApproval({
-      project_id: project.id, action: 'terminal.open', request: { workspace_id: workspace.id },
+      project_id: project.id, action: 'terminal.open', request: terminalShape,
       expected_revision: 0, idempotency_key: 'p5-terminal-approval-key'
     }, state.principal);
     await state.runtime.assist.decideApproval(approval.approval.id, {
@@ -33,7 +35,7 @@ test('Terminal consumes one approval, replays by idempotency and persists redact
     }, state.principal);
     const request = {
       project_id: project.id, workspace_id: workspace.id, approval_id: approval.approval.id,
-      runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native',
+      ...terminalShape,
       expected_revision: 0, idempotency_key: 'p5-terminal-open-key'
     };
     const opened = await state.runtime.terminal.open(request, state.principal);
@@ -119,7 +121,7 @@ test('Windows Bridge pairing shares one secret, rejects nonce replay, rotates an
 
 test('Assist Terminal approvals bind project, workspace revision and session, then return one operation reference', async () => {
   const children = [];
-  const state = await open({ pty: { spawn: () => { const child = new FakePtyProcess(); children.push(child); return child; } } });
+  const state = await open({ targetVersion: 9, pty: { spawn: () => { const child = new FakePtyProcess(); children.push(child); return child; } } });
   try {
     const project = await createProject(state, 'assist-terminal');
     const foreignProject = await createProject(state, 'assist-terminal-foreign');
@@ -136,10 +138,11 @@ test('Assist Terminal approvals bind project, workspace revision and session, th
     await assert.rejects(() => state.runtime.terminal.open({ ...input, expected_revision: workspace.revision + 1 }, state.principal), (error) => error.code === 'revision_conflict');
     await assert.rejects(() => state.runtime.terminal.open({ ...input, assist_session_id: null }, state.principal), (error) => error.code === 'approval_request_mismatch');
     await assert.rejects(() => state.runtime.terminal.open({ ...input, cwd: 'other' }, state.principal), (error) => error.code === 'approval_request_mismatch');
-    const foreignApproval = await state.runtime.assist.createApproval({ project_id: foreignProject.id, action: 'terminal.open', request: { assist_session_id: session.id }, expected_revision: 0, idempotency_key: 'assist-terminal-foreign-approval' }, state.principal);
-    await state.runtime.assist.decideApproval(foreignApproval.approval.id, { decision: 'approved', expected_revision: 1, idempotency_key: 'assist-terminal-foreign-decision' }, state.principal);
     const foreignWorkspace = await createWorkspace(state, foreignProject, 'assist-terminal-foreign');
-    await assert.rejects(() => state.runtime.terminal.open({ ...input, project_id: foreignProject.id, workspace_id: foreignWorkspace.workspace.id, approval_id: foreignApproval.approval.id, expected_revision: 0, idempotency_key: 'assist-terminal-foreign-open' }, state.principal), (error) => error.code === 'assist_session_mismatch');
+    const foreignRuntime = process.platform === 'win32' ? 'windows_native' : 'linux_native';
+    const foreignApproval = await state.runtime.assist.createApproval({ project_id: foreignProject.id, action: 'terminal.open', request: { workspace_id: foreignWorkspace.workspace.id, assist_session_id: null, runtime: foreignRuntime, cwd: '', cols: 120, rows: 32 }, expected_revision: 0, idempotency_key: 'assist-terminal-foreign-approval' }, state.principal);
+    await state.runtime.assist.decideApproval(foreignApproval.approval.id, { decision: 'approved', expected_revision: 1, idempotency_key: 'assist-terminal-foreign-decision' }, state.principal);
+    await assert.rejects(() => state.runtime.terminal.open({ ...input, project_id: foreignProject.id, workspace_id: foreignWorkspace.workspace.id, approval_id: foreignApproval.approval.id, expected_revision: 0, idempotency_key: 'assist-terminal-foreign-open' }, state.principal), (error) => error.code === 'scope_denied');
     assert.equal(children.length, 0);
     const opened = await state.runtime.terminal.open(input, state.principal);
     assert.equal((await state.runtime.terminal.open(input, state.principal)).replayed, true);
@@ -161,6 +164,15 @@ test('Assist Terminal approvals bind project, workspace revision and session, th
     assert.equal(linked.references[0].reference_hash, terminal.output_sha256);
     assert.equal((await state.runtime.assist.createReference(session.id, referenceInput, state.principal)).replayed, true);
     await assert.rejects(() => state.runtime.assist.createReference(session.id, { ...referenceInput, idempotency_key: 'assist-terminal-reference-stale' }, state.principal), (error) => error.code === 'revision_conflict');
+    const lifecycleRevision = state.runtime.db.get('SELECT revision FROM assist_sessions WHERE id=?', [session.id]).revision;
+    const lifecycleApproval = await state.runtime.assist.createApproval({
+      project_id: project.id, action: 'terminal.open',
+      request: { workspace_id: workspace.id, assist_session_id: session.id, runtime, cwd: '', cols: 120, rows: 32 },
+      expected_revision: lifecycleRevision, idempotency_key: 'assist-terminal-lifecycle-approval'
+    }, state.principal);
+    const archived = await state.runtime.p10Service.archiveAssistSession(session.id, { expected_revision: lifecycleRevision, idempotency_key: 'assist-terminal-lifecycle-archive' }, state.principal);
+    assert.equal(archived.session.archived_at != null, true);
+    await assert.rejects(() => state.runtime.assist.decideApproval(lifecycleApproval.approval.id, { decision: 'approved', expected_revision: lifecycleApproval.approval.revision, idempotency_key: 'assist-terminal-lifecycle-decision' }, state.principal), (error) => error.code === 'assist_session_inactive' && error.details.lifecycle_status === 'archived');
     assert.equal(state.runtime.db.integrity().semantic.valid, true);
   } finally { await close(state); }
 });

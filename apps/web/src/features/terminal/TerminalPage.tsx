@@ -254,7 +254,7 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify, ter
       await mutateV2('/api/v2/approvals', {
         project_id: projectId,
         action: 'terminal.open',
-        request: { workspace_id: workspace.id, runtime, cwd, cols: 120, rows: 32, ...(terminalLaunch?.assistSessionId ? { assist_session_id: terminalLaunch.assistSessionId } : {}) },
+        request: { workspace_id: workspace.id, runtime, cwd, cols: 120, rows: 32, assist_session_id: terminalLaunch?.assistSessionId || null },
         ttl_seconds: 3600
       }, 'POST', workspace.revision);
       await load();
@@ -277,11 +277,11 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify, ter
         project_id: projectId,
         workspace_id: workspace.id,
         approval_id: approval.id,
-        runtime: String(approval.request.runtime || runtime),
-        cwd: String(approval.request.cwd || ''),
-        cols: Number(approval.request.cols || 120),
-        rows: Number(approval.request.rows || 32),
-        ...(approval.request.assist_session_id ? { assist_session_id: String(approval.request.assist_session_id) } : {})
+        runtime: String(approval.request.runtime),
+        cwd: String(approval.request.cwd),
+        cols: Number(approval.request.cols),
+        rows: Number(approval.request.rows),
+        assist_session_id: approval.request.assist_session_id == null ? null : String(approval.request.assist_session_id)
       }, 'POST', workspace.revision);
       setSelectedId(result.data.terminal.id);
       applySession(result.data.terminal);

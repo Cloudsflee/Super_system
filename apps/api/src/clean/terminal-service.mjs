@@ -44,43 +44,53 @@ export class CleanTerminalService {
   get(id, principal) { const row = this.row(id); assertProject(this.authorization, principal, 'read', row.project_id, { resource: 'terminal' }); return this.view(row); }
 
   async open(input = {}, principal) {
-    requirePrincipal(principal); const projectId = String(input.project_id || ''); assertProject(this.authorization, principal, 'run', projectId, { resource: 'terminal' });
+    requirePrincipal(principal);
+    for (const field of ['project_id', 'workspace_id', 'approval_id', 'assist_session_id', 'runtime', 'cwd', 'cols', 'rows']) {
+      if (!Object.hasOwn(input, field)) throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
+    }
+    if (typeof input.project_id !== 'string' || !input.project_id || typeof input.approval_id !== 'string' || !input.approval_id) throw new PlatformError('schema_invalid', 'terminal.open identifiers are invalid', {}, 422);
+    const projectId = String(input.project_id || ''); assertProject(this.authorization, principal, 'run', projectId, { resource: 'terminal' });
     const approval = this.db.get('SELECT * FROM runtime_approvals WHERE id=?', [String(input.approval_id || '')]);
     if (!approval || approval.status !== 'approved' || approval.action !== 'terminal.open') throw new PlatformError('approval_required', 'an approved terminal.open request is required', {}, 403);
     if (String(approval.project_id) !== projectId) throw new PlatformError('scope_denied', 'terminal approval is outside the project', {}, 403);
     if (Date.parse(approval.expires_at) <= Date.parse(time(this.clock))) throw new PlatformError('approval_expired', 'terminal approval expired', {}, 409);
-    const approvedRequest = JSON.parse(approval.request_json);
-    const legacyApproval = Object.keys(approvedRequest).every((field) => ['workspace_id', 'assist_session_id', 'command'].includes(field));
-    const strictApproval = !legacyApproval;
-    for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
-      // P5 persisted minimal approval fixtures predate the explicit terminal
-      // shape. They remain readable with bounded defaults; any approval that
-      // carries the new shape is strict and must be replayed exactly.
-      if (field === 'workspace_id') {
-        if (!Object.hasOwn(input, field) || !input[field]) throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
-      } else if (strictApproval && !Object.hasOwn(input, field)) {
-        throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
-      }
+    let approvedRequest;
+    try { approvedRequest = JSON.parse(approval.request_json || '{}'); }
+    catch { throw new PlatformError('schema_invalid', 'terminal approval request is malformed', {}, 422); }
+    if (!approvedRequest || typeof approvedRequest !== 'object' || Array.isArray(approvedRequest)) throw new PlatformError('schema_invalid', 'terminal approval request is malformed', {}, 422);
+    const shape = ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id'];
+    for (const field of shape) {
+      if (!Object.hasOwn(input, field)) throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
+      if (!Object.hasOwn(approvedRequest, field)) throw new PlatformError('schema_invalid', `terminal approval requires ${field}`, { field }, 422);
     }
-    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [String(input.workspace_id || '')]);
+    if (typeof input.workspace_id !== 'string' || !input.workspace_id) throw new PlatformError('schema_invalid', 'terminal workspace_id is invalid', { field: 'workspace_id' }, 422);
+    if (typeof input.approval_id !== 'string' || !input.approval_id) throw new PlatformError('schema_invalid', 'terminal approval_id is invalid', { field: 'approval_id' }, 422);
+    if (typeof input.runtime !== 'string' || !['windows_native', 'linux_native'].includes(input.runtime)) throw new PlatformError('schema_invalid', 'terminal runtime is invalid', { field: 'runtime' }, 422);
+    if (typeof input.cwd !== 'string') throw new PlatformError('schema_invalid', 'terminal cwd is invalid', { field: 'cwd' }, 422);
+    if (input.assist_session_id !== null && typeof input.assist_session_id !== 'string') throw new PlatformError('schema_invalid', 'terminal assist_session_id is invalid', { field: 'assist_session_id' }, 422);
+    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [input.workspace_id]);
     if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
     if (String(workspace.project_id) !== projectId) throw new PlatformError('scope_denied', 'repository workspace is outside the project', {}, 403);
-    const requestedRuntime = String(input.runtime || this.capabilities().default_runtime); const capability = this.capabilities()[requestedRuntime];
+    const requestedRuntime = input.runtime; const capability = this.capabilities()[requestedRuntime];
     if (!capability?.available) throw new PlatformError('terminal_runtime_unavailable', 'requested terminal runtime is unavailable', { runtime: requestedRuntime }, 422);
-    const cwdRelative = safeCwd(input.cwd || '');
-    const cols = boundedInt(input.cols, 20, 400, 120); const rows = boundedInt(input.rows, 5, 200, 32);
-    const assistSessionId = input.assist_session_id ? String(input.assist_session_id) : null;
-    if ((approvedRequest.assist_session_id || null) !== assistSessionId) throw new PlatformError('approval_request_mismatch', 'terminal Assist association differs from approval', {}, 409);
+    const cwdRelative = safeCwd(input.cwd);
+    const cols = boundedInt(input.cols, 20, 400, undefined, { required: true }); const rows = boundedInt(input.rows, 5, 200, undefined, { required: true });
+    const assistSessionId = input.assist_session_id;
     const assistSession = assistSessionId ? this.db.get('SELECT * FROM assist_sessions WHERE id=?', [assistSessionId]) : null;
     if (assistSessionId) {
       assertProject(this.authorization, principal, 'run', projectId, { resource: 'assist' });
-      if (!assistSession || String(assistSession.project_id) !== projectId) throw new PlatformError(strictApproval ? 'scope_denied' : 'assist_session_mismatch', 'terminal Assist session is outside the project', {}, 403);
+      if (!assistSession || String(assistSession.project_id) !== projectId) throw new PlatformError('scope_denied', 'terminal Assist session is outside the project', {}, 403);
       if (assistSession.deleted_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'deleted' }, 409);
       if (assistSession.archived_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'archived' }, 409);
+      if (assistSession.status !== 'active') throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: assistSession.status }, 409);
     }
-    const approvedFields = { workspace_id: workspace.id, runtime: requestedRuntime, cwd: cwdRelative, cols, rows };
+    const approvedCwd = typeof approvedRequest.cwd === 'string' ? safeCwd(approvedRequest.cwd) : null;
+    if (approvedCwd === null) throw new PlatformError('schema_invalid', 'terminal approval cwd is invalid', { field: 'cwd' }, 422);
+    if (approvedRequest.cwd !== input.cwd) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field: 'cwd' }, 409);
+    const approvedFields = { workspace_id: workspace.id, runtime: requestedRuntime, cwd: cwdRelative, cols, rows, assist_session_id: assistSessionId };
     for (const [field, value] of Object.entries(approvedFields)) {
-      if (Object.hasOwn(approvedRequest, field) && (field === 'cwd' ? safeCwd(approvedRequest[field]) : approvedRequest[field]) !== value) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field }, 409);
+      const approvedValue = field === 'cwd' ? approvedCwd : approvedRequest[field];
+      if (approvedValue !== value) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field }, 409);
     }
     const expected = requireRevision(input.expected_revision, { allowZero: true });
     const key = requireIdempotency(input.idempotency_key); const now = time(this.clock); const id = opaqueId('terminal');
@@ -200,10 +210,17 @@ export class CleanTerminalService {
   close() { this.closing = true; for (const child of this.processes.values()) { try { child.kill(); } catch {} } this.processes.clear(); this.listeners.clear(); this.outputBuffers.clear(); }
 }
 
-function boundedInt(value, minimum, maximum, fallback) { const number = value == null ? fallback : Number(value); if (!Number.isInteger(number) || number < minimum || number > maximum) throw new PlatformError('schema_invalid', 'terminal dimension is invalid', {}, 422); return number; }
+function boundedInt(value, minimum, maximum, fallback, { required = false } = {}) {
+  if (value == null) {
+    if (required) throw new PlatformError('schema_invalid', 'terminal dimension is required', {}, 422);
+    return fallback;
+  }
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < minimum || value > maximum) throw new PlatformError('schema_invalid', 'terminal dimension is invalid', {}, 422);
+  return value;
+}
 function safeCwd(value) { const text = String(value || '').replaceAll('\\', '/').replace(/^\.\//, ''); if (!text) return ''; if (text.startsWith('/') || /^[A-Za-z]:\//.test(text) || text.split('/').includes('..') || text.split('/').includes('.git') || text.includes(':')) throw new PlatformError('path_policy_denied', 'terminal cwd must be a managed relative path', {}, 422); return text; }
 function resolveWithin(root, relative) { const base = path.resolve(root); const clean = safeCwd(relative); const target = clean ? path.resolve(base, clean) : base; if (target !== base && !target.startsWith(`${base}${path.sep}`)) throw new PlatformError('path_policy_denied', 'path escapes the workspace', {}, 422); return target; }
-function rejectReparse(target) { let current = path.parse(target).root; for (const part of target.slice(current.length).split(path.sep).filter(Boolean)) { current = path.join(current, part); if (!fs.existsSync(current)) continue; const stat = fs.lstatSync(current); if (stat.isSymbolicLink()) throw new PlatformError('path_policy_denied', 'terminal cwd contains a link', {}, 422); } }
+function rejectReparse(target) { let current = path.parse(target).root; for (const part of target.slice(current.length).split(path.sep).filter(Boolean)) { current = path.join(current, part); if (!fs.existsSync(current)) continue; const stat = fs.lstatSync(current); if (stat.isSymbolicLink() || stat.isReparsePoint?.()) throw new PlatformError('path_policy_denied', 'terminal cwd contains a link', {}, 422); } }
 function redactOutput(value, root) { const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return String(value).replace(new RegExp(escaped, 'gi'), '[workspace]').replace(/(?:[A-Za-z]:\\|\/(?:home|Users|root)\/)[^\s"']+/g, '[path]').replace(/(?:sk-|ghp_|Bearer\s+)[A-Za-z0-9._~-]{8,}/gi, '[redacted]'); }
 function outputSplit(value) { const text = String(value || ''); if (text.length <= 512) return { emit: '', tail: text }; const boundary = text.length - 256; let cut = -1; for (let index = boundary; index >= 0; index -= 1) { if (/\s/.test(text[index])) { cut = index + 1; break; } } if (cut < 0) return text.length <= 4096 ? { emit: '', tail: text } : { emit: '[redacted]', tail: text.slice(-256) }; return { emit: text.slice(0, cut), tail: text.slice(cut) }; }
 function minimalEnvironment() { const allow = ['PATH', 'Path', 'SystemRoot', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'TERM', 'LANG']; return Object.fromEntries(allow.filter((key) => process.env[key] != null).map((key) => [key, String(process.env[key])]).concat([['AIWS_TERMINAL', '1']])); }

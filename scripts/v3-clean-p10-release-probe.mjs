@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -7,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { chromium } from '@playwright/test';
 import { openCleanDatabase } from '../apps/api/src/clean/database.mjs';
+import { acquirePortLease, launchWithPortLease, waitForHttpReady } from './lib/port-lease.mjs';
 
 const root = process.cwd();
 const baselineCommit = 'bb55746b7e08cf7ee764d06a8fa23da91ad48e2f';
@@ -14,12 +14,12 @@ const reportRoot = path.join(root, '.ai-workspace', 'p10-release-probe');
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-release-'));
 const apiHome = path.join(temporaryRoot, 'runtime');
 const activePointer = path.join(temporaryRoot, 'active.pointer');
-const apiLease = await reservePort();
-const originLease = await reservePort();
-const apiPort = apiLease.port;
-const originPort = originLease.port;
-const dynamicOrigin = `http://127.0.0.1:${originPort}`;
-const base = `http://127.0.0.1:${apiPort}`;
+let apiLease = await acquirePortLease({ lockPrefix: 'aiws-p10-release-api' });
+let originLease = await acquirePortLease({ lockPrefix: 'aiws-p10-release-origin' });
+let apiPort = apiLease.port;
+let originPort = originLease.port;
+let dynamicOrigin = `http://127.0.0.1:${originPort}`;
+let base = `http://127.0.0.1:${apiPort}`;
 let child = null;
 let browser = null;
 
@@ -28,9 +28,23 @@ try {
   fs.mkdirSync(reportRoot, { recursive: true });
   const bundle = createReleaseBundle();
   const snapshots = createSnapshots(bundle);
-  child = startApi();
-  await waitFor(`${base}/readyz`);
-  apiLease.release();
+  const launched = await launchWithPortLease({
+    lease: apiLease,
+    acquire: () => acquirePortLease({ lockPrefix: 'aiws-p10-release-api' }),
+    start: (lease) => { apiPort = lease.port; base = `http://127.0.0.1:${apiPort}`; return startApi(); },
+    ready: (lease, processHandle) => waitForHttpReady(`http://127.0.0.1:${lease.port}/readyz`, { child: processHandle, timeoutMs: 60_000 }),
+    cleanup: async (processHandle) => {
+      await stop(processHandle).catch(() => undefined);
+      removeTree(apiHome);
+    }
+  });
+  apiLease = launched.lease;
+  apiPort = launched.port;
+  base = `http://127.0.0.1:${apiPort}`;
+  child = launched.child;
+  // The dynamic origin is only a CORS fixture; retain its lock until the API
+  // has passed readiness so a concurrent probe cannot reuse it during boot.
+  originLease.markReady?.();
   originLease.release();
   const httpReceipt = await verifyHttp();
   const browserReceipt = await verifyBrowser();
@@ -470,30 +484,6 @@ function run(command, args, timeout = 30_000) { return spawnSync(command, args, 
 function tarExecutable() {
   const systemTar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
   return process.platform === 'win32' && fs.existsSync(systemTar) ? systemTar : 'tar';
-}
-
-async function reservePort() {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const server = net.createServer();
-    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    const port = server.address().port;
-    await new Promise((resolve) => server.close(resolve));
-    const lockPath = path.join(os.tmpdir(), `aiws-p10-port-${port}.lock`);
-    try {
-      const descriptor = fs.openSync(lockPath, 'wx');
-      return { port, release: () => { try { fs.closeSync(descriptor); } catch {} try { fs.unlinkSync(lockPath); } catch {} } };
-    } catch { /* another parallel probe reserved this port */ }
-  }
-  throw new Error('p10_release_port_reservation_failed');
-}
-
-async function waitFor(url, timeout = 60_000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    try { const response = await fetch(url); if (response.ok) return; } catch { /* wait for server */ }
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error('release_server_timeout');
 }
 
 async function stop(processHandle) {

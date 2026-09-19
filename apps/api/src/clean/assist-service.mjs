@@ -758,9 +758,15 @@ export class CleanAssistService {
       if (!operation || String(operation.project_id || '') !== project) throw new PlatformError('scope_denied', 'Operation is outside the project', {}, 403);
       if (turn && String(operation.id) !== String(turn.operation_id)) throw new PlatformError('scope_denied', 'Assist turn and operation do not match', {}, 403);
     }
-    const requestHasTerminalShape = input.request && typeof input.request === 'object'
-      && ['workspace_id', 'runtime', 'cwd', 'cols', 'rows'].some((field) => Object.hasOwn(input.request, field));
-    const requestedSessionId = input.assist_session_id || (requestHasTerminalShape && input.request.assist_session_id);
+    let persistedRequest = input.request;
+    if ((!persistedRequest || typeof persistedRequest !== 'object') && input.request_json) persistedRequest = parseJson(input.request_json, {});
+    const requestHasTerminalShape = persistedRequest && typeof persistedRequest === 'object'
+      && ['workspace_id', 'runtime', 'cwd', 'cols', 'rows'].some((field) => Object.hasOwn(persistedRequest, field));
+    const requestedSessionId = input.assist_session_id || (requestHasTerminalShape && persistedRequest.assist_session_id);
+    if (persistedRequest?.workspace_id) {
+      const workspace = db.get('SELECT project_id FROM repository_workspaces WHERE id=?', [String(persistedRequest.workspace_id)]);
+      if (!workspace || String(workspace.project_id) !== project) throw new PlatformError('scope_denied', 'Terminal workspace is outside the project', {}, 403);
+    }
     if (requestedSessionId) {
       const session = db.get('SELECT * FROM assist_sessions WHERE id=?', [String(requestedSessionId)]);
       if (!session || String(session.project_id) !== project) throw new PlatformError('scope_denied', 'Assist session is outside the project', {}, 403);

@@ -53,6 +53,7 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'scripts/v3-clean-p31-evidence.mjs',
     'scripts/v3-clean-p4-evidence.mjs',
     'scripts/lib/gate-process.mjs',
+    'scripts/lib/port-lease.mjs',
     'scripts/lib/git-blob.mjs',
     'docs/architecture/decision-log.md'
   ]),
@@ -95,6 +96,7 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'tests/p10/migration.test.mjs',
     'tests/p10/post-closure.test.mjs',
     'tests/p10/development-reliability.test.mjs',
+    'tests/p10/port-lease.test.mjs',
     'tests/unit/recovery-golden.test.mjs',
     'tests/integration/mcp-stdio-r5.test.mjs',
     'tests/integration/codex-provider-flow.test.mjs'
