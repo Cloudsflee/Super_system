@@ -157,6 +157,7 @@ test('formal verification uses immutable P5-P9 Evidence and only current P10 pro
   assert.deepEqual(plan.filter((entry) => entry.id.startsWith('p10-') && entry.id.endsWith('-probe')).map((entry) => entry.id), [
     'p10-parser-probe', 'p10-github-deletion-probe', 'p10-release-probe'
   ]);
+  assert.match(fs.readFileSync('scripts/verify.mjs', 'utf8'), /specification\.id === 'web-test'.*releasePromise/s);
   assert.equal(plan.filter((entry) => entry.id === 'web-test').length, 1);
   assert.equal(plan.filter((entry) => entry.id === 'test-p31').length, 1);
   assert.equal(plan.find((entry) => entry.id === 'check').env.AIWS_CHECK_SKIP_WEB_TYPECHECK, '1');
