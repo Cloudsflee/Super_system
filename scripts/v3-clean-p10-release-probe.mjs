@@ -32,7 +32,12 @@ try {
     lease: apiLease,
     acquire: () => acquirePortLease({ lockPrefix: 'aiws-p10-release-api' }),
     start: (lease) => { apiPort = lease.port; base = `http://127.0.0.1:${apiPort}`; return startApi(); },
-    ready: (lease, processHandle) => waitForHttpReady(`http://127.0.0.1:${lease.port}/readyz`, { child: processHandle, timeoutMs: 60_000 }),
+    ready: (lease, processHandle) => waitForHttpReady(`http://127.0.0.1:${lease.port}/readyz`, {
+      child: processHandle,
+      timeoutMs: 60_000,
+      readyOutput: new RegExp(`V3-Clean listening on http://127[.]0[.]0[.]1:${lease.port}\\b`),
+      accept: async response => response.ok && (await response.json()).data?.user_version === 9
+    }),
     cleanup: async (processHandle) => {
       await stop(processHandle).catch(() => undefined);
       removeTree(apiHome);

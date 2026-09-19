@@ -34,7 +34,11 @@ const apiLaunch = await launchWithPortLease({
     AIWS_CLEAN_MCP_PEPPER: 'p10-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p10-clean-e2e-gateway-secret',
     AIWS_CLEAN_PROVIDER_MODE: 'deterministic', AIWS_RUNNER_POLL_INTERVAL_MS: '10'
   }),
-  ready: (lease, child) => waitForHttpReady(`http://127.0.0.1:${lease.port}/readyz`, { child }),
+  ready: (lease, child) => waitForHttpReady(`http://127.0.0.1:${lease.port}/readyz`, {
+    child,
+    readyOutput: new RegExp(`V3-Clean listening on http://127[.]0[.]0[.]1:${lease.port}\\b`),
+    accept: async response => response.ok && (await response.json()).data?.user_version === 9
+  }),
   cleanup: async (child) => {
     await terminateProcessTree(child);
     removeTree(home);
@@ -53,7 +57,10 @@ const webLaunch = await launchWithPortLease({
   start: (lease) => start(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port', String(lease.port), '--strictPort'], {
     AIWS_WEB_API_TARGET: `http://127.0.0.1:${apiPort}`, VITE_AIWS_E2E: '1'
   }, path.join(root, 'apps', 'web')),
-  ready: (lease, child) => waitForHttpReady(`http://127.0.0.1:${lease.port}/`, { child }),
+  ready: (lease, child) => waitForHttpReady(`http://127.0.0.1:${lease.port}/`, {
+    child,
+    readyOutput: new RegExp(`http://127[.]0[.]0[.]1:${lease.port}/`)
+  }),
   cleanup: (child) => terminateProcessTree(child)
 });
 webLease = webLaunch.lease;
