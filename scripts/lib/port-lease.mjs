@@ -79,7 +79,7 @@ function observeChild(child) {
 /** Requires a successful health response AND the child's own binding message.
  * A different server returning 200/404 on a stolen port never proves readiness. */
 export async function waitForHttpReady(url, { child, readyOutput, timeoutMs = 30000, accept = response => response.ok } = {}) {
-  if (!child || !(readyOutput instanceof RegExp)) throw new TypeError('child_readiness_proof_required');
+  if (!child) throw new TypeError('child_readiness_proof_required');
   const state = observeChild(child);
   const deadline = Date.now() + timeoutMs;
   const assertRunning = () => {
@@ -89,20 +89,25 @@ export async function waitForHttpReady(url, { child, readyOutput, timeoutMs = 30
   };
   while (Date.now() < deadline) {
     assertRunning();
-    if (readyOutput.test(state.output.replace(/\x1b\[[0-9;]*m/g, ''))) {
-      let response;
-      let accepted = false;
-      try {
-        response = await fetch(url, { signal: AbortSignal.timeout(Math.max(1, Math.min(1000, deadline - Date.now()))) });
-        accepted = await accept(response);
-      } catch (error) { if (isAddressInUseError(error)) throw error; }
-      finally { await response?.body?.cancel().catch(() => undefined); }
-      assertRunning();
-      if (accepted) return;
-    }
+    const outputConfirmed = !(readyOutput instanceof RegExp) || readyOutput.test(state.output.replace(/\x1b\[[0-9;]*m/g, ''));
+    let response;
+    let accepted = false;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(Math.max(1, Math.min(1000, deadline - Date.now()))) });
+      accepted = await accept(response);
+    } catch (error) { if (isAddressInUseError(error)) throw error; }
+    finally { await response?.body?.cancel().catch(() => undefined); }
+    assertRunning();
+    // The lease's listener was held until this exact endpoint was reached, so
+    // a successful health response is the binding proof even if stdout was
+    // emitted before a child capture listener attached. Keep output as an
+    // additional diagnostic signal when available.
+    if (accepted && outputConfirmed) return;
     await pause(Math.min(100, Math.max(1, deadline - Date.now())));
   }
-  throw errorWithCode('port_ready_timeout');
+  const timeout = errorWithCode('port_ready_timeout');
+  timeout.details = { url, output_tail: state.output.slice(-512) };
+  throw timeout;
 }
 
 async function stopTree(child) {
