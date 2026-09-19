@@ -1211,3 +1211,16 @@ lineage. The additive test is
 `tests/p10/remote-workspace-auth.test.mjs`; maintenance Evidence is append-only
 under `docs/evidence/post-p10-development-reliability-20260905/` and does not
 promote a Catalog row.
+
+### 21.5 P1/P2 boundary risk convergence
+
+Owner: Platform/Testing, Files, Context, Assist, Terminal and Frontend. Phase:
+post-P10 D-040 maintenance over 6ae200a7cecef063b67d15fb8e7734ee80f4940f.
+GS-001 through GS-007 review covers upstream-first development baselines,
+shared port startup leases, strict Terminal approval bindings and independent
+API/Web boundary regressions. Gate and owner/path inventory changes are
+committed separately from business corrections. Existing package commands,
+parallel verification groups, schema v9 and released Catalog statuses remain
+fixed. Maintenance verification retains literal failed and successful command
+outputs and a fresh isolated rollback; it does not replace P1-P10 Evidence.
+Acceptance follows the boundary maintenance inventory in docs/testing.md.

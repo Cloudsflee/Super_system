@@ -1,56 +1,22 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import net from 'node:net';
 import { chromium } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { executableInvocation, spawnGateProcess, terminateProcessTree } from './lib/gate-process.mjs';
+import { nodeInvocation } from './lib/gate-process.mjs';
+import { startProbeWithPorts } from './lib/port-lease.mjs';
 
 const root = process.cwd();
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-e2e-'));
-const apiLease = await reservePort();
-const webLease = await reservePort();
-const apiPort = apiLease.port;
-const webPort = webLease.port;
+let startup, apiPort, webPort, base, browser, context, page;
 const vaultKey = 'p10-clean-e2e-vault-key';
 const reportDir = path.join(root, '.ai-workspace', 'e2e-clean-p10');
 fs.rmSync(reportDir, { recursive: true, force: true });
 fs.mkdirSync(reportDir, { recursive: true });
-const children = [];
 const requests = [];
 const browserErrors = [];
 const httpErrors = [];
 const accessibilityReceipts = [];
 const drawerReceipts = [];
 const onboardingLayoutReceipts = [];
-
-const api = start(process.execPath, ['apps/api/server.mjs'], {
-  AIWS_CLEAN_PORT: String(apiPort), AIWS_CLEAN_HOME: home,
-  AIWS_CLEAN_CORS_ORIGINS: `http://127.0.0.1:${webPort}`,
-  AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_BUILD: 'v3-clean-p10-e2e',
-  AIWS_CLEAN_MCP_PEPPER: 'p10-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p10-clean-e2e-gateway-secret',
-  AIWS_CLEAN_PROVIDER_MODE: 'deterministic', AIWS_RUNNER_POLL_INTERVAL_MS: '10'
-});
-children.push(api);
-await waitFor(`http://127.0.0.1:${apiPort}/readyz`);
-apiLease.release();
-
-const viteEntry = path.join(root, 'apps', 'web', 'node_modules', 'vite', 'bin', 'vite.js');
-const web = start(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port', String(webPort), '--strictPort'], {
-  AIWS_WEB_API_TARGET: `http://127.0.0.1:${apiPort}`, VITE_AIWS_E2E: '1'
-}, path.join(root, 'apps', 'web'));
-children.push(web);
-const base = `http://127.0.0.1:${webPort}`;
-await waitFor(`${base}/`);
-webLease.release();
-
-const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
-const page = await context.newPage();
-page.on('request', (request) => requests.push(request.url()));
-page.on('response', (response) => { if (response.status() >= 400) httpErrors.push(`${response.status()}:${response.url()}`); });
-page.on('pageerror', (error) => browserErrors.push(`pageerror:${error.message}`));
-page.on('console', (message) => { if (message.type() === 'error') browserErrors.push(`console:${message.text()}`); });
 
 async function pageApi(pathname, options = {}) {
   return page.evaluate(async ({ pathname, options }) => {
@@ -66,6 +32,35 @@ async function pageApi(pathname, options = {}) {
 }
 
 try {
+  startup = await startProbeWithPorts({ prefix: 'aiws-p10-e2e', start: async scope => {
+    const [apiLease, webLease] = scope.leases;
+    const apiPort = apiLease.port, webPort = webLease.port;
+    const apiBase = `http://127.0.0.1:${apiPort}`, base = `http://127.0.0.1:${webPort}`;
+    await apiLease.handoff();
+    const api = scope.spawn(nodeInvocation('apps/api/server.mjs'), { cwd: root, workspaceRoot: root, env: {
+      AIWS_CLEAN_PORT: String(apiPort), AIWS_CLEAN_HOME: scope.directory, AIWS_CLEAN_CORS_ORIGINS: base,
+      AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_BUILD: 'v3-clean-p10-e2e',
+      AIWS_CLEAN_MCP_PEPPER: 'p10-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p10-clean-e2e-gateway-secret',
+      AIWS_CLEAN_PROVIDER_MODE: 'deterministic', AIWS_RUNNER_POLL_INTERVAL_MS: '10'
+    } });
+    await scope.ready(0, `${apiBase}/readyz`, { child: api, readyOutput: new RegExp(`V3-Clean listening on http://127[.]0[.]0[.]1:${apiPort}\\b`), accept: async response => response.ok && (await response.json()).data?.user_version === 9 });
+    await webLease.handoff();
+    const viteEntry = path.join(root, 'apps/web/node_modules/vite/bin/vite.js');
+    const web = scope.spawn(nodeInvocation(viteEntry, ['--host', '127.0.0.1', '--port', String(webPort), '--strictPort']), {
+      cwd: path.join(root, 'apps/web'), workspaceRoot: root, env: { AIWS_WEB_API_TARGET: apiBase, VITE_AIWS_E2E: '1' }
+    });
+    await scope.ready(1, `${base}/`, { child: web, readyOutput: new RegExp(`http://127[.]0[.]0[.]1:${webPort}/`) });
+    const browser = scope.browser(await chromium.launch({ headless: true }));
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    await page.goto(`${base}/readyz`, { waitUntil: 'domcontentloaded' });
+    return { apiPort, webPort, base, browser, context, page };
+  } });
+  ({ apiPort, webPort, base, browser, context, page } = startup);
+  page.on('request', request => requests.push(request.url()));
+  page.on('response', response => { if (response.status() >= 400) httpErrors.push(`${response.status()}:${response.url()}`); });
+  page.on('pageerror', error => browserErrors.push(`pageerror:${error.message}`));
+  page.on('console', message => { if (message.type() === 'error') browserErrors.push(`console:${message.text()}`); });
   await page.goto(`${base}/#/setup`, { waitUntil: 'domcontentloaded' });
   try { await page.getByRole('heading', { name: '创建本地所有者', exact: true }).waitFor({ timeout: 8_000 }); }
   catch (error) { process.stderr.write(`Clean Web bootstrap body:\n${await page.locator('body').innerText()}\nURL=${page.url()}\nRequests=${JSON.stringify(requests)}\n`); throw error; }
@@ -529,11 +524,7 @@ try {
   }, null, 2)}\n`);
   process.stdout.write(`P10 Clean E2E passed: 19 business groups and complete workflow routes across 3 viewports; overlaps=0; /api/v1 requests=0\n`);
 } finally {
-  apiLease.release();
-  webLease.release();
-  await browser.close();
-  for (const child of children.reverse()) await stop(child);
-  removeTree(home);
+  await startup?.scope.dispose();
 }
 
 async function workflowWorkbenchJourney(browser, storageState, projectId, providerId) {
@@ -662,45 +653,6 @@ async function workflowWorkbenchJourney(browser, storageState, projectId, provid
   } finally { await workContext.close(); }
 }
 
-function start(command, args, env = {}, cwd = root) {
-  return spawnGateProcess(executableInvocation(command, args, command === process.execPath ? 'node' : 'executable'), {
-    cwd,
-    workspaceRoot: root,
-    env,
-    stdoutPrefix: `[${path.basename(command)}] `,
-    stderrPrefix: `[${path.basename(command)}] `
-  });
-}
-
-async function stop(child) {
-  if (!child || child.exitCode != null) return;
-  await terminateProcessTree(child);
-}
-
-async function waitFor(url, timeout = 30_000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    try { const response = await fetch(url); if (response.ok || response.status === 404) return; } catch { /* process is still starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error(`startup_timeout:${url}`);
-}
-
-async function reservePort() {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const server = net.createServer();
-    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    const port = server.address().port;
-    await new Promise((resolve) => server.close(resolve));
-    const lockPath = path.join(os.tmpdir(), `aiws-p10-port-${port}.lock`);
-    try {
-      const descriptor = fs.openSync(lockPath, 'wx');
-      return { port, release: () => { try { fs.closeSync(descriptor); } catch {} try { fs.unlinkSync(lockPath); } catch {} } };
-    } catch { /* another parallel probe reserved this port */ }
-  }
-  throw new Error('e2e_port_reservation_failed');
-}
-
 function assert(condition, message) { if (!condition) throw new Error(`e2e_assertion_failed:${message}`); }
 
 async function auditAccessibility(targetPage, label) {
@@ -789,12 +741,4 @@ async function inspectLayout(targetPage) {
     const overflowing_elements = [...document.querySelectorAll('body *')].map((element) => ({ element, rect: element.getBoundingClientRect() })).filter(({ rect }) => rect.width > 0 && (rect.right > innerWidth + 1 || rect.left < -1)).slice(0, 20).map(({ element, rect }) => ({ tag: element.tagName, class_name: element.className?.baseVal || element.className || '', left: Math.round(rect.left), right: Math.round(rect.right), width: Math.round(rect.width) }));
     return { horizontal_overflow: root.scrollWidth > root.clientWidth + 1, scroll_width: root.scrollWidth, client_width: root.clientWidth, overlaps: overlaps.slice(0, 20), overflowing_elements };
   });
-}
-
-function removeTree(target) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try { fs.rmSync(target, { recursive: true, force: true }); return; }
-    catch { /* SQLite handles may release just after a child exits on Windows. */ }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
-  }
 }

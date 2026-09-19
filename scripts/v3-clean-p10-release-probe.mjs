@@ -1,37 +1,44 @@
 import fs from 'node:fs';
-import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { chromium } from '@playwright/test';
 import { openCleanDatabase } from '../apps/api/src/clean/database.mjs';
+import { startProbeWithPorts } from './lib/port-lease.mjs';
+import { nodeInvocation } from './lib/gate-process.mjs';
 
 const root = process.cwd();
 const baselineCommit = 'bb55746b7e08cf7ee764d06a8fa23da91ad48e2f';
 const reportRoot = path.join(root, '.ai-workspace', 'p10-release-probe');
-const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-release-'));
-const apiHome = path.join(temporaryRoot, 'runtime');
-const activePointer = path.join(temporaryRoot, 'active.pointer');
-const apiLease = await reservePort();
-const originLease = await reservePort();
-const apiPort = apiLease.port;
-const originPort = originLease.port;
-const dynamicOrigin = `http://127.0.0.1:${originPort}`;
-const base = `http://127.0.0.1:${apiPort}`;
-let child = null;
+let temporaryRoot, apiHome, activePointer, apiPort, dynamicOrigin, base, startup;
 let browser = null;
 
 try {
   fs.rmSync(reportRoot, { recursive: true, force: true });
   fs.mkdirSync(reportRoot, { recursive: true });
   const bundle = createReleaseBundle();
+  startup = await startProbeWithPorts({ prefix: 'aiws-p10-release', start: async scope => {
+    const [apiLease, originLease] = scope.leases;
+    temporaryRoot = scope.directory;
+    apiHome = path.join(temporaryRoot, 'runtime');
+    activePointer = path.join(temporaryRoot, 'active.pointer');
+    apiPort = apiLease.port;
+    dynamicOrigin = `http://127.0.0.1:${originLease.port}`;
+    base = `http://127.0.0.1:${apiPort}`;
+    await apiLease.handoff();
+    const child = startApi(scope);
+    await scope.ready(0, `${base}/readyz`, { child, timeoutMs: 60000, readyOutput: new RegExp(`V3-Clean listening on http://127[.]0[.]0[.]1:${apiPort}\\b`), accept: async response => response.ok && (await response.json()).data?.user_version === 9 });
+    // This second port is an exact CORS origin fixture, never a web server.
+    // Retain its listener and lock through the entire probe.
+    browser = scope.browser(await chromium.launch({ headless: true }));
+    const page = await browser.newPage();
+    await page.goto(`${base}/readyz`, { waitUntil: 'domcontentloaded' });
+    await page.close();
+    return {};
+  } });
+  base = `http://127.0.0.1:${apiPort}`;
   const snapshots = createSnapshots(bundle);
-  child = startApi();
-  await waitFor(`${base}/readyz`);
-  apiLease.release();
-  originLease.release();
   const httpReceipt = await verifyHttp();
   const browserReceipt = await verifyBrowser();
   const image = process.argv.includes('--skip-docker') ? { status: 'skipped', provisional: true } : await dockerRelease();
@@ -74,11 +81,7 @@ try {
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
   process.exitCode = 1;
 } finally {
-  apiLease.release();
-  originLease.release();
-  if (browser) await browser.close().catch(() => undefined);
-  if (child) await stop(child);
-  removeTree(temporaryRoot);
+  await startup?.scope.dispose();
 }
 
 function createReleaseBundle() {
@@ -138,8 +141,8 @@ function createSnapshots(bundle) {
   return { baseline, modified, initialPointer: initial, modifiedPointer: next };
 }
 
-function startApi() {
-  return spawn(process.execPath, ['apps/api/server.mjs'], {
+function startApi(scope) {
+  return scope.spawn(nodeInvocation('apps/api/server.mjs'), {
     cwd: root,
     env: {
       ...process.env,
@@ -182,7 +185,6 @@ async function verifyHttp() {
 }
 
 async function verifyBrowser() {
-  browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   const errors = [];
@@ -465,54 +467,9 @@ function treeHash(directory) { return sha256(JSON.stringify([...files(directory)
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 function sha256File(file) { return sha256(fs.readFileSync(file)); }
 function git(...args) { const result = run('git', args); if (result.status !== 0) throw new Error(`git_${args[0]}_failed`); return result.stdout.trim(); }
-function run(command, args, timeout = 30_000) { return spawnSync(command, args, { cwd: root, encoding: 'utf8', timeout, windowsHide: true, maxBuffer: 128 * 1024 * 1024 }); }
+function run(command, args, timeout = 30_000) { return spawnSync(command, args, { cwd: root, encoding: 'utf8', timeout, windowsHide: true, shell: false, maxBuffer: 128 * 1024 * 1024 }); }
 
 function tarExecutable() {
   const systemTar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
   return process.platform === 'win32' && fs.existsSync(systemTar) ? systemTar : 'tar';
-}
-
-async function reservePort() {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const server = net.createServer();
-    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-    const port = server.address().port;
-    await new Promise((resolve) => server.close(resolve));
-    const lockPath = path.join(os.tmpdir(), `aiws-p10-port-${port}.lock`);
-    try {
-      const descriptor = fs.openSync(lockPath, 'wx');
-      return { port, release: () => { try { fs.closeSync(descriptor); } catch {} try { fs.unlinkSync(lockPath); } catch {} } };
-    } catch { /* another parallel probe reserved this port */ }
-  }
-  throw new Error('p10_release_port_reservation_failed');
-}
-
-async function waitFor(url, timeout = 60_000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    try { const response = await fetch(url); if (response.ok) return; } catch { /* wait for server */ }
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw new Error('release_server_timeout');
-}
-
-async function stop(processHandle) {
-  if (processHandle.exitCode != null) return;
-  processHandle.kill();
-  await new Promise((resolve) => {
-    const timer = setTimeout(resolve, 1500);
-    processHandle.once('exit', () => { clearTimeout(timer); resolve(); });
-  });
-  if (processHandle.exitCode == null && process.platform === 'win32') {
-    await new Promise((resolve) => {
-      const killer = spawn('taskkill', ['/PID', String(processHandle.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-      killer.once('exit', resolve);
-    });
-  }
-}
-
-function removeTree(target) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    try { fs.rmSync(target, { recursive: true, force: true }); return; } catch { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); }
-  }
 }

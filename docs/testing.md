@@ -121,6 +121,14 @@ pnpm verify:dev -- --all
 pnpm verify:dev -- --explain
 ```
 
+An explicit `--base` takes precedence. Otherwise the base is the merge-base of
+HEAD with the branch upstream, then `origin/main`, then `main`, with `HEAD^`
+as the final fallback when those refs are absent. A configured upstream that
+is missing, or an existing ref whose merge-base cannot be verified, fails as
+`git_base_unverifiable`. Results retain `base`, `base_source`, `head`, and
+separate committed, worktree, staged and untracked path lists. Classification
+is still mandatory for their union, including newly added tests.
+
 Every development run includes `pnpm check`, `pnpm scan:clean`, and
 `git diff --check`. Catalog reverse mapping selects the remaining local tests;
 new or unmapped paths fail as `unclassified_changed_path`. Governance changes
@@ -256,11 +264,24 @@ links/reparse/special paths and is bounded to 10,000 files and 100 MiB. Assist
 session scope, lifecycle, reference revision/hash bindings, and interaction
 project/turn/operation links are rechecked inside their write transactions;
 P10 lifecycle and review handlers use the same session predicate. Terminal
-open requests bind the complete workspace/runtime/cwd/size/session shape when
-the approval carries the strict shape. The Web preparation journey persists
+open requests require and bind the complete workspace/runtime/cwd/size/session
+shape. The Web preparation journey persists
 connection/line/workspace selections, matches lines by source fingerprint,
-waits up to 120 one-second polls, and consumes Files pages at 500 rows up to
-10,000 entries while removing stale selections.
+waits up to 120 one-second polls (with an injectable sleep in component tests),
+and consumes Files pages at 500 rows up to 10,000 entries while removing stale
+selections. Terminal open is a strict closed-shape request: workspace, runtime,
+cwd, dimensions, and the nullable Assist session field are all required and
+must match the approved request exactly; no legacy defaults are accepted.
+E2E and release startup share `scripts/lib/port-lease.mjs`. A lock file and an
+OS listener probe are held until readiness, and only pre-side-effect address
+failures retry with bounded backoff after complete process/temporary-state
+cleanup. `tests/p10/port-lease.test.mjs` is owned by Platform/Testing under
+post-P10 D-040, registered in the Clean Catalog, compatibility aggregate and the
+P1 gate-sync inventory. It uses real child listeners for collisions, readiness,
+bounded retries and process/directory/lock disposal; the formal gate keeps its
+existing parallel E2E/release ordering. `tests/p10/development-reliability.test.mjs`
+owns real-Git baseline and unclassified-path regressions. The existing P4/P5
+and Web suites own the Files/Context/Assist/Terminal and preparation boundaries.
 
 The synchronized focused regression inventory is:
 

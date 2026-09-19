@@ -475,3 +475,98 @@ test('changed Git paths preserve Chinese names and include both sides of a renam
     assert.throws(() => repositoryState(directory, '--output=bad'), /./);
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('development baseline prefers upstream and records staged, worktree, and untracked paths', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-upstream-'));
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-remote-'));
+  const git = (cwd, ...args) => {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  try {
+    git(directory, 'init', '-b', 'main');
+    git(directory, 'config', 'user.name', 'Fixture');
+    git(directory, 'config', 'user.email', 'fixture@example.invalid');
+    fs.writeFileSync(path.join(directory, 'baseline.txt'), 'base');
+    git(directory, 'add', '.');
+    git(directory, '-c', 'core.hooksPath=', 'commit', '-m', 'baseline');
+    git(remote, 'init', '--bare');
+    git(directory, 'remote', 'add', 'origin', remote);
+    git(directory, 'push', '-u', 'origin', 'main');
+    git(directory, 'switch', '-c', 'feature');
+    fs.writeFileSync(path.join(directory, 'committed.txt'), 'committed');
+    git(directory, 'add', '.');
+    git(directory, '-c', 'core.hooksPath=', 'commit', '-m', 'feature');
+    const upstreamCommit = git(directory, 'rev-parse', 'HEAD');
+    git(directory, 'update-ref', 'refs/remotes/origin/feature', upstreamCommit);
+    git(directory, 'branch', '--set-upstream-to=origin/feature', 'feature');
+    fs.writeFileSync(path.join(directory, 'worktree.txt'), 'baseline-worktree');
+    git(directory, 'add', 'worktree.txt');
+    git(directory, '-c', 'core.hooksPath=', 'commit', '-m', 'tracked worktree');
+    fs.writeFileSync(path.join(directory, 'staged.txt'), 'staged');
+    git(directory, 'add', 'staged.txt');
+    fs.writeFileSync(path.join(directory, 'worktree.txt'), 'worktree');
+    fs.writeFileSync(path.join(directory, 'untracked.txt'), 'untracked');
+    const state = repositoryState(directory);
+    assert.equal(state.base_source, 'merge-base HEAD @{upstream}');
+    assert.equal(state.base, upstreamCommit);
+    assert.deepEqual(state.base_paths, ['worktree.txt']);
+    assert.deepEqual(state.staged_paths, ['staged.txt']);
+    assert.deepEqual(state.worktree_paths, ['worktree.txt']);
+    assert.deepEqual(state.untracked_paths, ['untracked.txt']);
+    assert.ok(state.changed_paths.includes('staged.txt'));
+    const explicit = repositoryState(directory, 'main');
+    assert.equal(explicit.base_source, 'requested:main');
+    assert.ok(explicit.base_paths.includes('committed.txt'));
+    assert.deepEqual(selectDevCommands({ changedPaths: state.changed_paths, catalog: { features: [] } }).unclassified_paths, state.changed_paths);
+    git(directory, 'update-ref', '-d', 'refs/remotes/origin/feature');
+    assert.throws(() => repositoryState(directory), error => error.code === 'git_base_unverifiable');
+    assert.equal(repositoryState(directory, 'main').base, explicit.base);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+    fs.rmSync(remote, { recursive: true, force: true });
+  }
+});
+
+test('development baseline falls back deterministically and fails with git_base_unverifiable', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-fallback-'));
+  const git = (...args) => {
+    const result = spawnSync('git', args, { cwd: directory, encoding: 'utf8', windowsHide: true });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  try {
+    git('init', '-b', 'main');
+    git('config', 'user.name', 'Fixture');
+    git('config', 'user.email', 'fixture@example.invalid');
+    fs.writeFileSync(path.join(directory, 'baseline.txt'), 'base');
+    git('add', '.');
+    git('-c', 'core.hooksPath=', 'commit', '-m', 'baseline');
+    assert.equal(repositoryState(directory).base_source, 'merge-base HEAD main');
+    git('switch', '-c', 'orphan');
+    assert.equal(repositoryState(directory).base_source, 'merge-base HEAD main');
+    fs.writeFileSync(path.join(directory, 'second.txt'), 'second');
+    git('add', '.');
+    git('-c', 'core.hooksPath=', 'commit', '-m', 'second');
+    const second = git('rev-parse', 'HEAD');
+    git('update-ref', 'refs/remotes/origin/main', second);
+    assert.equal(repositoryState(directory).base_source, 'merge-base HEAD origin/main');
+    assert.equal(repositoryState(directory).base, second);
+    git('update-ref', '-d', 'refs/remotes/origin/main');
+    assert.equal(repositoryState(directory).base_source, 'merge-base HEAD main');
+    git('branch', '-D', 'main');
+    assert.equal(repositoryState(directory).base_source, 'HEAD^');
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-empty-'));
+    try {
+      const init = spawnSync('git', ['init', '-b', 'solo'], { cwd: empty, encoding: 'utf8', windowsHide: true });
+      assert.equal(init.status, 0, init.stderr);
+      spawnSync('git', ['config', 'user.name', 'Fixture'], { cwd: empty, encoding: 'utf8', windowsHide: true });
+      spawnSync('git', ['config', 'user.email', 'fixture@example.invalid'], { cwd: empty, encoding: 'utf8', windowsHide: true });
+      fs.writeFileSync(path.join(empty, 'only.txt'), 'only');
+      spawnSync('git', ['add', '.'], { cwd: empty, encoding: 'utf8', windowsHide: true });
+      spawnSync('git', ['-c', 'core.hooksPath=', 'commit', '-m', 'only'], { cwd: empty, encoding: 'utf8', windowsHide: true });
+      assert.throws(() => repositoryState(empty), (error) => error.code === 'git_base_unverifiable');
+    } finally { fs.rmSync(empty, { recursive: true, force: true }); }
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
