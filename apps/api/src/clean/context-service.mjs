@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { isUtf8 } from 'node:buffer';
 import MiniSearch from 'minisearch';
 import { canonicalJson, opaqueId, sha256Hex, utcNow } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
@@ -72,7 +73,7 @@ export class CleanContextService {
       );
       fileRef = checked.file;
       const bytes = checked.bytes;
-      if (bytes.includes(0)) throw new PlatformError('file_not_previewable', 'binary files cannot be selected as context', {}, 422);
+      if (bytes.includes(0) || !isUtf8(bytes)) throw new PlatformError('file_not_previewable', 'binary files cannot be selected as context', {}, 422);
       content = bytes.toString('utf8');
     }
     if (content.length > 2_000_000) throw new PlatformError('invalid_input', 'context source is too large', {}, 422);
@@ -90,8 +91,9 @@ export class CleanContextService {
     return this.db.withTransaction((tx) => {
       const prior = this.operations.getIdempotencyInTransaction(tx, { actorId, commandId: 'context.source.create', idempotencyKey: key, requestHash, now });
       if (prior?.response_json) return { ...JSON.parse(prior.response_json), replayed: true };
+      if (fileRef) this.files.readIndexedFile(id, fileRef.id, fileRef.revision, fileRef.content_sha256, principal);
       const existing = tx.get('SELECT * FROM context_sources WHERE project_id=? AND canonical_uri=?', [id, canonicalUri]);
-      if (existing && existing.source_hash === contentHash && existing.status === 'active') {
+      if (existing && existing.source_hash === contentHash && existing.source_revision === sourceRevision && existing.status === 'active') {
         const response = { source: sourceView(existing), operation: null, replayed: true };
         this.operations.saveIdempotencyInTransaction(tx, { actorId, commandId: 'context.source.create', idempotencyKey: key, requestHash, response, responseStatus: 200, now });
         return response;

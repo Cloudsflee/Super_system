@@ -44,44 +44,8 @@ export class CleanTerminalService {
   get(id, principal) { const row = this.row(id); assertProject(this.authorization, principal, 'read', row.project_id, { resource: 'terminal' }); return this.view(row); }
 
   async open(input = {}, principal) {
-    requirePrincipal(principal); const projectId = String(input.project_id || ''); assertProject(this.authorization, principal, 'run', projectId, { resource: 'terminal' });
-    const approval = this.db.get('SELECT * FROM runtime_approvals WHERE id=?', [String(input.approval_id || '')]);
-    if (!approval || approval.status !== 'approved' || approval.action !== 'terminal.open') throw new PlatformError('approval_required', 'an approved terminal.open request is required', {}, 403);
-    if (String(approval.project_id) !== projectId) throw new PlatformError('scope_denied', 'terminal approval is outside the project', {}, 403);
-    if (Date.parse(approval.expires_at) <= Date.parse(time(this.clock))) throw new PlatformError('approval_expired', 'terminal approval expired', {}, 409);
-    const approvedRequest = JSON.parse(approval.request_json);
-    const legacyApproval = Object.keys(approvedRequest).every((field) => ['workspace_id', 'assist_session_id', 'command'].includes(field));
-    const strictApproval = !legacyApproval;
-    for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
-      // P5 persisted minimal approval fixtures predate the explicit terminal
-      // shape. They remain readable with bounded defaults; any approval that
-      // carries the new shape is strict and must be replayed exactly.
-      if (field === 'workspace_id') {
-        if (!Object.hasOwn(input, field) || !input[field]) throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
-      } else if (strictApproval && !Object.hasOwn(input, field)) {
-        throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
-      }
-    }
-    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [String(input.workspace_id || '')]);
-    if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
-    if (String(workspace.project_id) !== projectId) throw new PlatformError('scope_denied', 'repository workspace is outside the project', {}, 403);
-    const requestedRuntime = String(input.runtime || this.capabilities().default_runtime); const capability = this.capabilities()[requestedRuntime];
-    if (!capability?.available) throw new PlatformError('terminal_runtime_unavailable', 'requested terminal runtime is unavailable', { runtime: requestedRuntime }, 422);
-    const cwdRelative = safeCwd(input.cwd || '');
-    const cols = boundedInt(input.cols, 20, 400, 120); const rows = boundedInt(input.rows, 5, 200, 32);
-    const assistSessionId = input.assist_session_id ? String(input.assist_session_id) : null;
-    if ((approvedRequest.assist_session_id || null) !== assistSessionId) throw new PlatformError('approval_request_mismatch', 'terminal Assist association differs from approval', {}, 409);
-    const assistSession = assistSessionId ? this.db.get('SELECT * FROM assist_sessions WHERE id=?', [assistSessionId]) : null;
-    if (assistSessionId) {
-      assertProject(this.authorization, principal, 'run', projectId, { resource: 'assist' });
-      if (!assistSession || String(assistSession.project_id) !== projectId) throw new PlatformError(strictApproval ? 'scope_denied' : 'assist_session_mismatch', 'terminal Assist session is outside the project', {}, 403);
-      if (assistSession.deleted_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'deleted' }, 409);
-      if (assistSession.archived_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'archived' }, 409);
-    }
-    const approvedFields = { workspace_id: workspace.id, runtime: requestedRuntime, cwd: cwdRelative, cols, rows };
-    for (const [field, value] of Object.entries(approvedFields)) {
-      if (Object.hasOwn(approvedRequest, field) && (field === 'cwd' ? safeCwd(approvedRequest[field]) : approvedRequest[field]) !== value) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field }, 409);
-    }
+    requirePrincipal(principal);
+    const { projectId, approval, workspace, requestedRuntime, cwdRelative, cols, rows, assistSessionId } = this.validateOpen(input, principal);
     const expected = requireRevision(input.expected_revision, { allowZero: true });
     const key = requireIdempotency(input.idempotency_key); const now = time(this.clock); const id = opaqueId('terminal');
     const hash = requestHash({ project_id: projectId, workspace_id: workspace.id, approval_id: approval.id, expected_revision: expected, assist_session_id: assistSessionId, runtime: requestedRuntime, cwd: cwdRelative, cols, rows });
@@ -92,7 +56,7 @@ export class CleanTerminalService {
       assertRevision(workspace, expected);
       if (Number(approval.requested_revision) > 0 && Number(approval.requested_revision) !== expected) throw new PlatformError('revision_conflict', 'terminal approval workspace revision is stale', {}, 409);
     }
-    const cwd = this.workspaceDirectory(workspace, cwdRelative); fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); rejectReparse(cwd);
+    const cwd = this.workspaceDirectory(workspace, cwdRelative); rejectReparse(cwd); fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); rejectReparse(cwd);
     const lease = await this.acquireLease(workspace, principal);
     let child;
     try { child = this.spawn(requestedRuntime, cwd, cols, rows); }
@@ -101,6 +65,9 @@ export class CleanTerminalService {
       const result = await this.db.withTransaction((tx) => {
         const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId: 'terminal.open', idempotencyKey: key, requestHash: hash, now });
         if (prior) return prior;
+        this.validateOpen(input, principal, tx);
+        const leasedWorkspace = tx.get('SELECT * FROM repository_workspaces WHERE id=?', [workspace.id]);
+        if (lease.result?.workspace) assertRevision(leasedWorkspace, Number(lease.result.workspace.revision));
         if (tx.get('SELECT id FROM terminal_sessions WHERE approval_id=?', [approval.id])) throw new PlatformError('approval_consumed', 'terminal approval was already consumed', {}, 409);
         const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId: 'terminal.open', resourceType: 'terminal_session', resourceId: id, projectId, requestHash: hash, status: 'running', now });
         tx.run(`INSERT INTO terminal_sessions(id,project_id,workspace_id,approval_id,assist_session_id,operation_id,runtime,cwd_relative,status,cols,rows,last_client_sequence,output_bytes,output_preview,output_sha256,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id)
@@ -116,6 +83,36 @@ export class CleanTerminalService {
       this.attach(id, child, principal);
       return result;
     } catch (error) { try { child.kill(); } catch {} await this.releaseLease(workspace, principal).catch(() => undefined); throw error; }
+  }
+
+  validateOpen(input, principal, db = this.db) {
+    for (const field of ['project_id', 'approval_id']) if (typeof input[field] !== 'string' || !input[field] || input[field].length > 256) throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
+    validateTerminalShape(input);
+    const projectId = input.project_id;
+    assertProject(this.authorization, principal, 'run', projectId, { resource: 'terminal' });
+    const approval = db.get('SELECT * FROM runtime_approvals WHERE id=?', [input.approval_id]);
+    if (!approval || approval.status !== 'approved' || approval.action !== 'terminal.open') throw new PlatformError('approval_required', 'an approved terminal.open request is required', {}, 403);
+    if (approval.project_id !== projectId) throw new PlatformError('scope_denied', 'terminal approval is outside the project', {}, 403);
+    if (!Number.isFinite(Date.parse(approval.expires_at)) || Date.parse(approval.expires_at) <= Date.parse(time(this.clock))) throw new PlatformError('approval_expired', 'terminal approval expired', {}, 409);
+    let request;
+    try { request = JSON.parse(approval.request_json); } catch { throw new PlatformError('schema_invalid', 'terminal approval is malformed', {}, 422); }
+    validateTerminalShape(request);
+    const workspace = db.get('SELECT * FROM repository_workspaces WHERE id=?', [input.workspace_id]);
+    if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
+    if (workspace.project_id !== projectId) throw new PlatformError('scope_denied', 'repository workspace is outside the project', {}, 403);
+    const assistSessionId = input.assist_session_id;
+    if (assistSessionId !== null) {
+      assertProject(this.authorization, principal, 'run', projectId, { resource: 'assist' });
+      const session = db.get('SELECT * FROM assist_sessions WHERE id=?', [assistSessionId]);
+      if (!session || session.project_id !== projectId) throw new PlatformError('scope_denied', 'terminal Assist session is outside the project', {}, 403);
+      if (session.deleted_at || session.archived_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: session.deleted_at ? 'deleted' : 'archived' }, 409);
+    }
+    for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
+      if (request[field] !== input[field]) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field }, 409);
+    }
+    const requestedRuntime = input.runtime;
+    if (!this.capabilities()[requestedRuntime]?.available) throw new PlatformError('terminal_runtime_unavailable', 'requested terminal runtime is unavailable', { runtime: requestedRuntime }, 422);
+    return { projectId, approval, workspace, requestedRuntime, cwdRelative: safeCwd(input.cwd), cols: input.cols, rows: input.rows, assistSessionId };
   }
 
   async input(id, frame = {}, principal) {
@@ -200,6 +197,18 @@ export class CleanTerminalService {
   close() { this.closing = true; for (const child of this.processes.values()) { try { child.kill(); } catch {} } this.processes.clear(); this.listeners.clear(); this.outputBuffers.clear(); }
 }
 
+function validateTerminalShape(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new PlatformError('schema_invalid', 'terminal shape is invalid', {}, 422);
+  const valid = {
+    workspace_id: typeof value.workspace_id === 'string' && value.workspace_id.length > 0 && value.workspace_id.length <= 256,
+    runtime: ['windows_native', 'linux_native'].includes(value.runtime),
+    cwd: typeof value.cwd === 'string' && value.cwd.length <= 1024,
+    cols: Number.isInteger(value.cols) && value.cols >= 20 && value.cols <= 400,
+    rows: Number.isInteger(value.rows) && value.rows >= 5 && value.rows <= 200,
+    assist_session_id: value.assist_session_id === null || typeof value.assist_session_id === 'string' && value.assist_session_id.length > 0 && value.assist_session_id.length <= 256
+  };
+  for (const [field, accepted] of Object.entries(valid)) if (!Object.hasOwn(value, field) || !accepted) throw new PlatformError('schema_invalid', `terminal shape requires ${field}`, { field }, 422);
+}
 function boundedInt(value, minimum, maximum, fallback) { const number = value == null ? fallback : Number(value); if (!Number.isInteger(number) || number < minimum || number > maximum) throw new PlatformError('schema_invalid', 'terminal dimension is invalid', {}, 422); return number; }
 function safeCwd(value) { const text = String(value || '').replaceAll('\\', '/').replace(/^\.\//, ''); if (!text) return ''; if (text.startsWith('/') || /^[A-Za-z]:\//.test(text) || text.split('/').includes('..') || text.split('/').includes('.git') || text.includes(':')) throw new PlatformError('path_policy_denied', 'terminal cwd must be a managed relative path', {}, 422); return text; }
 function resolveWithin(root, relative) { const base = path.resolve(root); const clean = safeCwd(relative); const target = clean ? path.resolve(base, clean) : base; if (target !== base && !target.startsWith(`${base}${path.sep}`)) throw new PlatformError('path_policy_denied', 'path escapes the workspace', {}, 422); return target; }

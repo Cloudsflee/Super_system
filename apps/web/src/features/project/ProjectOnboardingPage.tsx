@@ -223,7 +223,7 @@ export function ProjectOnboardingPage({ projectId, refreshProjects, navigateProj
   const briefSaved = Boolean(brief?.current_revision && brief.current?.content_sha256);
   const briefDirty = !briefSaved || JSON.stringify(briefDraft) !== JSON.stringify(draftFromContent(brief?.current?.content));
   const briefAssistContext = { route: 'onboarding' as const, projectId: projectId || null,
-    resourceType: briefDirty ? undefined : 'brief', resourceId: briefDirty ? undefined : (brief?.id || brief?.brief_id || (brief?.current && projectId) || undefined),
+    resourceType: briefDirty ? undefined : 'brief', resourceId: briefDirty ? undefined : (brief?.id || brief?.brief_id || undefined),
     revision: brief?.current_revision || null, contentHash: brief?.current?.content_sha256 || null,
     label: briefDirty ? '未保存 Brief 草稿' : '当前 Brief' };
   useEffect(() => {

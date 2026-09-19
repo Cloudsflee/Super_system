@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { isUtf8 } from 'node:buffer';
 import { canonicalJson, opaqueId, sha256Hex } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
 import {
@@ -72,6 +73,7 @@ export class CleanFilesService {
     assertProject(this.authorization, principal, 'read', workspace.project_id, { resource: 'files' });
     const directory = this.workspaceDirectory(workspace);
     if (!fs.existsSync(directory)) return 0;
+    rejectSpecialPath(directory);
     const entries = [];
     let totalBytes = 0;
     let bounded = false;
@@ -121,7 +123,7 @@ export class CleanFilesService {
     };
     walk(directory);
     const now = time(this.clock); let count = 0;
-    this.db.withTransaction((tx) => {
+    await this.db.withTransaction((tx) => {
       const seen = new Set(entries.map((entry) => entry.relative));
       for (const entry of entries) {
         const hash = sha256Hex(entry.bytes); const current = tx.get('SELECT * FROM file_refs WHERE workspace_id=? AND relative_path=?', [workspace.id, entry.relative]);
@@ -528,7 +530,7 @@ function safeRelative(value) { const text = String(value || '').replaceAll('\\',
 function resolveWithin(root, relative) { const clean = safeRelative(relative); const base = path.resolve(root); const target = path.resolve(base, clean); if (target !== base && !target.startsWith(`${base}${path.sep}`)) throw new PlatformError('path_policy_denied', 'path escapes the workspace', {}, 422); return target; }
 function rejectSpecialPath(target) { const parts = target.split(path.sep); let current = parts[0] === '' ? path.sep : parts[0]; for (const part of parts.slice(1)) { current = path.join(current, part); if (!fs.existsSync(current)) break; const stat = fs.lstatSync(current); if (stat.isSymbolicLink() || stat.isDirectory() && part === '.git') throw new PlatformError('path_policy_denied', 'special workspace path is not addressable', {}, 422); } }
 function rejectCaseCollision(root, relative) { let current = path.resolve(root); for (const segment of safeRelative(relative).split('/')) { if (!fs.existsSync(current)) return; const entries = fs.readdirSync(current); const match = entries.find((entry) => entry.toLocaleLowerCase('en-US') === segment.toLocaleLowerCase('en-US')); if (match && match !== segment) throw new PlatformError('path_collision', 'workspace path collides by case', { path: relative }, 422); current = path.join(current, segment); } }
-function isText(bytes) { return !bytes.includes(0) && Buffer.from(bytes).toString('utf8').length === bytes.byteLength; }
+function isText(bytes) { return !bytes.includes(0) && isUtf8(bytes); }
 function containsRestricted(bytes) { if (!isText(bytes)) return false; const text = bytes.toString('utf8'); return SECRET_SENTINEL.test(text) || PROMPT_SENTINEL.test(text) || /(?:^|[\s(])(?:[A-Za-z]:\\|\/home\/|\/Users\/|\/root\/)/.test(text); }
 function forbiddenMime(type, bytes) { const actual = detectMagic(bytes); if (!actual || type === 'application/octet-stream' || type === actual) return false; if (actual === 'text/plain' && (type.startsWith('text/') || ['application/json', 'application/xml', 'image/svg+xml'].includes(type))) return false; if (actual === 'application/zip' && (type === 'application/zip' || type.startsWith('application/vnd.openxmlformats-officedocument'))) return false; return true; }
 function detectMagic(bytes) { if (bytes.subarray(0, 8).equals(Buffer.from('\x89PNG\r\n\x1a\n', 'binary'))) return 'image/png'; if (bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return 'image/jpeg'; if (bytes.subarray(0, 6).toString('ascii') === 'GIF87a' || bytes.subarray(0, 6).toString('ascii') === 'GIF89a') return 'image/gif'; if (bytes.subarray(0, 2).toString('ascii') === 'BM') return 'image/bmp'; if (bytes.subarray(0, 4).toString() === '%PDF') return 'application/pdf'; if (bytes.subarray(0, 2).toString() === 'PK') return 'application/zip'; return isText(bytes) ? 'text/plain' : 'application/octet-stream'; }

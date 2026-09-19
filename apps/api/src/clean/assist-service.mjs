@@ -102,6 +102,7 @@ export class CleanAssistService {
     const session = await this.db.withTransaction((tx) => {
       const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId: 'assist.session.create', idempotencyKey, requestHash: hash, now });
       if (prior) return prior;
+      this.validateScope(projectId, scope, scopeId, tx);
       const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId: 'assist.session.create', resourceType: 'assist_session', resourceId: sessionId, projectId, requestHash: hash, idempotencyKey: `internal-${opaqueId('key')}`, status: 'succeeded', now });
       const configId = opaqueId('assist_config');
       const snapshotPayload = canonicalPayload(snapshot);
@@ -734,11 +735,11 @@ export class CleanAssistService {
     const hash = requestHash({ kind, project_id: projectId, expected_revision: expected, operation_id: input.operation_id || null, assist_turn_id: input.assist_turn_id || null, action, request_sha256: request?.sha256 || null, prompt_summary: prompt, input_schema_sha256: schema?.sha256 || null, ttl_seconds: ttl });
     return this.db.withTransaction((tx) => {
       const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, now }); if (prior) return prior;
-      this.validateInteractionLinks(projectId, input, principal, tx);
-      const resourceType = kind === 'approval' ? 'runtime_approval' : 'runtime_user_input'; const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId, resourceType, resourceId: id, projectId, requestHash: hash, status: 'succeeded', now }); const ownerOperationId = input.operation_id || op.id;
+      const linkage = this.validateInteractionLinks(projectId, input, principal, tx);
+      const resourceType = kind === 'approval' ? 'runtime_approval' : 'runtime_user_input'; const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId, resourceType, resourceId: id, projectId, requestHash: hash, status: 'succeeded', now }); const ownerOperationId = linkage.operationId || op.id;
       if (kind === 'approval') tx.run('INSERT INTO runtime_approvals(id,project_id,operation_id,assist_turn_id,action,action_sha256,request_json,request_sha256,status,requested_revision,expires_at,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,?,?,?,?,?,\'pending\',?,?,?,?,?,?,?)', [id, projectId, ownerOperationId, input.assist_turn_id || null, action, sha256Hex(action), request.json, request.sha256, expected, expires, 1, now, now, principal.actorId, principal.actorId]);
       else tx.run('INSERT INTO runtime_user_inputs(id,project_id,operation_id,assist_turn_id,prompt_summary,input_schema_json,input_schema_sha256,status,requested_revision,expires_at,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,?,?,?,?,\'pending\',?,?,?,?,?,?,?)', [id, projectId, ownerOperationId, input.assist_turn_id || null, prompt, schema.json, schema.sha256, expected, expires, 1, now, now, principal.actorId, principal.actorId]);
-      appendAggregate(this.events, tx, { aggregateType: resourceType, aggregateId: id, revision: 1, operationId: op.id, actorId: principal.actorId, projectId, type: `${resourceType}.requested`, data: kind === 'approval' ? { approval_id: id, action } : { input_id: id }, payload: { id, project_id: projectId, status: 'pending', revision: 1 }, now }); const links = [[resourceType, id]]; if (input.operation_id) links.push(['operation', String(input.operation_id), 'parent']); if (input.assist_turn_id) links.push(['assist_turn', String(input.assist_turn_id), 'related']); this.operations.linkInTransaction(tx, op.id, links, now);
+      appendAggregate(this.events, tx, { aggregateType: resourceType, aggregateId: id, revision: 1, operationId: op.id, actorId: principal.actorId, projectId, type: `${resourceType}.requested`, data: kind === 'approval' ? { approval_id: id, action } : { input_id: id }, payload: { id, project_id: projectId, status: 'pending', revision: 1 }, now }); const links = [[resourceType, id]]; if (linkage.operationId) links.push(['operation', linkage.operationId, 'parent']); if (input.assist_turn_id) links.push(['assist_turn', String(input.assist_turn_id), 'related']); this.operations.linkInTransaction(tx, op.id, links, now);
       const response = kind === 'approval' ? { approval: approvalView(tx.get('SELECT * FROM runtime_approvals WHERE id=?', [id])), operation: this.operations.summary(op) } : { input: inputView(tx.get('SELECT * FROM runtime_user_inputs WHERE id=?', [id])), operation: this.operations.summary(op) }; saveResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, response, operationId: op.id, status: 201, now }); return response;
     });
   }
@@ -758,16 +759,24 @@ export class CleanAssistService {
       if (!operation || String(operation.project_id || '') !== project) throw new PlatformError('scope_denied', 'Operation is outside the project', {}, 403);
       if (turn && String(operation.id) !== String(turn.operation_id)) throw new PlatformError('scope_denied', 'Assist turn and operation do not match', {}, 403);
     }
-    const requestHasTerminalShape = input.request && typeof input.request === 'object'
-      && ['workspace_id', 'runtime', 'cwd', 'cols', 'rows'].some((field) => Object.hasOwn(input.request, field));
-    const requestedSessionId = input.assist_session_id || (requestHasTerminalShape && input.request.assist_session_id);
+    let persistedRequest = input.request;
+    if (input.request_json != null) {
+      try { persistedRequest = JSON.parse(input.request_json); } catch { throw new PlatformError('schema_invalid', 'approval request is malformed', {}, 422); }
+      if (!persistedRequest || typeof persistedRequest !== 'object' || Array.isArray(persistedRequest)) throw new PlatformError('schema_invalid', 'approval request is malformed', {}, 422);
+    }
+    const requestedSessionId = input.assist_session_id || persistedRequest?.assist_session_id;
+    if (turn && persistedRequest && Object.hasOwn(persistedRequest, 'assist_session_id') && persistedRequest.assist_session_id !== turn.session_id) throw new PlatformError('scope_denied', 'Assist session and turn do not match', {}, 403);
+    if (persistedRequest?.workspace_id) {
+      const workspace = db.get('SELECT project_id FROM repository_workspaces WHERE id=?', [String(persistedRequest.workspace_id)]);
+      if (!workspace || String(workspace.project_id) !== project) throw new PlatformError('scope_denied', 'Terminal workspace is outside the project', {}, 403);
+    }
     if (requestedSessionId) {
       const session = db.get('SELECT * FROM assist_sessions WHERE id=?', [String(requestedSessionId)]);
       if (!session || String(session.project_id) !== project) throw new PlatformError('scope_denied', 'Assist session is outside the project', {}, 403);
       this.assertAssistSessionUsable(principal, session, 'run');
       if (turn && String(turn.session_id) !== String(session.id)) throw new PlatformError('scope_denied', 'Assist session and turn do not match', {}, 403);
     }
-    return true;
+    return { operationId: input.operation_id || turn?.operation_id || null };
   }
   async decideInteraction(kind, id, input, principal) {
     const table = kind === 'approval' ? 'runtime_approvals' : 'runtime_user_inputs'; const resourceType = kind === 'approval' ? 'runtime_approval' : 'runtime_user_input'; const row = this.db.get(`SELECT * FROM ${table} WHERE id=?`, [String(id)]); if (!row) throw new PlatformError('not_found', `${kind} not found`, {}, 404); assertProject(this.authorization, principal, kind === 'approval' ? 'approve' : 'write', row.project_id, { resource: 'assist' });
@@ -790,6 +799,7 @@ export class CleanAssistService {
     const table = kind === 'approval' ? 'runtime_approvals' : 'runtime_user_inputs';
     const row = this.db.get(`SELECT * FROM ${table} WHERE id=?`, [String(id)]);
     if (!row?.assist_turn_id) return;
+    this.validateInteractionLinks(row.project_id, row, principal, this.db);
     const turn = this.db.get('SELECT * FROM assist_turns WHERE id=?', [String(row.assist_turn_id)]);
     const session = turn ? this.sessionRow(turn.session_id) : null;
     this.assertAssistSessionUsable(principal, session, 'run');

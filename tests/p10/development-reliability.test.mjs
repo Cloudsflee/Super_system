@@ -271,7 +271,7 @@ test('development receipt reports persisted execution metrics and leaves SQLite,
     const approval = await state.runtime.assist.createApproval({
       project_id: fixture.project.id,
       action: 'terminal.open',
-      request: { purpose: 'receipt-test' },
+      request: { workspace_id: fixture.workspace.id, runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native', cwd: '', cols: 120, rows: 32, assist_session_id: null },
       expected_revision: 0,
       idempotency_key: 'development-receipt-approval'
     }, state.principal);

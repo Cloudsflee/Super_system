@@ -48,7 +48,11 @@ export function ReadinessSummary({ ready, missing, onOpen }: { ready: boolean; m
   return <div className="preparation-readiness" data-testid="preparation-readiness" role="status"><strong>{ready ? '已准备，可继续生成与执行' : '准备条件未完成'}</strong>{missing.length > 0 && <ul>{missing.map(item => <li key={item}><button type="button" className="link-button" onClick={() => onOpen(item as PreparationStep)}>{item}</button></li>)}</ul>}{ready && <Check size={18} aria-label="准备完成" />}</div>;
 }
 
-export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId: string; onReady?: (packId: string) => void; onOpenStep?: (step: PreparationStep) => void }) {
+type PreparationProps = { projectId: string; onReady?: (packId: string) => void; onOpenStep?: (step: PreparationStep) => void; sleep?: (milliseconds: number) => Promise<void> };
+export function PreparationPanel(props: PreparationProps) { return <PreparationWorkspace key={props.projectId} {...props} />; }
+
+function PreparationWorkspace({ projectId, onReady, onOpenStep, sleep = defaultSleep }: PreparationProps) {
+  const [loaded, setLoaded] = useState(false);
   const [step, setStep] = useState<PreparationStep>('source');
   const [kind, setKind] = useState<SourceKind>('local');
   const [locator, setLocator] = useState('');
@@ -88,6 +92,7 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
       setWorkspaces(w.data.workspaces || []);
       setPacks(p.data.packs || []);
       setProfiles(prof.data.profiles || []);
+      setLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : '准备状态加载失败');
     }
@@ -95,7 +100,12 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!selectedConnectionId) return;
+    if (!loaded) return;
+    if (!selectedConnectionId) {
+      setSelectedLineId(persistSelection(projectId, 'line', ''));
+      setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+      return;
+    }
     const connection = connections.find(item => item.id === selectedConnectionId);
     if (!connection) {
       setSelectedConnectionId(persistSelection(projectId, 'connection', ''));
@@ -116,10 +126,14 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
       setSelectedLineId(persistSelection(projectId, 'line', match?.id || ''));
       setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
     }
-  }, [connections, lines, projectId, selectedConnectionId, selectedLineId]);
+  }, [loaded, connections, lines, projectId, selectedConnectionId, selectedLineId]);
 
   useEffect(() => {
-    if (!selectedLineId) return;
+    if (!loaded) return;
+    if (!selectedLineId) {
+      setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+      return;
+    }
     const candidates = workspaces.filter(item => item.line_id === selectedLineId)
       .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')) || b.id.localeCompare(a.id));
     const selectedWorkspace = workspaces.find(item => item.id === selectedWorkspaceId);
@@ -127,13 +141,11 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
       const match = candidates[0];
       setSelectedWorkspaceId(persistSelection(projectId, 'workspace', match?.id || ''));
     }
-  }, [projectId, selectedLineId, selectedWorkspaceId, workspaces]);
+  }, [loaded, projectId, selectedLineId, selectedWorkspaceId, workspaces]);
 
   useEffect(() => {
-    setSelected(current => new Set([...current].filter(id => {
-      const file = files.find(item => item.id === id);
-      return Boolean(file && file.status === 'current' && safeRelative(file.relative_path || file.path));
-    })));
+    const validIds = new Set(files.filter(file => file.status === 'current' && safeRelative(file.relative_path || file.path)).map(file => file.id));
+    setSelected(current => new Set([...current].filter(id => validIds.has(id))));
   }, [files]);
 
   const run = async (name: string, action: () => Promise<void>) => {
@@ -149,30 +161,33 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
     setRepositories(result.data.repositories || []);
   });
   const chooseRepo = (value: string) => { setSelectedRepository(value); const repo = repositories.find(item => item.full_name === value); setLocator(value); setBranch(repo?.default_branch || 'main'); };
-  const chooseConnection = (value: string) => { setSelectedConnectionId(persistSelection(projectId, 'connection', value)); setSelectedLineId(persistSelection(projectId, 'line', '')); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); };
-  const chooseLine = (value: string) => { setSelectedLineId(persistSelection(projectId, 'line', value)); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); };
-  const chooseWorkspace = (value: string) => setSelectedWorkspaceId(persistSelection(projectId, 'workspace', value));
+  const clearFiles = () => { setFiles([]); setSelected(new Set()); };
+  const chooseConnection = (value: string) => { setSelectedConnectionId(persistSelection(projectId, 'connection', value)); setSelectedLineId(persistSelection(projectId, 'line', '')); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); clearFiles(); };
+  const chooseLine = (value: string) => { setSelectedLineId(persistSelection(projectId, 'line', value)); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); clearFiles(); };
+  const chooseWorkspace = (value: string) => { setSelectedWorkspaceId(persistSelection(projectId, 'workspace', value)); clearFiles(); };
   const createConnection = () => void run('source', async () => {
     const githubProfile = profiles.find(item => item.provider === 'github' && item.status === 'available' && item.lifecycle_status !== 'disabled');
     const result = await mutateV2<{ connection: Connection }>(`${base}/repository-connections`, { provider: kind === 'github' ? 'git' : 'local', source_kind: kind === 'github' ? 'git' : 'local', source_locator: locator.trim(), branch: branch.trim() || 'main', read_only: true, ...(githubProfile ? { provider_profile_id: githubProfile.id } : {}) }, 'POST', 0);
+    setConnections(current => [...current.filter(item => item.id !== result.data.connection.id), result.data.connection]);
     setSelectedConnectionId(persistSelection(projectId, 'connection', result.data.connection.id));
     setSelectedLineId(persistSelection(projectId, 'line', ''));
     setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
     setFiles([]); setSelected(new Set()); setStep('workspace');
   });
-  const pollWorkspace = async (id: string, current: Workspace) => {
-    let latest = current;
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      if (['ready', 'released', 'orphaned'].includes(latest.status)) return latest;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const listed = await apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`);
-      latest = (listed.data.workspaces || []).find(item => item.id === id) || latest;
-    }
-    throw new Error('workspace_provisioning_timeout');
+  const showWorkspace = (current: Workspace) => {
+    setWorkspaces(rows => [...rows.filter(item => item.id !== current.id), current]);
+    setSelectedWorkspaceId(persistSelection(projectId, 'workspace', current.id));
   };
+  const pollWorkspace = (id: string, current: Workspace) => pollWorkspaceUntil(id, current, async (workspaceId) => {
+    const listed = await apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`);
+    const latest = (listed.data.workspaces || []).find(item => item.id === workspaceId) || null;
+    if (latest) showWorkspace(latest);
+    return latest;
+  }, { sleep });
   const createWorkspace = () => void run('workspace', async () => {
     if (!selectedLine || selectedLine.status !== 'ready') throw new Error('请选择当前可用的仓库分支');
     const result = await mutateV2<{ workspace: Workspace; operation?: { operation_id?: string } }>(`${base}/repository-workspaces`, { line_id: selectedLine.id, relative_path: `projects/${projectId}/workspace`, defer: true }, 'POST', 0);
+    showWorkspace(result.data.workspace); setStep('workspace'); clearFiles();
     const current = await pollWorkspace(result.data.workspace.id, result.data.workspace);
     setSelectedWorkspaceId(persistSelection(projectId, 'workspace', current.id));
     if (current.status === 'orphaned') { setStep('workspace'); throw new Error(current.error_code || 'workspace_orphaned'); }
@@ -182,6 +197,7 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
   const retryWorkspace = () => void run('workspace-retry', async () => {
     if (!workspace) throw new Error('workspace_not_selected');
     const result = await mutateV2<{ workspace: Workspace }>(`${base}/repository-workspaces/${encodeURIComponent(workspace.id)}/refresh`, {}, 'POST', workspace.revision);
+    showWorkspace(result.data.workspace); setStep('workspace'); clearFiles();
     const current = await pollWorkspace(result.data.workspace.id, result.data.workspace);
     setSelectedWorkspaceId(persistSelection(projectId, 'workspace', current.id));
     if (current.status === 'orphaned') throw new Error(current.error_code || 'workspace_orphaned');
@@ -211,7 +227,12 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
     setPacks([pack.data.pack]); setStep('pack'); onReady?.(pack.data.pack.id);
   });
   const latestPack = packs.slice().sort((a, b) => Number(b.revision || 0) - Number(a.revision || 0))[0];
-  const excluded = useMemo(() => Object.fromEntries(files.filter(file => !/^text\//i.test(file.media_type) || file.byte_length > 256 * 1024).map(file => [file.id, /^text\//i.test(file.media_type) ? '文件过大' : '二进制文件'])), [files]);
+  const excluded = useMemo(() => Object.fromEntries(files.flatMap(file => {
+    if (!safeRelative(file.relative_path || file.path)) return [[file.id, '路径越界']];
+    if (!/^text\//i.test(file.media_type)) return [[file.id, '二进制文件']];
+    if (file.byte_length > 256 * 1024) return [[file.id, '文件过大']];
+    return [];
+  })), [files]);
   const missing = useMemo(() => [!selectedConnection || !selectedLine || selectedLine.status !== 'ready' ? 'source' : '', !workspace || !['ready', 'released'].includes(workspace.status) ? 'workspace' : '', !latestPack ? 'context' : '', !latestPack ? 'pack' : ''].filter(Boolean) as PreparationStep[], [latestPack, selectedConnection, selectedLine, workspace]);
   const ready = Boolean(workspace && latestPack?.status === 'sealed' && !missing.includes('source') && !missing.includes('workspace'));
   const open = (value: PreparationStep) => { setStep(value); onOpenStep?.(value); };
@@ -221,8 +242,23 @@ export function PreparationPanel({ projectId, onReady, onOpenStep }: { projectId
 
 function readSelection(projectId: string, kind: string) { try { return sessionStorage.getItem(`aiws:preparation:${projectId}:${kind}`) || ''; } catch { return ''; } }
 function persistSelection(projectId: string, kind: string, value: string) { try { if (value) sessionStorage.setItem(`aiws:preparation:${projectId}:${kind}`, value); else sessionStorage.removeItem(`aiws:preparation:${projectId}:${kind}`); } catch {} return value; }
-function safeRelative(value: string) { const text = String(value || '').replaceAll('\\', '/'); return Boolean(text && !text.startsWith('/') && !/^[A-Za-z]:\//.test(text) && !text.split('/').includes('..') && !text.split('/').some(part => !part || part === '.' || part.includes(':'))); }
+function safeRelative(value: string) { const text = String(value || '').replaceAll('\\', '/'); return Boolean(text && !text.startsWith('/') && !/^[A-Za-z]:\//.test(text) && !text.includes('\0') && !text.split('/').some(part => !part || ['.', '..', '.git', 'node_modules'].includes(part) || part.includes(':') || /[. ]$/.test(part))); }
 
 async function waitOperation(operationId: string) { for (let attempt = 0; attempt < 40; attempt += 1) { const result = await apiV2<{ status: string }>(`/api/v2/operations/${encodeURIComponent(operationId)}`); if (['succeeded', 'failed', 'cancelled', 'expired'].includes(result.data.status)) { if (result.data.status !== 'succeeded') throw new Error(`操作未完成：${result.data.status}`); return; } await new Promise(resolve => setTimeout(resolve, 250)); } throw new Error('操作等待超时，可从操作中心继续'); }
+
+export async function pollWorkspaceUntil(id: string, initial: Workspace, fetchLatest: (workspaceId: string) => Promise<Workspace | null>, options: { sleep?: (milliseconds: number) => Promise<void> } = {}) {
+  const pause = options.sleep || defaultSleep;
+  let latest = initial;
+  if (['ready', 'released', 'orphaned'].includes(latest.status)) return latest;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    await pause(1000);
+    const found = await fetchLatest(id);
+    if (found?.id === id) latest = found;
+    if (['ready', 'released', 'orphaned'].includes(latest.status)) return latest;
+  }
+  throw new Error('workspace_provisioning_timeout');
+}
+
+function defaultSleep(milliseconds: number) { return new Promise<void>(resolve => setTimeout(resolve, milliseconds)); }
 
 export default PreparationPanel;
