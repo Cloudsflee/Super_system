@@ -113,13 +113,17 @@ export async function waitForHttpReady(url, { child, readyOutput, timeoutMs = 30
 async function stopTree(child) {
   if (!child?.pid) return;
   const state = observeChild(child);
+  if (child.exitCode != null || child.signalCode != null) return;
   // Kill the group even when its leader already exited: descendants may still
   // own sockets and inherited stdout handles.
   if (process.platform === 'win32') {
-    if (!state.closed) await new Promise((resolve, reject) => {
+    try { child.kill(); } catch {}
+    const gracefulDeadline = Date.now() + 500;
+    while (!state.closed && child.exitCode == null && Date.now() < gracefulDeadline) await pause(20);
+    if (!state.closed && child.exitCode == null && child.signalCode == null) await new Promise((resolve, reject) => {
       const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { shell: false, windowsHide: true, stdio: 'ignore' });
       killer.once('error', reject);
-      killer.once('close', code => (code === 0 || state.closed) ? resolve() : reject(errorWithCode('port_cleanup_process_failed')));
+      killer.once('close', code => (code === 0 || state.closed || child.exitCode != null) ? resolve() : reject(errorWithCode('port_cleanup_process_failed')));
     });
   } else {
     try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
