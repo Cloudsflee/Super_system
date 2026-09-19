@@ -119,14 +119,14 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
       const { invocation, env, ...selectionMetadata } = command;
       return { record: { ...selectionMetadata, ...result, layered_status: layered?.status || null, advisory }, advisory, failure: !result.ok || (!command.historical && layered?.status === 'failed') ? { code: result.error_code || 'gate_command_failed', command: command.id } : null };
     };
-    // The performance probe uses isolated temporary state, so overlap it with
-    // the repository-sensitive sequential gates. This keeps the fixed wall
-    // budget while avoiding races in workspace inventory tests.
+    // Performance probes and the Web component suite use isolated temporary
+    // state. Run that wave alongside repository-sensitive sequential gates so
+    // the fixed development budget is spent on work rather than waiting.
     if (!dependencies.runGateCommand) {
-      const performance = selection.commands.filter((command) => command.id.endsWith('-performance'));
-      const regular = selection.commands.filter((command) => !command.id.endsWith('-performance'));
+      const parallel = selection.commands.filter((command) => command.id.endsWith('-performance') || ['web-test', 'build'].includes(command.id));
+      const regular = selection.commands.filter((command) => !command.id.endsWith('-performance') && !['web-test', 'build'].includes(command.id));
       const initialBudget = gateBudget('development', Date.now() - started);
-      const performanceRuns = performance.map((command) => runOne(command, initialBudget));
+      const parallelRuns = parallel.map((command) => runOne(command, initialBudget));
       for (const command of regular) {
         const budget = gateBudget('development', Date.now() - started);
         if (budget.remaining_ms <= 0) { cleanBlocking.push({ code: 'development_time_budget_exceeded' }); break; }
@@ -135,7 +135,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
         if (item.advisory) historicalAdvisory.push({ command: item.record.id, receipt: null });
         if (item.failure) cleanBlocking.push(item.failure);
       }
-      for (const item of await Promise.all(performanceRuns)) {
+      for (const item of await Promise.all(parallelRuns)) {
         records.push(item.record);
         if (item.advisory) historicalAdvisory.push({ command: item.record.id, receipt: null });
         if (item.failure) cleanBlocking.push(item.failure);

@@ -137,7 +137,10 @@ select P4, P3.1, and Historical integration. Shared Clean core changes select
 P1-P10 plus Clean integration/security. Web router, shell, service-worker, or
 Vite changes add build and E2E. The channel excludes live GitHub, Provider,
 deletion, Docker publication, and release probes. Duplicate commands are
-collapsed while retaining every satisfied Catalog/test reference.
+collapsed while retaining every satisfied Catalog/test reference. The Web
+component suite, build checks and isolated performance probes run as one
+bounded development wave; E2E remains after repository-sensitive gates because
+it owns browser/server resources.
 
 The pre-push formal Gate continues to be `pnpm verify`. Its active inventory is:
 
