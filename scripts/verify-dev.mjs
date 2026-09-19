@@ -119,12 +119,13 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
       const { invocation, env, ...selectionMetadata } = command;
       return { record: { ...selectionMetadata, ...result, layered_status: layered?.status || null, advisory }, advisory, failure: !result.ok || (!command.historical && layered?.status === 'failed') ? { code: result.error_code || 'gate_command_failed', command: command.id } : null };
     };
-    // Performance probes and the Web component suite use isolated temporary
-    // state. Run that wave alongside repository-sensitive sequential gates so
-    // the fixed development budget is spent on work rather than waiting.
+    // Performance probes, the Web component suite, and the Clean E2E journey
+    // use isolated temporary state and leased ports. Run that wave alongside
+    // repository-sensitive sequential gates so the fixed budget is spent on
+    // validation rather than waiting.
     if (!dependencies.runGateCommand) {
-      const parallel = selection.commands.filter((command) => command.id.endsWith('-performance') || ['web-test', 'build'].includes(command.id));
-      const regular = selection.commands.filter((command) => !command.id.endsWith('-performance') && !['web-test', 'build'].includes(command.id));
+      const parallel = selection.commands.filter((command) => command.id.endsWith('-performance') || ['web-test', 'build', 'e2e'].includes(command.id));
+      const regular = selection.commands.filter((command) => !command.id.endsWith('-performance') && !['web-test', 'build', 'e2e'].includes(command.id));
       const initialBudget = gateBudget('development', Date.now() - started);
       const parallelRuns = parallel.map((command) => runOne(command, initialBudget));
       for (const command of regular) {
