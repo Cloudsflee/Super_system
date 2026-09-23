@@ -190,7 +190,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
   'assist.goal.v2': closed({ goal: { anyOf: [looseObject, { type: 'null' }] }, operation: p4Operation, replayed: { type: 'boolean' } }, ['goal']),
   'assist.references.v2': closed({ references: { type: 'array', items: looseObject }, operation: p4Operation, replayed: { type: 'boolean' } }, ['references']),
 
-  'files.query.v2': p5Query({ project_id: id, path: p4String, workspace_id: id, limit: { type: 'integer', minimum: 1, maximum: 500 }, offset: { type: 'integer', minimum: 0 } }, ['project_id']),
+  'files.query.v2': p5Query({ project_id: id, file_id: id, path: p4String, workspace_id: id, limit: { type: 'integer', minimum: 1, maximum: 500 }, offset: { type: 'integer', minimum: 0 } }, ['project_id']),
   'files.v2': p5List('files'),
   'file.content.v2': looseObject,
   'attachment.query.v2': p5Query({ project_id: id, attachment_id: id }, ['attachment_id']),

@@ -341,7 +341,7 @@ function p5DispatchArguments(command, params, url, body, schema) {
   const args = { ...body, ...params };
   if (args.id) {
     if (command === 'assist.turn.create' || command.startsWith('assist.session') || command.startsWith('assist.goal') || command.startsWith('assist.reference')) args.session_id ||= args.id;
-    else if (command.startsWith('assist.turn')) args.turn_id ||= args.id;
+    else if (command.startsWith('assist.turn') || command.startsWith('assist.review')) args.turn_id ||= args.id;
     else if (command.startsWith('attachment.')) args.attachment_id ||= args.id;
     else if (command.startsWith('change.batch')) args.batch_id ||= args.id;
     else if (command.startsWith('approval.')) args.approval_id ||= args.id;
