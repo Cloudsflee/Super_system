@@ -34,7 +34,7 @@ const GOVERNANCE_PATTERNS = [
   /^docs\/(?:testing\.md|architecture\/)/,
   /^\.githooks\//,
   /^scripts\/(?:check|verify|verify-dev|test|layered-gate)\.mjs$/,
-  /^scripts\/lib\/(?:gate-process|git-blob|v3-clean-p1-scope)\.mjs$/,
+  /^scripts\/lib\/(?:gate-process|port-lease|git-blob|v3-clean-p1-scope)\.mjs$/,
   /^tests\/(?:p1|p31|p10)\/(?:.*governance|.*gate|development-reliability).*\.test\.mjs$/
 ];
 const GOLDEN_PATTERNS = [
@@ -51,6 +51,7 @@ const SHARED_CORE_PATTERNS = [
   /^apps\/api\/src\/(?:command-registry|query-registry|http)\.mjs$/
 ];
 const WEB_DEEP_PATTERNS = [
+  /^scripts\/lib\/port-lease\.mjs$/,
   /^apps\/web\/(?:vite\.config|src\/(?:App|router|routes|sw|service-worker|shell))[^/]*\.(?:ts|tsx|js|mjs)$/,
   /^scripts\/e2e\.mjs$/
 ];
@@ -118,14 +119,15 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
       const { invocation, env, ...selectionMetadata } = command;
       return { record: { ...selectionMetadata, ...result, layered_status: layered?.status || null, advisory }, advisory, failure: !result.ok || (!command.historical && layered?.status === 'failed') ? { code: result.error_code || 'gate_command_failed', command: command.id } : null };
     };
-    // The performance probe uses isolated temporary state, so overlap it with
-    // the repository-sensitive sequential gates. This keeps the fixed wall
-    // budget while avoiding races in workspace inventory tests.
+    // Performance probes, the Web component suite, and the Clean E2E journey
+    // use isolated temporary state and leased ports. Run that wave alongside
+    // repository-sensitive sequential gates so the fixed budget is spent on
+    // validation rather than waiting.
     if (!dependencies.runGateCommand) {
-      const performance = selection.commands.filter((command) => command.id.endsWith('-performance'));
-      const regular = selection.commands.filter((command) => !command.id.endsWith('-performance'));
+      const parallel = selection.commands.filter((command) => command.id.endsWith('-performance') || ['web-test', 'build', 'e2e'].includes(command.id));
+      const regular = selection.commands.filter((command) => !command.id.endsWith('-performance') && !['web-test', 'build', 'e2e'].includes(command.id));
       const initialBudget = gateBudget('development', Date.now() - started);
-      const performanceRuns = performance.map((command) => runOne(command, initialBudget));
+      const parallelRuns = parallel.map((command) => runOne(command, initialBudget));
       for (const command of regular) {
         const budget = gateBudget('development', Date.now() - started);
         if (budget.remaining_ms <= 0) { cleanBlocking.push({ code: 'development_time_budget_exceeded' }); break; }
@@ -134,7 +136,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
         if (item.advisory) historicalAdvisory.push({ command: item.record.id, receipt: null });
         if (item.failure) cleanBlocking.push(item.failure);
       }
-      for (const item of await Promise.all(performanceRuns)) {
+      for (const item of await Promise.all(parallelRuns)) {
         records.push(item.record);
         if (item.advisory) historicalAdvisory.push({ command: item.record.id, receipt: null });
         if (item.failure) cleanBlocking.push(item.failure);
@@ -411,34 +413,30 @@ function collapseLayered(commands, suite) {
 }
 
 export function defaultBase(root) {
-  // The checked-out branch's configured upstream is the authoritative daily
-  // baseline.  Keep the documented fallbacks deterministic for local clones
-  // that have no remote-tracking branch yet.
-  const candidates = ['@{upstream}', 'origin/main', 'main'];
-  const failures = [];
-  for (const candidate of candidates) {
+  const run = args => spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true, shell: false, maxBuffer: 1024 * 1024 });
+  const mergeBase = candidate => {
     try {
-      resolveGitCommit(root, candidate);
-      const result = spawnSync('git', ['merge-base', 'HEAD', candidate], {
-        cwd: root, encoding: 'utf8', windowsHide: true, shell: false,
-        maxBuffer: 1024 * 1024
-      });
+      const target = resolveGitCommit(root, candidate);
+      const result = run(['merge-base', 'HEAD', target]);
       const commit = String(result.stdout || '').trim();
-      if (result.status === 0 && /^[a-f0-9]{40,64}$/i.test(commit)) {
-        return { commit, source: `merge-base HEAD ${candidate}` };
-      }
-      failures.push(`${candidate}:merge-base`);
-    } catch (error) {
-      failures.push(`${candidate}:${error?.code || 'unverifiable'}`);
-    }
+      if (result.status !== 0 || !/^[a-f0-9]{40,64}$/i.test(commit)) throw new Error('merge_base_missing');
+      if (resolveGitCommit(root, commit) !== commit) throw new Error('merge_base_invalid');
+      return { commit, source: `merge-base HEAD ${candidate}` };
+    } catch { throw baseError('git_base_unverifiable', candidate); }
+  };
+  const branch = run(['symbolic-ref', '--quiet', '--short', 'HEAD']);
+  if (branch.status === 0) {
+    const configured = run(['config', '--get', `branch.${branch.stdout.trim()}.merge`]);
+    if (configured.status === 0) return mergeBase('@{upstream}');
+    if (configured.status !== 1) throw baseError('git_base_unverifiable', 'upstream_config');
+  } else if (branch.status !== 1) throw baseError('git_base_unverifiable', 'HEAD');
+  for (const [candidate, ref] of [['origin/main', 'refs/remotes/origin/main'], ['main', 'refs/heads/main']]) {
+    const exists = run(['show-ref', '--verify', '--quiet', ref]);
+    if (exists.status === 0) return mergeBase(candidate);
+    if (exists.status !== 1) throw baseError('git_base_unverifiable', candidate);
   }
-  try {
-    return { commit: resolveGitCommit(root, 'HEAD^'), source: 'HEAD^' };
-  } catch (error) {
-    const failure = baseError('git_base_unverifiable', failures.join(',') || 'HEAD^');
-    failure.details = { candidates: failures, cause: error?.code || error?.message || 'head_parent_missing' };
-    throw failure;
-  }
+  try { return { commit: resolveGitCommit(root, 'HEAD^'), source: 'HEAD^' }; }
+  catch { throw baseError('git_base_unverifiable', 'HEAD^'); }
 }
 
 function validateRequestedBase(root, value) {
