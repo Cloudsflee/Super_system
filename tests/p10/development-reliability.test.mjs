@@ -8,7 +8,8 @@ import { canonicalJson, sha256Hex } from '../../apps/api/src/clean/canonical.mjs
 import {
   GATE_ERROR_CODES,
   pnpmInvocation,
-  runGateCommand
+  runGateCommand,
+  gateEnvironment
 } from '../../scripts/lib/gate-process.mjs';
 import { gateBudget, gateRecordFailure, GATE_BUDGETS_MS } from '../../scripts/lib/gate-process.mjs';
 import { formalInputFailure } from '../../scripts/verify.mjs';
@@ -39,6 +40,22 @@ test('hard gate limits are fixed and over-budget success is rejected', () => {
   assert.throws(() => gateBudget('formal', NaN), /gate_budget_invalid/);
   assert.throws(() => gateBudget('formal', -1), /gate_budget_invalid/);
   assert.throws(() => gateBudget('override', 1), /gate_budget_invalid/);
+});
+
+test('gate child environments do not inherit Git hook repository context', () => {
+  const previous = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE, GIT_PREFIX: process.env.GIT_PREFIX, CUSTOM: process.env.CUSTOM };
+  process.env.GIT_DIR = 'outer/.git'; process.env.GIT_WORK_TREE = 'outer'; process.env.GIT_PREFIX = 'outer-prefix'; process.env.CUSTOM = 'keep';
+  try {
+    const env = gateEnvironment({ CUSTOM: 'override', GIT_DIR: 'attempted-override' });
+    assert.equal(env.GIT_DIR, undefined);
+    assert.equal(env.GIT_WORK_TREE, undefined);
+    assert.equal(env.GIT_PREFIX, undefined);
+    assert.equal(env.CUSTOM, 'override');
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value == null) delete process.env[key]; else process.env[key] = value;
+    }
+  }
 });
 
 test('a self-reported ok flag never masks nonzero exit, signal, truncation or redaction failure', () => {
@@ -157,6 +174,7 @@ test('formal verification uses immutable P5-P9 Evidence and only current P10 pro
   assert.deepEqual(plan.filter((entry) => entry.id.startsWith('p10-') && entry.id.endsWith('-probe')).map((entry) => entry.id), [
     'p10-parser-probe', 'p10-github-deletion-probe', 'p10-release-probe'
   ]);
+  assert.match(fs.readFileSync('scripts/verify.mjs', 'utf8'), /specification\.id === 'web-test'.*releasePromise/s);
   assert.equal(plan.filter((entry) => entry.id === 'web-test').length, 1);
   assert.equal(plan.filter((entry) => entry.id === 'test-p31').length, 1);
   assert.equal(plan.find((entry) => entry.id === 'check').env.AIWS_CHECK_SKIP_WEB_TYPECHECK, '1');
@@ -271,7 +289,7 @@ test('development receipt reports persisted execution metrics and leaves SQLite,
     const approval = await state.runtime.assist.createApproval({
       project_id: fixture.project.id,
       action: 'terminal.open',
-      request: { purpose: 'receipt-test' },
+      request: { workspace_id: fixture.workspace.id, runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native', cwd: '', cols: 120, rows: 32, assist_session_id: null },
       expected_revision: 0,
       idempotency_key: 'development-receipt-approval'
     }, state.principal);
@@ -498,7 +516,9 @@ test('development baseline prefers upstream and records staged, worktree, and un
     fs.writeFileSync(path.join(directory, 'committed.txt'), 'committed');
     git(directory, 'add', '.');
     git(directory, '-c', 'core.hooksPath=', 'commit', '-m', 'feature');
-    git(directory, 'branch', '--set-upstream-to=origin/main', 'feature');
+    const upstreamCommit = git(directory, 'rev-parse', 'HEAD');
+    git(directory, 'update-ref', 'refs/remotes/origin/feature', upstreamCommit);
+    git(directory, 'branch', '--set-upstream-to=origin/feature', 'feature');
     fs.writeFileSync(path.join(directory, 'worktree.txt'), 'baseline-worktree');
     git(directory, 'add', 'worktree.txt');
     git(directory, '-c', 'core.hooksPath=', 'commit', '-m', 'tracked worktree');
@@ -508,11 +528,19 @@ test('development baseline prefers upstream and records staged, worktree, and un
     fs.writeFileSync(path.join(directory, 'untracked.txt'), 'untracked');
     const state = repositoryState(directory);
     assert.equal(state.base_source, 'merge-base HEAD @{upstream}');
-    assert.ok(state.base_paths.includes('committed.txt'));
+    assert.equal(state.base, upstreamCommit);
+    assert.deepEqual(state.base_paths, ['worktree.txt']);
     assert.deepEqual(state.staged_paths, ['staged.txt']);
     assert.deepEqual(state.worktree_paths, ['worktree.txt']);
     assert.deepEqual(state.untracked_paths, ['untracked.txt']);
     assert.ok(state.changed_paths.includes('staged.txt'));
+    const explicit = repositoryState(directory, 'main');
+    assert.equal(explicit.base_source, 'requested:main');
+    assert.ok(explicit.base_paths.includes('committed.txt'));
+    assert.deepEqual(selectDevCommands({ changedPaths: state.changed_paths, catalog: { features: [] } }).unclassified_paths, state.changed_paths);
+    git(directory, 'update-ref', '-d', 'refs/remotes/origin/feature');
+    assert.throws(() => repositoryState(directory), error => error.code === 'git_base_unverifiable');
+    assert.equal(repositoryState(directory, 'main').base, explicit.base);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
     fs.rmSync(remote, { recursive: true, force: true });
@@ -536,6 +564,17 @@ test('development baseline falls back deterministically and fails with git_base_
     assert.equal(repositoryState(directory).base_source, 'merge-base HEAD main');
     git('switch', '-c', 'orphan');
     assert.equal(repositoryState(directory).base_source, 'merge-base HEAD main');
+    fs.writeFileSync(path.join(directory, 'second.txt'), 'second');
+    git('add', '.');
+    git('-c', 'core.hooksPath=', 'commit', '-m', 'second');
+    const second = git('rev-parse', 'HEAD');
+    git('update-ref', 'refs/remotes/origin/main', second);
+    assert.equal(repositoryState(directory).base_source, 'merge-base HEAD origin/main');
+    assert.equal(repositoryState(directory).base, second);
+    git('update-ref', '-d', 'refs/remotes/origin/main');
+    assert.equal(repositoryState(directory).base_source, 'merge-base HEAD main');
+    git('branch', '-D', 'main');
+    assert.equal(repositoryState(directory).base_source, 'HEAD^');
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-empty-'));
     try {
       const init = spawnSync('git', ['init', '-b', 'solo'], { cwd: empty, encoding: 'utf8', windowsHide: true });

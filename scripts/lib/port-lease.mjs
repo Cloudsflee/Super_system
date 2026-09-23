@@ -170,28 +170,3 @@ export async function startProbeWithPorts({ prefix, portCount = 2, start, retryD
     }
   }
 }
-
-/** Compatibility launcher for probes that own their temporary home and lease.
- * Only startup is retried; callers invoke external actions after this returns. */
-export async function launchWithPortLease({ lease, acquire, start, ready, cleanup, retryDelays = PORT_RETRY_DELAYS_MS } = {}) {
-  if (!lease || typeof start !== 'function' || typeof ready !== 'function' || typeof acquire !== 'function') throw new TypeError('port_launcher_invalid');
-  let current = lease;
-  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
-    let child = null;
-    try {
-      await current.handoff();
-      child = await start(current);
-      observeChild(child);
-      await ready(current, child);
-      await current.release();
-      return { lease: current, port: current.port, child, attempt: attempt + 1 };
-    } catch (error) {
-      try { await cleanup?.(child); } catch { /* preserve the startup failure */ }
-      try { await current.release(); } catch { /* the next lease is independent */ }
-      const retryable = isAddressInUseError(error) || isAddressInUseError(watched.get(child)?.output);
-      if (!retryable || attempt === retryDelays.length) throw retryable ? errorWithCode('port_start_retry_exhausted', error) : error;
-      await pause(retryDelays[attempt]);
-      current = await acquire();
-    }
-  }
-}

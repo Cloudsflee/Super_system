@@ -436,6 +436,7 @@ const P9_FILES = new Set([
 const P9_PREFIXES = Object.freeze(['tests/p9/', 'apps/web/src/offline/', 'apps/web/src/features/outcome/', 'apps/web/src/features/delivery/']);
 
 const P10_FILES = new Set([
+  'scripts/lib/port-lease.mjs',
   'scripts/development-receipt.mjs',
   'apps/api/src/clean/migrations/009-final-business-parity-governance.mjs',
   'apps/api/src/clean/p10-service.mjs',
