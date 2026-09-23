@@ -144,6 +144,7 @@ export async function startProbeWithPorts({ prefix, portCount = 2, start, retryD
     const scope = {
       directory, leases, attempt: attempt + 1,
       spawn(invocation, options) { const child = spawnGateProcess(invocation, options); observeChild(child); children.push(child); return child; },
+      childOutput(index) { const child = children[index]; return child ? (watched.get(child)?.output || '') : ''; },
       browser(browser) { browsers.push(browser); return browser; },
       async ready(index, url, options) { await waitForHttpReady(url, options); await leases[index].release(); },
       async dispose() {

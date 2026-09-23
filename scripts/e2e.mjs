@@ -497,6 +497,8 @@ try {
   const workbench = await workflowWorkbenchJourney(browser, await context.storageState(), project.id, providerProfile.body.data.profile.id);
   const legacyRequests = requests.filter((url) => /\/api\/v1(?:\/|$)/.test(url));
   if (legacyRequests.length) throw new Error(`active Clean Web emitted /api/v1: ${legacyRequests.join(', ')}`);
+  const proxyDiagnostics = startup.scope.childOutput(1).split(/\r?\n/).filter(line => /proxy error|EADDRINUSE|ERR_NO_BUFFER_SPACE|ENOBUFS|status of 500/i.test(line));
+  assert(proxyDiagnostics.length === 0, `proxy diagnostics:${JSON.stringify(proxyDiagnostics)}`);
   assert(browserErrors.length === 0, `browser errors:${JSON.stringify(browserErrors)} http:${JSON.stringify(httpErrors)}`);
   const checkpoints = await pageApi(`/api/v2/executions/${executionId}/checkpoints`);
   const attempts = await pageApi(`/api/v2/executions/${executionId}/attempts`);
@@ -504,7 +506,7 @@ try {
     schema_version: 'aiws.v3-clean.p10-e2e-receipt.v1', status: 'passed', provisional: false,
     api_port: apiPort, web_port: webPort, viewports: ['mobile', 'laptop', 'desktop'],
     routes: ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer'], business_groups: ['identity-acl','provider-settings','project-brief','workflow','repository','context','assist','files-approval','terminal-bridge','runner-execution','evidence','parser','quality','outcome','mcp-exchange-gateway','delivery','operations-recovery','offline-pwa','web-complete-experience'], request_count: requests.length,
-    legacy_api_v1_requests: legacyRequests, browser_errors: browserErrors, http_errors: httpErrors,
+    legacy_api_v1_requests: legacyRequests, browser_errors: browserErrors, http_errors: httpErrors, proxy_diagnostics: proxyDiagnostics,
     onboarding: { system: ['owner-team','codex-probe','github-skip','summary'], project: ['intake','brief-template','workflow-generation','critic','proposal-apply','brief-confirm'], secret_storage: 'passed' },
     drawer: drawerReceipts, accessibility: accessibilityReceipts, onboarding_layouts: onboardingLayoutReceipts, workbench,
     layouts: layoutReceipts, context_pack_hash: pack.body.data.pack.pack_hash,
