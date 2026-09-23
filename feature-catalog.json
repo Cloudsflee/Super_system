@@ -197,6 +197,7 @@
         "apps/web/src/styles.css",
         "apps/web/src/test/identity-access.test.tsx",
         "apps/web/package.json",
+        "apps/web/vite.config.ts",
         "apps/web/src/features/operations/OperationsPage.tsx",
         "apps/web/src/features/operations/index.ts",
         "apps/web/src/test/operations-p8.test.tsx",
