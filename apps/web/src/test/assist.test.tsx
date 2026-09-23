@@ -6,6 +6,7 @@ import type { Project } from '../types';
 import type { WorkspacePageProps } from '../workspace';
 
 const projectId = 'prj_assist_ui';
+const briefId = 'brief_resource_ui';
 const project = { id: projectId, name: 'Assist UI', description: '', status: 'active', onboarding_state: 'confirmed', revision: 2, confirmed_brief_revision: 1, updated_at: '2026-08-18T00:00:00.000Z' } as Project;
 const pack = { id: 'pack_assist_ui', pack_hash: 'a'.repeat(64), status: 'sealed' };
 const profile = { id: 'profile_assist_ui', label: 'Codex local', provider: 'codex', status: 'available', revision: 1 };
@@ -112,27 +113,31 @@ function assistScenario(initialStatus = 'completed') {
   return { mutations, complete: () => { session = { ...session, turns: [{ ...session.turns![0], status: 'completed', messages: [{ id: 'message_completed', role: 'assistant', kind: 'response', content: 'Completion after reopening', sequence: 2 }] }] }; } };
 }
 
-it('attaches only explicitly requested saved page context and detects revision/hash drift', async () => {
+it.each(['revision', 'hash', 'both'])('attaches a real Brief ID only on request and detects %s drift', async drift => {
   const { mutations } = assistScenario();
-  const assistContext = { route: 'brief' as const, projectId, resourceType: 'brief', resourceId: projectId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' };
+  const assistContext = { route: 'brief' as const, projectId, resourceType: 'brief', resourceId: briefId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' };
   const view = render(<AssistPage {...props({ assistContext })} />);
   await screen.findByText('Existing response');
   expect(mutations).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: '附加当前页面' }));
   await screen.findByText('当前 Brief 已附加');
-  expect(mutations[0]).toMatchObject({ revision: '2', body: { reference_type: 'brief', reference_id: projectId, reference_revision: 1, reference_hash: assistContext.contentHash } });
-  view.rerender(<AssistPage {...props({ assistContext: { ...assistContext, revision: 2, contentHash: 'b'.repeat(64) } })} />);
+  expect(mutations[0]).toMatchObject({ revision: '2', body: { reference_type: 'brief', reference_id: briefId, reference_revision: 1, reference_hash: assistContext.contentHash } });
+  const next = { ...assistContext, revision: drift === 'hash' ? 1 : 2, contentHash: drift === 'revision' ? assistContext.contentHash : 'b'.repeat(64) };
+  view.rerender(<AssistPage {...props({ assistContext: next })} />);
   expect(screen.getByRole('alert')).toHaveTextContent('旧引用已过期');
   expect(mutations).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: '附加当前页面' }));
   await waitFor(() => expect(mutations).toHaveLength(2));
   await waitFor(() => expect(screen.queryByText(/旧引用已过期/)).toBeNull());
-  expect(mutations[1]).toMatchObject({ revision: '3', body: { reference_revision: 2, reference_hash: 'b'.repeat(64) } });
+  expect(mutations[1]).toMatchObject({ revision: '3', body: { reference_id: briefId, reference_revision: next.revision, reference_hash: next.contentHash } });
+  fireEvent.click(screen.getByRole('button', { name: '附加当前页面' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: '附加当前页面' })).toBeEnabled());
+  expect(mutations).toHaveLength(2);
 });
 
 it('attaches a Brief review request once and preserves the loaded conversation offline', async () => {
   const { mutations } = assistScenario();
-  const pageProps = props({ assistContext: { route: 'brief', projectId, resourceType: 'brief', resourceId: projectId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' }, assistAttachRequest: 1 });
+  const pageProps = props({ assistContext: { route: 'brief', projectId, resourceType: 'brief', resourceId: briefId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' }, assistAttachRequest: 1 });
   const view = render(<AssistPage {...pageProps} surface="drawer" />);
   await screen.findByText('当前 Brief 已附加');
   expect(mutations).toHaveLength(1);

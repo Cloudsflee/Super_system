@@ -121,6 +121,14 @@ pnpm verify:dev -- --all
 pnpm verify:dev -- --explain
 ```
 
+An explicit `--base` takes precedence. Otherwise the base is the merge-base of
+HEAD with the branch upstream, then `origin/main`, then `main`, with `HEAD^`
+as the final fallback when those refs are absent. A configured upstream that
+is missing, or an existing ref whose merge-base cannot be verified, fails as
+`git_base_unverifiable`. Results retain `base`, `base_source`, `head`, and
+separate committed, worktree, staged and untracked path lists. Classification
+is still mandatory for their union, including newly added tests.
+
 Every development run includes `pnpm check`, `pnpm scan:clean`, and
 `git diff --check`. Catalog reverse mapping selects the remaining local tests;
 new or unmapped paths fail as `unclassified_changed_path`. Governance changes
@@ -129,7 +137,11 @@ select P4, P3.1, and Historical integration. Shared Clean core changes select
 P1-P10 plus Clean integration/security. Web router, shell, service-worker, or
 Vite changes add build and E2E. The channel excludes live GitHub, Provider,
 deletion, Docker publication, and release probes. Duplicate commands are
-collapsed while retaining every satisfied Catalog/test reference.
+collapsed while retaining every satisfied Catalog/test reference. The Web
+component suite, build checks, E2E, and isolated performance probes run as one
+bounded development wave. E2E uses the shared port lease and an isolated
+temporary home, so it does not reserve a fixed browser/server resource or
+replay external actions when another wave member starts or stops.
 
 The pre-push formal Gate continues to be `pnpm verify`. Its active inventory is:
 
@@ -171,6 +183,11 @@ pnpm test:release
 pnpm evidence:p10 -- --verify
 git diff --check
 ```
+
+Gate child environments strip Git hook context variables (`GIT_DIR`,
+`GIT_WORK_TREE`, index/prefix/object overrides) before running temporary-clone
+and nested test commands. This preserves the exact pending HEAD check while
+ensuring `git -C <fixture>` operates on its declared fixture repository.
 
 The single layered integration/security executions satisfy their Clean,
 Historical, and combined command references without duplicate test work. The
@@ -256,8 +273,8 @@ links/reparse/special paths and is bounded to 10,000 files and 100 MiB. Assist
 session scope, lifecycle, reference revision/hash bindings, and interaction
 project/turn/operation links are rechecked inside their write transactions;
 P10 lifecycle and review handlers use the same session predicate. Terminal
-open requests bind the complete workspace/runtime/cwd/size/session shape when
-the approval carries the strict shape. The Web preparation journey persists
+open requests require and bind the complete workspace/runtime/cwd/size/session
+shape. The Web preparation journey persists
 connection/line/workspace selections, matches lines by source fingerprint,
 waits up to 120 one-second polls (with an injectable sleep in component tests),
 and consumes Files pages at 500 rows up to 10,000 entries while removing stale
@@ -267,7 +284,13 @@ must match the approved request exactly; no legacy defaults are accepted.
 E2E and release startup share `scripts/lib/port-lease.mjs`. A lock file and an
 OS listener probe are held until readiness, and only pre-side-effect address
 failures retry with bounded backoff after complete process/temporary-state
-cleanup.
+cleanup. `tests/p10/port-lease.test.mjs` is owned by Platform/Testing under
+post-P10 D-040, registered in the Clean Catalog, compatibility aggregate and the
+P1 gate-sync inventory. It uses real child listeners for collisions, readiness,
+bounded retries and process/directory/lock disposal; the formal gate keeps its
+existing parallel E2E/release ordering. `tests/p10/development-reliability.test.mjs`
+owns real-Git baseline and unclassified-path regressions. The existing P4/P5
+and Web suites own the Files/Context/Assist/Terminal and preparation boundaries.
 
 The synchronized focused regression inventory is:
 

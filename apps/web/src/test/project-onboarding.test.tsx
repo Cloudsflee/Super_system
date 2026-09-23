@@ -201,7 +201,7 @@ it.each([false, true])('opens Assist from the complete Brief surface with saved=
   const button = await screen.findByRole('button', { name: '在 Assist 中审阅当前 Brief' });
   if (!saved) fireEvent.change(screen.getByLabelText('目标'), { target: { value: 'Unsaved draft content' } });
   fireEvent.click(button);
-    if (saved) expect(pageProps.openAssist).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project_1', resourceType: 'brief', resourceId: 'brief_1', revision: 1, contentHash: 'a'.repeat(64) }), true);
+  if (saved) expect(pageProps.openAssist).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project_1', resourceType: 'brief', resourceId: 'brief_1', revision: 1, contentHash: 'a'.repeat(64) }), true);
   else {
     expect(pageProps.openAssist).toHaveBeenCalledWith(expect.objectContaining({ label: '未保存 Brief 草稿', resourceId: undefined }), false);
     expect(screen.getByLabelText('目标')).toHaveValue('Unsaved draft content');

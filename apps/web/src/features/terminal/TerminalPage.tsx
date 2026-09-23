@@ -268,20 +268,21 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify, ter
 
   const openTerminal = async (approval: Approval) => {
     if (!online || busy || approval.status !== 'approved') return;
-    const requestedWorkspace = String(approval.request.workspace_id || workspaceId);
+    const requestedWorkspace = String(approval.request.workspace_id || '');
     const workspace = workspaces.find((item) => item.id === requestedWorkspace);
     if (!workspace) return notify('已批准的代码仓库工作区不可用。', 'error');
     setBusy(`open:${approval.id}`);
     try {
+      if (!['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id'].every(field => Object.hasOwn(approval.request, field))) throw new Error('审批缺少完整 Terminal 参数，请重新申请。');
       const result = await mutateV2<TerminalReceipt>('/api/v2/terminals', {
         project_id: projectId,
         workspace_id: workspace.id,
         approval_id: approval.id,
-        runtime: String(approval.request.runtime),
-        cwd: String(approval.request.cwd),
-        cols: Number(approval.request.cols),
-        rows: Number(approval.request.rows),
-        assist_session_id: approval.request.assist_session_id == null ? null : String(approval.request.assist_session_id)
+        runtime: approval.request.runtime,
+        cwd: approval.request.cwd,
+        cols: approval.request.cols,
+        rows: approval.request.rows,
+        assist_session_id: approval.request.assist_session_id
       }, 'POST', workspace.revision);
       setSelectedId(result.data.terminal.id);
       applySession(result.data.terminal);

@@ -6,6 +6,7 @@ import test from 'node:test';
 import { canonicalJson } from '../../apps/api/src/clean/canonical.mjs';
 import { start as startBridge } from '../../apps/windows-native-bridge/server.mjs';
 import { close, createAssistPrerequisites, createProject, createWorkspace, open } from './helpers.mjs';
+import { open as openP10 } from '../p10/helpers.mjs';
 
 class FakePtyProcess {
   constructor() { this.dataListeners = []; this.exitListeners = []; this.writes = []; }
@@ -14,7 +15,7 @@ class FakePtyProcess {
   write(value) { this.writes.push(String(value)); }
   resize(cols, rows) { this.size = { cols, rows }; }
   emit(value) { for (const listener of this.dataListeners) listener(value); }
-  kill() { for (const listener of this.exitListeners.splice(0)) listener({ exitCode: 0 }); }
+  kill() { this.killed = true; for (const listener of this.exitListeners.splice(0)) listener({ exitCode: 0 }); }
 }
 
 test('Terminal consumes one approval, replays by idempotency and persists redacted cursor output', async () => {
@@ -43,6 +44,7 @@ test('Terminal consumes one approval, replays by idempotency and persists redact
     assert.equal(replayed.replayed, true);
     assert.equal(replayed.terminal.id, opened.terminal.id);
     assert.equal(children.length, 1);
+    await assert.rejects(() => state.runtime.terminal.open({ ...request, idempotency_key: 'terminal-consume-twice' }, state.principal), error => error.code === 'approval_consumed');
 
     children[0].emit('prefix sk-');
     children[0].emit(`abcdefghijklmnop suffix ${state.root}\n`);
@@ -121,7 +123,7 @@ test('Windows Bridge pairing shares one secret, rejects nonce replay, rotates an
 
 test('Assist Terminal approvals bind project, workspace revision and session, then return one operation reference', async () => {
   const children = [];
-  const state = await open({ targetVersion: 9, pty: { spawn: () => { const child = new FakePtyProcess(); children.push(child); return child; } } });
+  const state = await open({ targetVersion: 9, config: { providerMode: 'deterministic' }, pty: { spawn: () => { const child = new FakePtyProcess(); children.push(child); return child; } } });
   try {
     const project = await createProject(state, 'assist-terminal');
     const foreignProject = await createProject(state, 'assist-terminal-foreign');
@@ -176,3 +178,73 @@ test('Assist Terminal approvals bind project, workspace revision and session, th
     assert.equal(state.runtime.db.integrity().semantic.valid, true);
   } finally { await close(state); }
 });
+
+test('Terminal rejects every absent/null field and exact approval drift before spawning', async () => {
+  const fixture = await strictTerminalFixture('strict-shape');
+  const { state, request, approval, children } = fixture;
+  try {
+    for (const field of ['project_id', 'workspace_id', 'approval_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
+      const missing = { ...request }; delete missing[field];
+      await assert.rejects(() => state.runtime.terminal.open(missing, state.principal), error => error.code === 'schema_invalid', field);
+      await assert.rejects(() => state.runtime.terminal.open({ ...request, [field]: null }, state.principal), error => error.code === (field === 'assist_session_id' ? 'approval_request_mismatch' : 'schema_invalid'), field);
+    }
+    for (const override of [{ cols: '120' }, { rows: 4 }, { cols: 401 }, { runtime: '' }, { cwd: 0 }, { assist_session_id: '' }]) await assert.rejects(() => state.runtime.terminal.open({ ...request, ...override }, state.principal), error => error.code === 'schema_invalid');
+    for (const override of [{ cols: 121 }, { rows: 33 }, { cwd: './' }, { runtime: request.runtime === 'windows_native' ? 'linux_native' : 'windows_native' }]) await assert.rejects(() => state.runtime.terminal.open({ ...request, ...override }, state.principal), error => error.code === 'approval_request_mismatch');
+    const original = state.runtime.db.get('SELECT request_json FROM runtime_approvals WHERE id=?', [approval.id]).request_json;
+    for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
+      const invalid = JSON.parse(original); delete invalid[field];
+      state.runtime.db.run('UPDATE runtime_approvals SET request_json=? WHERE id=?', [JSON.stringify(invalid), approval.id]);
+      await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'schema_invalid');
+    }
+    state.runtime.db.run('UPDATE runtime_approvals SET request_json=? WHERE id=?', [original, approval.id]);
+    const other = await createProject(state, 'strict-other');
+    const otherWorkspace = await createWorkspace(state, other, 'strict-other');
+    await assert.rejects(() => state.runtime.terminal.open({ ...request, workspace_id: otherWorkspace.workspace.id }, state.principal), error => error.code === 'scope_denied');
+    await assert.rejects(() => state.runtime.terminal.open({ ...request, project_id: other.id }, state.principal), error => error.code === 'scope_denied');
+    const expires = state.runtime.db.get('SELECT expires_at FROM runtime_approvals WHERE id=?', [approval.id]).expires_at;
+    state.runtime.db.run('UPDATE runtime_approvals SET expires_at=? WHERE id=?', ['2000-01-01T00:00:00Z', approval.id]);
+    await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'approval_expired');
+    state.runtime.db.run('UPDATE runtime_approvals SET expires_at=? WHERE id=?', [expires, approval.id]);
+    assert.equal(children.length, 0);
+    const opened = await state.runtime.terminal.open(request, state.principal);
+    assert.equal(opened.terminal.cwd, '');
+    assert.equal(children.length, 1);
+  } finally { await close(state); }
+});
+
+test('Terminal rechecks deleted/archived sessions and lifecycle changes during lease acquisition', async () => {
+  const { state, request, children, session } = await strictTerminalFixture('strict-lifecycle');
+  try {
+    const archive = await state.runtime.p10Service.archiveAssistSession(session.id, { expected_revision: session.revision, idempotency_key: 'strict-lifecycle-archive' }, state.principal);
+    await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'assist_session_inactive' && error.details.lifecycle_status === 'archived');
+    const deleted = await state.runtime.p10Service.deleteAssistSession(session.id, { expected_revision: archive.session.revision, idempotency_key: 'strict-lifecycle-delete' }, state.principal);
+    await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'assist_session_inactive' && error.details.lifecycle_status === 'deleted');
+    assert.equal(children.length, 0);
+    const restored = await state.runtime.p10Service.restoreDeletedAssistSession(session.id, { expected_revision: deleted.session.revision, idempotency_key: 'strict-lifecycle-restore' }, state.principal);
+    const acquire = state.runtime.terminal.acquireLease.bind(state.runtime.terminal);
+    state.runtime.terminal.acquireLease = async (...args) => {
+      const lease = await acquire(...args);
+      await state.runtime.p10Service.archiveAssistSession(session.id, { expected_revision: restored.session.revision, idempotency_key: 'strict-lifecycle-race' }, state.principal);
+      return lease;
+    };
+    await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'assist_session_inactive');
+    assert.equal(children.length, 1);
+    assert.equal(children[0].killed, true);
+    assert.deepEqual(children[0].writes, []);
+    assert.equal(state.runtime.db.get('SELECT count(*) AS n FROM terminal_sessions').n, 0);
+    assert.equal(state.runtime.db.get('SELECT status FROM repository_workspaces WHERE id=?', [request.workspace_id]).status, 'released');
+  } finally { await close(state); }
+});
+
+async function strictTerminalFixture(suffix) {
+  const children = [];
+  const state = await openP10({ runtime: { pty: { spawn: () => { const child = new FakePtyProcess(); children.push(child); return child; } } } });
+  const project = await createProject(state, suffix);
+  const { workspace } = await createWorkspace(state, project, suffix);
+  const { pack, profile } = await createAssistPrerequisites(state, project, suffix);
+  const { session } = await state.runtime.assist.createSession({ project_id: project.id, context_pack_id: pack.id, profile_id: profile.id, idempotency_key: `${suffix}-session` }, state.principal);
+  const shape = { workspace_id: workspace.id, runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native', cwd: '', cols: 120, rows: 32, assist_session_id: session.id };
+  const { approval } = await state.runtime.assist.createApproval({ project_id: project.id, action: 'terminal.open', request: shape, expected_revision: workspace.revision, idempotency_key: `${suffix}-approval` }, state.principal);
+  await state.runtime.assist.decideApproval(approval.id, { decision: 'approved', expected_revision: approval.revision, idempotency_key: `${suffix}-decision` }, state.principal);
+  return { state, children, session, approval, request: { ...shape, project_id: project.id, approval_id: approval.id, expected_revision: workspace.revision, idempotency_key: `${suffix}-open-key` } };
+}

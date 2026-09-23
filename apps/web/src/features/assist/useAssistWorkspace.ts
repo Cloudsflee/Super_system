@@ -262,14 +262,5 @@ export function useAssistWorkspace(props: WorkspacePageProps) {
 
 function matchesReference(reference: Reference, context: AssistPageContext) {
   return reference.reference_type === context.resourceType && reference.reference_id === context.resourceId
-    && normalizeRevision(reference.reference_revision) === normalizeRevision(context.revision)
-    && normalizeHash(reference.reference_hash) === normalizeHash(context.contentHash);
-}
-
-function normalizeRevision(value: number | string | null | undefined) {
-  return value == null || value === '' ? null : String(Number(value));
-}
-
-function normalizeHash(value: string | null | undefined) {
-  return value ? String(value).toLowerCase() : null;
+    && (reference.reference_revision ?? null) === (context.revision ?? null) && (reference.reference_hash || null) === (context.contentHash || null);
 }
