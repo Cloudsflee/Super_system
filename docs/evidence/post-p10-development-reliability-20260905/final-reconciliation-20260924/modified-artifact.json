@@ -1,0 +1,131 @@
+{
+  "schema_version": "aiws.reconciliation.modified-artifact.v1",
+  "implementation_commit": "8ec4ac9",
+  "files": [
+    {
+      "path": "apps/api/src/clean/assist-service.mjs",
+      "sha256": "0d6f95f074b471e58f28c0ac376ba3ff579701336ffc29ecda770a5142e97a4a",
+      "byte_length": 98232
+    },
+    {
+      "path": "apps/api/src/clean/context-service.mjs",
+      "sha256": "37979383556d888a78fcec4fc30c9db826d5a8565700654ddb2751c4bf79ce0b",
+      "byte_length": 72865
+    },
+    {
+      "path": "apps/api/src/clean/files-service.mjs",
+      "sha256": "26642c78d6c08704847bd2ba12f4471286dfc2022286ee4eb585a7648ddbd67f",
+      "byte_length": 53570
+    },
+    {
+      "path": "apps/api/src/clean/http.mjs",
+      "sha256": "43af4d636cb498b9f9f16bac8ffeb2817b82fa4a4be8105156cee29509dd7e30",
+      "byte_length": 85173
+    },
+    {
+      "path": "apps/api/src/clean/terminal-service.mjs",
+      "sha256": "b06308acde52c6573278afbacbbd434f6405674522adbfbf466866d44012c5c5",
+      "byte_length": 34022
+    },
+    {
+      "path": "apps/web/src/features/assist/useAssistWorkspace.ts",
+      "sha256": "5fdb18af87637ad977d05bbabe1275cbf807ebee31a62d2d203b3cb412294f86",
+      "byte_length": 18117
+    },
+    {
+      "path": "apps/web/src/features/projects/preparation/index.tsx",
+      "sha256": "80ad2ec78b042f94286b0356e7b5d1499af8db58df604551661339e402467baa",
+      "byte_length": 26756
+    },
+    {
+      "path": "apps/web/src/features/terminal/TerminalPage.tsx",
+      "sha256": "d742af8d8dda8918637cde1473bf05ce0ac5527540bb45492516081b991f80c9",
+      "byte_length": 25388
+    },
+    {
+      "path": "apps/web/src/test/assist.test.tsx",
+      "sha256": "74768169d5f18ef724707781fcdb3145bc3611ecde46c19ca548d1eef7c138e3",
+      "byte_length": 11249
+    },
+    {
+      "path": "apps/web/src/test/project-onboarding.test.tsx",
+      "sha256": "3999cdd94ef61f32b65613bfaa471ae73997ef4b072bcf39913fe6a30c317bcc",
+      "byte_length": 16492
+    },
+    {
+      "path": "apps/web/src/test/project-preparation.test.tsx",
+      "sha256": "feaf0865cb18f39882bd7700e7feb4498ecdd0dca94d0677a22db76ae07ead2b",
+      "byte_length": 12377
+    },
+    {
+      "path": "apps/web/vite.config.ts",
+      "sha256": "6f81c44c13aca52a89675581717ad984092131678b6ea2b3e21b6d057b2969ee",
+      "byte_length": 1594
+    },
+    {
+      "path": "docs/architecture/v3-clean-development-plan.md",
+      "sha256": "3b05d85f00656b0c909df63f4a7982807a70d73c1b4dc298777e28bdfd76f926",
+      "byte_length": 63329
+    },
+    {
+      "path": "docs/testing.md",
+      "sha256": "fa11b0d0e02daf14dd38a6373180f740942e62ab56b01bae0839bfecd5f7dbe2",
+      "byte_length": 51827
+    },
+    {
+      "path": "feature-catalog.clean.json",
+      "sha256": "a94d3c6d14b1b3212f7e5011022ba424215446506eaeefccb124013daf532aee",
+      "byte_length": 85735
+    },
+    {
+      "path": "feature-catalog.json",
+      "sha256": "bc81f01aea51dc333859863c45e3870c39615b2d08165dbdb1210508456b9d6e",
+      "byte_length": 84062
+    },
+    {
+      "path": "packages/contracts/src/clean-v2.mjs",
+      "sha256": "2db44ccc011d304e9c15d350640a66eb20a15ad1a919b44e5deb696859d04924",
+      "byte_length": 69501
+    },
+    {
+      "path": "scripts/e2e.mjs",
+      "sha256": "eeb4dfb0565d6f1ee57aa991c06735d07435307e529db5e514a9bcbdd5d153e7",
+      "byte_length": 69099
+    },
+    {
+      "path": "scripts/lib/port-lease.mjs",
+      "sha256": "ce85b970a9d7637a5d3621c924725020130c43c512a0471ea48892bda4ff2861",
+      "byte_length": 9051
+    },
+    {
+      "path": "scripts/lib/v3-clean-p1-scope.mjs",
+      "sha256": "fcd52f8f7c17dde972816a3be5c260f2ee4af1d18c72bc88e78bdb33272c693e",
+      "byte_length": 27028
+    },
+    {
+      "path": "scripts/v3-clean-p10-release-probe.mjs",
+      "sha256": "3ab4a794e78efcc24fe75e703a66914bbca4ed716b2f46ad49dfdb39ffd13ff9",
+      "byte_length": 27307
+    },
+    {
+      "path": "tests/p10/development-reliability.test.mjs",
+      "sha256": "818878620fd2a0bd6a774867755f8b4f71ee9813fded6532768b6274d59aed1d",
+      "byte_length": 35343
+    },
+    {
+      "path": "tests/p5/assist-files.test.mjs",
+      "sha256": "6a3c137bcc917d654ade83030d3c8ca1d3cdf49964b3a2bcdafd1c803b878eed",
+      "byte_length": 31123
+    },
+    {
+      "path": "tests/p5/http-contract.test.mjs",
+      "sha256": "6ddafb6aea05a62138db60891ed6ecd176d42e90ad7b07c682ecb9af26848878",
+      "byte_length": 15434
+    },
+    {
+      "path": "tests/p5/terminal-bridge.test.mjs",
+      "sha256": "5230574a9cee615f35cfdcc9ac552a27f41289632523b2a853126dac6b1b1487",
+      "byte_length": 22493
+    }
+  ]
+}\n

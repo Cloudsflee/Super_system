@@ -1,0 +1,1779 @@
+diff --git a/apps/api/src/clean/assist-service.mjs b/apps/api/src/clean/assist-service.mjs
+index 0caf9b3..5cce62b 100644
+--- a/apps/api/src/clean/assist-service.mjs
++++ b/apps/api/src/clean/assist-service.mjs
+@@ -102,6 +102,7 @@ export class CleanAssistService {
+     const session = await this.db.withTransaction((tx) => {
+       const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId: 'assist.session.create', idempotencyKey, requestHash: hash, now });
+       if (prior) return prior;
++      this.validateScope(projectId, scope, scopeId, tx);
+       const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId: 'assist.session.create', resourceType: 'assist_session', resourceId: sessionId, projectId, requestHash: hash, idempotencyKey: `internal-${opaqueId('key')}`, status: 'succeeded', now });
+       const configId = opaqueId('assist_config');
+       const snapshotPayload = canonicalPayload(snapshot);
+@@ -734,11 +735,11 @@ export class CleanAssistService {
+     const hash = requestHash({ kind, project_id: projectId, expected_revision: expected, operation_id: input.operation_id || null, assist_turn_id: input.assist_turn_id || null, action, request_sha256: request?.sha256 || null, prompt_summary: prompt, input_schema_sha256: schema?.sha256 || null, ttl_seconds: ttl });
+     return this.db.withTransaction((tx) => {
+       const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, now }); if (prior) return prior;
+-      this.validateInteractionLinks(projectId, input, principal, tx);
+-      const resourceType = kind === 'approval' ? 'runtime_approval' : 'runtime_user_input'; const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId, resourceType, resourceId: id, projectId, requestHash: hash, status: 'succeeded', now }); const ownerOperationId = input.operation_id || op.id;
++      const linkage = this.validateInteractionLinks(projectId, input, principal, tx);
++      const resourceType = kind === 'approval' ? 'runtime_approval' : 'runtime_user_input'; const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId, resourceType, resourceId: id, projectId, requestHash: hash, status: 'succeeded', now }); const ownerOperationId = linkage.operationId || op.id;
+       if (kind === 'approval') tx.run('INSERT INTO runtime_approvals(id,project_id,operation_id,assist_turn_id,action,action_sha256,request_json,request_sha256,status,requested_revision,expires_at,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,?,?,?,?,?,\'pending\',?,?,?,?,?,?,?)', [id, projectId, ownerOperationId, input.assist_turn_id || null, action, sha256Hex(action), request.json, request.sha256, expected, expires, 1, now, now, principal.actorId, principal.actorId]);
+       else tx.run('INSERT INTO runtime_user_inputs(id,project_id,operation_id,assist_turn_id,prompt_summary,input_schema_json,input_schema_sha256,status,requested_revision,expires_at,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id) VALUES(?,?,?,?,?,?,?,\'pending\',?,?,?,?,?,?,?)', [id, projectId, ownerOperationId, input.assist_turn_id || null, prompt, schema.json, schema.sha256, expected, expires, 1, now, now, principal.actorId, principal.actorId]);
+-      appendAggregate(this.events, tx, { aggregateType: resourceType, aggregateId: id, revision: 1, operationId: op.id, actorId: principal.actorId, projectId, type: `${resourceType}.requested`, data: kind === 'approval' ? { approval_id: id, action } : { input_id: id }, payload: { id, project_id: projectId, status: 'pending', revision: 1 }, now }); const links = [[resourceType, id]]; if (input.operation_id) links.push(['operation', String(input.operation_id), 'parent']); if (input.assist_turn_id) links.push(['assist_turn', String(input.assist_turn_id), 'related']); this.operations.linkInTransaction(tx, op.id, links, now);
++      appendAggregate(this.events, tx, { aggregateType: resourceType, aggregateId: id, revision: 1, operationId: op.id, actorId: principal.actorId, projectId, type: `${resourceType}.requested`, data: kind === 'approval' ? { approval_id: id, action } : { input_id: id }, payload: { id, project_id: projectId, status: 'pending', revision: 1 }, now }); const links = [[resourceType, id]]; if (linkage.operationId) links.push(['operation', linkage.operationId, 'parent']); if (input.assist_turn_id) links.push(['assist_turn', String(input.assist_turn_id), 'related']); this.operations.linkInTransaction(tx, op.id, links, now);
+       const response = kind === 'approval' ? { approval: approvalView(tx.get('SELECT * FROM runtime_approvals WHERE id=?', [id])), operation: this.operations.summary(op) } : { input: inputView(tx.get('SELECT * FROM runtime_user_inputs WHERE id=?', [id])), operation: this.operations.summary(op) }; saveResponse(this.operations, tx, { actorId: principal.actorId, commandId, idempotencyKey: key, requestHash: hash, response, operationId: op.id, status: 201, now }); return response;
+     });
+   }
+@@ -759,10 +760,12 @@ export class CleanAssistService {
+       if (turn && String(operation.id) !== String(turn.operation_id)) throw new PlatformError('scope_denied', 'Assist turn and operation do not match', {}, 403);
+     }
+     let persistedRequest = input.request;
+-    if ((!persistedRequest || typeof persistedRequest !== 'object') && input.request_json) persistedRequest = parseJson(input.request_json, {});
+-    const requestHasTerminalShape = persistedRequest && typeof persistedRequest === 'object'
+-      && ['workspace_id', 'runtime', 'cwd', 'cols', 'rows'].some((field) => Object.hasOwn(persistedRequest, field));
+-    const requestedSessionId = input.assist_session_id || (requestHasTerminalShape && persistedRequest.assist_session_id);
++    if (input.request_json != null) {
++      try { persistedRequest = JSON.parse(input.request_json); } catch { throw new PlatformError('schema_invalid', 'approval request is malformed', {}, 422); }
++      if (!persistedRequest || typeof persistedRequest !== 'object' || Array.isArray(persistedRequest)) throw new PlatformError('schema_invalid', 'approval request is malformed', {}, 422);
++    }
++    const requestedSessionId = input.assist_session_id || persistedRequest?.assist_session_id;
++    if (turn && persistedRequest && Object.hasOwn(persistedRequest, 'assist_session_id') && persistedRequest.assist_session_id !== turn.session_id) throw new PlatformError('scope_denied', 'Assist session and turn do not match', {}, 403);
+     if (persistedRequest?.workspace_id) {
+       const workspace = db.get('SELECT project_id FROM repository_workspaces WHERE id=?', [String(persistedRequest.workspace_id)]);
+       if (!workspace || String(workspace.project_id) !== project) throw new PlatformError('scope_denied', 'Terminal workspace is outside the project', {}, 403);
+@@ -773,7 +776,7 @@ export class CleanAssistService {
+       this.assertAssistSessionUsable(principal, session, 'run');
+       if (turn && String(turn.session_id) !== String(session.id)) throw new PlatformError('scope_denied', 'Assist session and turn do not match', {}, 403);
+     }
+-    return true;
++    return { operationId: input.operation_id || turn?.operation_id || null };
+   }
+   async decideInteraction(kind, id, input, principal) {
+     const table = kind === 'approval' ? 'runtime_approvals' : 'runtime_user_inputs'; const resourceType = kind === 'approval' ? 'runtime_approval' : 'runtime_user_input'; const row = this.db.get(`SELECT * FROM ${table} WHERE id=?`, [String(id)]); if (!row) throw new PlatformError('not_found', `${kind} not found`, {}, 404); assertProject(this.authorization, principal, kind === 'approval' ? 'approve' : 'write', row.project_id, { resource: 'assist' });
+@@ -796,6 +799,7 @@ export class CleanAssistService {
+     const table = kind === 'approval' ? 'runtime_approvals' : 'runtime_user_inputs';
+     const row = this.db.get(`SELECT * FROM ${table} WHERE id=?`, [String(id)]);
+     if (!row?.assist_turn_id) return;
++    this.validateInteractionLinks(row.project_id, row, principal, this.db);
+     const turn = this.db.get('SELECT * FROM assist_turns WHERE id=?', [String(row.assist_turn_id)]);
+     const session = turn ? this.sessionRow(turn.session_id) : null;
+     this.assertAssistSessionUsable(principal, session, 'run');
+diff --git a/apps/api/src/clean/context-service.mjs b/apps/api/src/clean/context-service.mjs
+index 519d35d..89eb98f 100644
+--- a/apps/api/src/clean/context-service.mjs
++++ b/apps/api/src/clean/context-service.mjs
+@@ -1,4 +1,5 @@
+ import { randomBytes } from 'node:crypto';
++import { isUtf8 } from 'node:buffer';
+ import MiniSearch from 'minisearch';
+ import { canonicalJson, opaqueId, sha256Hex, utcNow } from './canonical.mjs';
+ import { PlatformError } from './platform-error.mjs';
+@@ -72,7 +73,7 @@ export class CleanContextService {
+       );
+       fileRef = checked.file;
+       const bytes = checked.bytes;
+-      if (bytes.includes(0)) throw new PlatformError('file_not_previewable', 'binary files cannot be selected as context', {}, 422);
++      if (bytes.includes(0) || !isUtf8(bytes)) throw new PlatformError('file_not_previewable', 'binary files cannot be selected as context', {}, 422);
+       content = bytes.toString('utf8');
+     }
+     if (content.length > 2_000_000) throw new PlatformError('invalid_input', 'context source is too large', {}, 422);
+@@ -90,8 +91,9 @@ export class CleanContextService {
+     return this.db.withTransaction((tx) => {
+       const prior = this.operations.getIdempotencyInTransaction(tx, { actorId, commandId: 'context.source.create', idempotencyKey: key, requestHash, now });
+       if (prior?.response_json) return { ...JSON.parse(prior.response_json), replayed: true };
++      if (fileRef) this.files.readIndexedFile(id, fileRef.id, fileRef.revision, fileRef.content_sha256, principal);
+       const existing = tx.get('SELECT * FROM context_sources WHERE project_id=? AND canonical_uri=?', [id, canonicalUri]);
+-      if (existing && existing.source_hash === contentHash && existing.status === 'active') {
++      if (existing && existing.source_hash === contentHash && existing.source_revision === sourceRevision && existing.status === 'active') {
+         const response = { source: sourceView(existing), operation: null, replayed: true };
+         this.operations.saveIdempotencyInTransaction(tx, { actorId, commandId: 'context.source.create', idempotencyKey: key, requestHash, response, responseStatus: 200, now });
+         return response;
+diff --git a/apps/api/src/clean/files-service.mjs b/apps/api/src/clean/files-service.mjs
+index f1191c5..68dcf3a 100644
+--- a/apps/api/src/clean/files-service.mjs
++++ b/apps/api/src/clean/files-service.mjs
+@@ -1,6 +1,7 @@
+ import fs from 'node:fs';
+ import path from 'node:path';
+ import { randomUUID } from 'node:crypto';
++import { isUtf8 } from 'node:buffer';
+ import { canonicalJson, opaqueId, sha256Hex } from './canonical.mjs';
+ import { PlatformError } from './platform-error.mjs';
+ import {
+@@ -72,6 +73,7 @@ export class CleanFilesService {
+     assertProject(this.authorization, principal, 'read', workspace.project_id, { resource: 'files' });
+     const directory = this.workspaceDirectory(workspace);
+     if (!fs.existsSync(directory)) return 0;
++    rejectSpecialPath(directory);
+     const entries = [];
+     let totalBytes = 0;
+     let bounded = false;
+@@ -98,7 +100,7 @@ export class CleanFilesService {
+         try { stat = fs.lstatSync(full); } catch { continue; }
+         // Dirent.isDirectory() follows some Windows reparse points.  Use the
+         // lstat result and reject every non-regular entry before opening it.
+-        if (isReparseStat(stat) || isSpecialStat(stat)) continue;
++        if (stat.isSymbolicLink() || isSpecialStat(stat)) continue;
+         if (stat.isDirectory()) {
+           walk(full, relative);
+         } else if (stat.isFile()) {
+@@ -121,7 +123,7 @@ export class CleanFilesService {
+     };
+     walk(directory);
+     const now = time(this.clock); let count = 0;
+-    this.db.withTransaction((tx) => {
++    await this.db.withTransaction((tx) => {
+       const seen = new Set(entries.map((entry) => entry.relative));
+       for (const entry of entries) {
+         const hash = sha256Hex(entry.bytes); const current = tx.get('SELECT * FROM file_refs WHERE workspace_id=? AND relative_path=?', [workspace.id, entry.relative]);
+@@ -524,16 +526,11 @@ function decodeChangeContent(change) { return change.content_base64 != null ? de
+ function isSpecialStat(stat) {
+   return stat.isSocket?.() || stat.isFIFO?.() || stat.isBlockDevice?.() || stat.isCharacterDevice?.();
+ }
+-function isReparseStat(stat) {
+-  // Junctions and other Windows reparse points can report as directories
+-  // rather than symbolic links.  Keep them out of both indexing and reads.
+-  return Boolean(stat?.isSymbolicLink?.() || stat?.isReparsePoint?.());
+-}
+ function safeRelative(value) { const text = String(value || '').replaceAll('\\', '/'); const parts = text.split('/'); if (!text || text.startsWith('/') || /^[A-Za-z]:\//.test(text) || parts.includes('..') || parts.some((part) => !part || part === '.' || part.includes(':') || /[. ]$/.test(part))) throw new PlatformError('path_policy_denied', 'workspace path must be relative', {}, 422); if (text.startsWith('.git/') || text === '.git' || text.includes('/.git/')) throw new PlatformError('path_policy_denied', 'git metadata is not addressable', {}, 422); return text; }
+ function resolveWithin(root, relative) { const clean = safeRelative(relative); const base = path.resolve(root); const target = path.resolve(base, clean); if (target !== base && !target.startsWith(`${base}${path.sep}`)) throw new PlatformError('path_policy_denied', 'path escapes the workspace', {}, 422); return target; }
+-function rejectSpecialPath(target) { const parts = target.split(path.sep); let current = parts[0] === '' ? path.sep : parts[0]; for (const part of parts.slice(1)) { current = path.join(current, part); if (!fs.existsSync(current)) break; const stat = fs.lstatSync(current); if (isReparseStat(stat) || stat.isDirectory() && part === '.git') throw new PlatformError('path_policy_denied', 'special workspace path is not addressable', {}, 422); } }
++function rejectSpecialPath(target) { const parts = target.split(path.sep); let current = parts[0] === '' ? path.sep : parts[0]; for (const part of parts.slice(1)) { current = path.join(current, part); if (!fs.existsSync(current)) break; const stat = fs.lstatSync(current); if (stat.isSymbolicLink() || stat.isDirectory() && part === '.git') throw new PlatformError('path_policy_denied', 'special workspace path is not addressable', {}, 422); } }
+ function rejectCaseCollision(root, relative) { let current = path.resolve(root); for (const segment of safeRelative(relative).split('/')) { if (!fs.existsSync(current)) return; const entries = fs.readdirSync(current); const match = entries.find((entry) => entry.toLocaleLowerCase('en-US') === segment.toLocaleLowerCase('en-US')); if (match && match !== segment) throw new PlatformError('path_collision', 'workspace path collides by case', { path: relative }, 422); current = path.join(current, segment); } }
+-function isText(bytes) { return !bytes.includes(0) && Buffer.from(bytes).toString('utf8').length === bytes.byteLength; }
++function isText(bytes) { return !bytes.includes(0) && isUtf8(bytes); }
+ function containsRestricted(bytes) { if (!isText(bytes)) return false; const text = bytes.toString('utf8'); return SECRET_SENTINEL.test(text) || PROMPT_SENTINEL.test(text) || /(?:^|[\s(])(?:[A-Za-z]:\\|\/home\/|\/Users\/|\/root\/)/.test(text); }
+ function forbiddenMime(type, bytes) { const actual = detectMagic(bytes); if (!actual || type === 'application/octet-stream' || type === actual) return false; if (actual === 'text/plain' && (type.startsWith('text/') || ['application/json', 'application/xml', 'image/svg+xml'].includes(type))) return false; if (actual === 'application/zip' && (type === 'application/zip' || type.startsWith('application/vnd.openxmlformats-officedocument'))) return false; return true; }
+ function detectMagic(bytes) { if (bytes.subarray(0, 8).equals(Buffer.from('\x89PNG\r\n\x1a\n', 'binary'))) return 'image/png'; if (bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return 'image/jpeg'; if (bytes.subarray(0, 6).toString('ascii') === 'GIF87a' || bytes.subarray(0, 6).toString('ascii') === 'GIF89a') return 'image/gif'; if (bytes.subarray(0, 2).toString('ascii') === 'BM') return 'image/bmp'; if (bytes.subarray(0, 4).toString() === '%PDF') return 'application/pdf'; if (bytes.subarray(0, 2).toString() === 'PK') return 'application/zip'; return isText(bytes) ? 'text/plain' : 'application/octet-stream'; }
+diff --git a/apps/api/src/clean/http.mjs b/apps/api/src/clean/http.mjs
+index 17dc79a..3b10bd6 100644
+--- a/apps/api/src/clean/http.mjs
++++ b/apps/api/src/clean/http.mjs
+@@ -341,7 +341,7 @@ function p5DispatchArguments(command, params, url, body, schema) {
+   const args = { ...body, ...params };
+   if (args.id) {
+     if (command === 'assist.turn.create' || command.startsWith('assist.session') || command.startsWith('assist.goal') || command.startsWith('assist.reference')) args.session_id ||= args.id;
+-    else if (command.startsWith('assist.turn')) args.turn_id ||= args.id;
++    else if (command.startsWith('assist.turn') || command.startsWith('assist.review')) args.turn_id ||= args.id;
+     else if (command.startsWith('attachment.')) args.attachment_id ||= args.id;
+     else if (command.startsWith('change.batch')) args.batch_id ||= args.id;
+     else if (command.startsWith('approval.')) args.approval_id ||= args.id;
+diff --git a/apps/api/src/clean/terminal-service.mjs b/apps/api/src/clean/terminal-service.mjs
+index cd05ae0..701653e 100644
+--- a/apps/api/src/clean/terminal-service.mjs
++++ b/apps/api/src/clean/terminal-service.mjs
+@@ -45,53 +45,7 @@ export class CleanTerminalService {
+ 
+   async open(input = {}, principal) {
+     requirePrincipal(principal);
+-    for (const field of ['project_id', 'workspace_id', 'approval_id', 'assist_session_id', 'runtime', 'cwd', 'cols', 'rows']) {
+-      if (!Object.hasOwn(input, field)) throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
+-    }
+-    if (typeof input.project_id !== 'string' || !input.project_id || typeof input.approval_id !== 'string' || !input.approval_id) throw new PlatformError('schema_invalid', 'terminal.open identifiers are invalid', {}, 422);
+-    const projectId = String(input.project_id || ''); assertProject(this.authorization, principal, 'run', projectId, { resource: 'terminal' });
+-    const approval = this.db.get('SELECT * FROM runtime_approvals WHERE id=?', [String(input.approval_id || '')]);
+-    if (!approval || approval.status !== 'approved' || approval.action !== 'terminal.open') throw new PlatformError('approval_required', 'an approved terminal.open request is required', {}, 403);
+-    if (String(approval.project_id) !== projectId) throw new PlatformError('scope_denied', 'terminal approval is outside the project', {}, 403);
+-    if (Date.parse(approval.expires_at) <= Date.parse(time(this.clock))) throw new PlatformError('approval_expired', 'terminal approval expired', {}, 409);
+-    let approvedRequest;
+-    try { approvedRequest = JSON.parse(approval.request_json || '{}'); }
+-    catch { throw new PlatformError('schema_invalid', 'terminal approval request is malformed', {}, 422); }
+-    if (!approvedRequest || typeof approvedRequest !== 'object' || Array.isArray(approvedRequest)) throw new PlatformError('schema_invalid', 'terminal approval request is malformed', {}, 422);
+-    const shape = ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id'];
+-    for (const field of shape) {
+-      if (!Object.hasOwn(input, field)) throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
+-      if (!Object.hasOwn(approvedRequest, field)) throw new PlatformError('schema_invalid', `terminal approval requires ${field}`, { field }, 422);
+-    }
+-    if (typeof input.workspace_id !== 'string' || !input.workspace_id) throw new PlatformError('schema_invalid', 'terminal workspace_id is invalid', { field: 'workspace_id' }, 422);
+-    if (typeof input.approval_id !== 'string' || !input.approval_id) throw new PlatformError('schema_invalid', 'terminal approval_id is invalid', { field: 'approval_id' }, 422);
+-    if (typeof input.runtime !== 'string' || !['windows_native', 'linux_native'].includes(input.runtime)) throw new PlatformError('schema_invalid', 'terminal runtime is invalid', { field: 'runtime' }, 422);
+-    if (typeof input.cwd !== 'string') throw new PlatformError('schema_invalid', 'terminal cwd is invalid', { field: 'cwd' }, 422);
+-    if (input.assist_session_id !== null && typeof input.assist_session_id !== 'string') throw new PlatformError('schema_invalid', 'terminal assist_session_id is invalid', { field: 'assist_session_id' }, 422);
+-    const workspace = this.db.get('SELECT * FROM repository_workspaces WHERE id=?', [input.workspace_id]);
+-    if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
+-    if (String(workspace.project_id) !== projectId) throw new PlatformError('scope_denied', 'repository workspace is outside the project', {}, 403);
+-    const requestedRuntime = input.runtime; const capability = this.capabilities()[requestedRuntime];
+-    if (!capability?.available) throw new PlatformError('terminal_runtime_unavailable', 'requested terminal runtime is unavailable', { runtime: requestedRuntime }, 422);
+-    const cwdRelative = safeCwd(input.cwd);
+-    const cols = boundedInt(input.cols, 20, 400, undefined, { required: true }); const rows = boundedInt(input.rows, 5, 200, undefined, { required: true });
+-    const assistSessionId = input.assist_session_id;
+-    const assistSession = assistSessionId ? this.db.get('SELECT * FROM assist_sessions WHERE id=?', [assistSessionId]) : null;
+-    if (assistSessionId) {
+-      assertProject(this.authorization, principal, 'run', projectId, { resource: 'assist' });
+-      if (!assistSession || String(assistSession.project_id) !== projectId) throw new PlatformError('scope_denied', 'terminal Assist session is outside the project', {}, 403);
+-      if (assistSession.deleted_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'deleted' }, 409);
+-      if (assistSession.archived_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: 'archived' }, 409);
+-      if (assistSession.status !== 'active') throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: assistSession.status }, 409);
+-    }
+-    const approvedCwd = typeof approvedRequest.cwd === 'string' ? safeCwd(approvedRequest.cwd) : null;
+-    if (approvedCwd === null) throw new PlatformError('schema_invalid', 'terminal approval cwd is invalid', { field: 'cwd' }, 422);
+-    if (approvedRequest.cwd !== input.cwd) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field: 'cwd' }, 409);
+-    const approvedFields = { workspace_id: workspace.id, runtime: requestedRuntime, cwd: cwdRelative, cols, rows, assist_session_id: assistSessionId };
+-    for (const [field, value] of Object.entries(approvedFields)) {
+-      const approvedValue = field === 'cwd' ? approvedCwd : approvedRequest[field];
+-      if (approvedValue !== value) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field }, 409);
+-    }
++    const { projectId, approval, workspace, requestedRuntime, cwdRelative, cols, rows, assistSessionId } = this.validateOpen(input, principal);
+     const expected = requireRevision(input.expected_revision, { allowZero: true });
+     const key = requireIdempotency(input.idempotency_key); const now = time(this.clock); const id = opaqueId('terminal');
+     const hash = requestHash({ project_id: projectId, workspace_id: workspace.id, approval_id: approval.id, expected_revision: expected, assist_session_id: assistSessionId, runtime: requestedRuntime, cwd: cwdRelative, cols, rows });
+@@ -102,7 +56,7 @@ export class CleanTerminalService {
+       assertRevision(workspace, expected);
+       if (Number(approval.requested_revision) > 0 && Number(approval.requested_revision) !== expected) throw new PlatformError('revision_conflict', 'terminal approval workspace revision is stale', {}, 409);
+     }
+-    const cwd = this.workspaceDirectory(workspace, cwdRelative); fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); rejectReparse(cwd);
++    const cwd = this.workspaceDirectory(workspace, cwdRelative); rejectReparse(cwd); fs.mkdirSync(cwd, { recursive: true, mode: 0o700 }); rejectReparse(cwd);
+     const lease = await this.acquireLease(workspace, principal);
+     let child;
+     try { child = this.spawn(requestedRuntime, cwd, cols, rows); }
+@@ -111,6 +65,9 @@ export class CleanTerminalService {
+       const result = await this.db.withTransaction((tx) => {
+         const prior = priorResponse(this.operations, tx, { actorId: principal.actorId, commandId: 'terminal.open', idempotencyKey: key, requestHash: hash, now });
+         if (prior) return prior;
++        this.validateOpen(input, principal, tx);
++        const leasedWorkspace = tx.get('SELECT * FROM repository_workspaces WHERE id=?', [workspace.id]);
++        if (lease.result?.workspace) assertRevision(leasedWorkspace, Number(lease.result.workspace.revision));
+         if (tx.get('SELECT id FROM terminal_sessions WHERE approval_id=?', [approval.id])) throw new PlatformError('approval_consumed', 'terminal approval was already consumed', {}, 409);
+         const op = createOperation(this.operations, tx, { actorId: principal.actorId, commandId: 'terminal.open', resourceType: 'terminal_session', resourceId: id, projectId, requestHash: hash, status: 'running', now });
+         tx.run(`INSERT INTO terminal_sessions(id,project_id,workspace_id,approval_id,assist_session_id,operation_id,runtime,cwd_relative,status,cols,rows,last_client_sequence,output_bytes,output_preview,output_sha256,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id)
+@@ -128,6 +85,36 @@ export class CleanTerminalService {
+     } catch (error) { try { child.kill(); } catch {} await this.releaseLease(workspace, principal).catch(() => undefined); throw error; }
+   }
+ 
++  validateOpen(input, principal, db = this.db) {
++    for (const field of ['project_id', 'approval_id']) if (typeof input[field] !== 'string' || !input[field] || input[field].length > 256) throw new PlatformError('schema_invalid', `terminal.open requires ${field}`, { field }, 422);
++    validateTerminalShape(input);
++    const projectId = input.project_id;
++    assertProject(this.authorization, principal, 'run', projectId, { resource: 'terminal' });
++    const approval = db.get('SELECT * FROM runtime_approvals WHERE id=?', [input.approval_id]);
++    if (!approval || approval.status !== 'approved' || approval.action !== 'terminal.open') throw new PlatformError('approval_required', 'an approved terminal.open request is required', {}, 403);
++    if (approval.project_id !== projectId) throw new PlatformError('scope_denied', 'terminal approval is outside the project', {}, 403);
++    if (!Number.isFinite(Date.parse(approval.expires_at)) || Date.parse(approval.expires_at) <= Date.parse(time(this.clock))) throw new PlatformError('approval_expired', 'terminal approval expired', {}, 409);
++    let request;
++    try { request = JSON.parse(approval.request_json); } catch { throw new PlatformError('schema_invalid', 'terminal approval is malformed', {}, 422); }
++    validateTerminalShape(request);
++    const workspace = db.get('SELECT * FROM repository_workspaces WHERE id=?', [input.workspace_id]);
++    if (!workspace) throw new PlatformError('not_found', 'repository workspace not found', {}, 404);
++    if (workspace.project_id !== projectId) throw new PlatformError('scope_denied', 'repository workspace is outside the project', {}, 403);
++    const assistSessionId = input.assist_session_id;
++    if (assistSessionId !== null) {
++      assertProject(this.authorization, principal, 'run', projectId, { resource: 'assist' });
++      const session = db.get('SELECT * FROM assist_sessions WHERE id=?', [assistSessionId]);
++      if (!session || session.project_id !== projectId) throw new PlatformError('scope_denied', 'terminal Assist session is outside the project', {}, 403);
++      if (session.deleted_at || session.archived_at) throw new PlatformError('assist_session_inactive', 'Assist session is inactive', { lifecycle_status: session.deleted_at ? 'deleted' : 'archived' }, 409);
++    }
++    for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
++      if (request[field] !== input[field]) throw new PlatformError('approval_request_mismatch', 'terminal request differs from approval', { field }, 409);
++    }
++    const requestedRuntime = input.runtime;
++    if (!this.capabilities()[requestedRuntime]?.available) throw new PlatformError('terminal_runtime_unavailable', 'requested terminal runtime is unavailable', { runtime: requestedRuntime }, 422);
++    return { projectId, approval, workspace, requestedRuntime, cwdRelative: safeCwd(input.cwd), cols: input.cols, rows: input.rows, assistSessionId };
++  }
++
+   async input(id, frame = {}, principal) {
+     const row = this.row(id); assertProject(this.authorization, principal, 'run', row.project_id, { resource: 'terminal' }); this.assertActive(row);
+     const data = String(frame.data || ''); if (Buffer.byteLength(data) > MAX_INPUT) throw new PlatformError('terminal_input_too_large', 'terminal input frame exceeds 64 KiB', {}, 422);
+@@ -210,17 +197,22 @@ export class CleanTerminalService {
+   close() { this.closing = true; for (const child of this.processes.values()) { try { child.kill(); } catch {} } this.processes.clear(); this.listeners.clear(); this.outputBuffers.clear(); }
+ }
+ 
+-function boundedInt(value, minimum, maximum, fallback, { required = false } = {}) {
+-  if (value == null) {
+-    if (required) throw new PlatformError('schema_invalid', 'terminal dimension is required', {}, 422);
+-    return fallback;
+-  }
+-  if (typeof value !== 'number' || !Number.isInteger(value) || value < minimum || value > maximum) throw new PlatformError('schema_invalid', 'terminal dimension is invalid', {}, 422);
+-  return value;
++function validateTerminalShape(value) {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new PlatformError('schema_invalid', 'terminal shape is invalid', {}, 422);
++  const valid = {
++    workspace_id: typeof value.workspace_id === 'string' && value.workspace_id.length > 0 && value.workspace_id.length <= 256,
++    runtime: ['windows_native', 'linux_native'].includes(value.runtime),
++    cwd: typeof value.cwd === 'string' && value.cwd.length <= 1024,
++    cols: Number.isInteger(value.cols) && value.cols >= 20 && value.cols <= 400,
++    rows: Number.isInteger(value.rows) && value.rows >= 5 && value.rows <= 200,
++    assist_session_id: value.assist_session_id === null || typeof value.assist_session_id === 'string' && value.assist_session_id.length > 0 && value.assist_session_id.length <= 256
++  };
++  for (const [field, accepted] of Object.entries(valid)) if (!Object.hasOwn(value, field) || !accepted) throw new PlatformError('schema_invalid', `terminal shape requires ${field}`, { field }, 422);
+ }
++function boundedInt(value, minimum, maximum, fallback) { const number = value == null ? fallback : Number(value); if (!Number.isInteger(number) || number < minimum || number > maximum) throw new PlatformError('schema_invalid', 'terminal dimension is invalid', {}, 422); return number; }
+ function safeCwd(value) { const text = String(value || '').replaceAll('\\', '/').replace(/^\.\//, ''); if (!text) return ''; if (text.startsWith('/') || /^[A-Za-z]:\//.test(text) || text.split('/').includes('..') || text.split('/').includes('.git') || text.includes(':')) throw new PlatformError('path_policy_denied', 'terminal cwd must be a managed relative path', {}, 422); return text; }
+ function resolveWithin(root, relative) { const base = path.resolve(root); const clean = safeCwd(relative); const target = clean ? path.resolve(base, clean) : base; if (target !== base && !target.startsWith(`${base}${path.sep}`)) throw new PlatformError('path_policy_denied', 'path escapes the workspace', {}, 422); return target; }
+-function rejectReparse(target) { let current = path.parse(target).root; for (const part of target.slice(current.length).split(path.sep).filter(Boolean)) { current = path.join(current, part); if (!fs.existsSync(current)) continue; const stat = fs.lstatSync(current); if (stat.isSymbolicLink() || stat.isReparsePoint?.()) throw new PlatformError('path_policy_denied', 'terminal cwd contains a link', {}, 422); } }
++function rejectReparse(target) { let current = path.parse(target).root; for (const part of target.slice(current.length).split(path.sep).filter(Boolean)) { current = path.join(current, part); if (!fs.existsSync(current)) continue; const stat = fs.lstatSync(current); if (stat.isSymbolicLink()) throw new PlatformError('path_policy_denied', 'terminal cwd contains a link', {}, 422); } }
+ function redactOutput(value, root) { const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); return String(value).replace(new RegExp(escaped, 'gi'), '[workspace]').replace(/(?:[A-Za-z]:\\|\/(?:home|Users|root)\/)[^\s"']+/g, '[path]').replace(/(?:sk-|ghp_|Bearer\s+)[A-Za-z0-9._~-]{8,}/gi, '[redacted]'); }
+ function outputSplit(value) { const text = String(value || ''); if (text.length <= 512) return { emit: '', tail: text }; const boundary = text.length - 256; let cut = -1; for (let index = boundary; index >= 0; index -= 1) { if (/\s/.test(text[index])) { cut = index + 1; break; } } if (cut < 0) return text.length <= 4096 ? { emit: '', tail: text } : { emit: '[redacted]', tail: text.slice(-256) }; return { emit: text.slice(0, cut), tail: text.slice(cut) }; }
+ function minimalEnvironment() { const allow = ['PATH', 'Path', 'SystemRoot', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP', 'HOME', 'USERPROFILE', 'TERM', 'LANG']; return Object.fromEntries(allow.filter((key) => process.env[key] != null).map((key) => [key, String(process.env[key])]).concat([['AIWS_TERMINAL', '1']])); }
+diff --git a/apps/web/src/features/assist/useAssistWorkspace.ts b/apps/web/src/features/assist/useAssistWorkspace.ts
+index 9182274..cb64156 100644
+--- a/apps/web/src/features/assist/useAssistWorkspace.ts
++++ b/apps/web/src/features/assist/useAssistWorkspace.ts
+@@ -262,14 +262,5 @@ export function useAssistWorkspace(props: WorkspacePageProps) {
+ 
+ function matchesReference(reference: Reference, context: AssistPageContext) {
+   return reference.reference_type === context.resourceType && reference.reference_id === context.resourceId
+-    && normalizeRevision(reference.reference_revision) === normalizeRevision(context.revision)
+-    && normalizeHash(reference.reference_hash) === normalizeHash(context.contentHash);
+-}
+-
+-function normalizeRevision(value: number | string | null | undefined) {
+-  return value == null || value === '' ? null : String(Number(value));
+-}
+-
+-function normalizeHash(value: string | null | undefined) {
+-  return value ? String(value).toLowerCase() : null;
++    && (reference.reference_revision ?? null) === (context.revision ?? null) && (reference.reference_hash || null) === (context.contentHash || null);
+ }
+diff --git a/apps/web/src/features/projects/preparation/index.tsx b/apps/web/src/features/projects/preparation/index.tsx
+index 5aae1d5..f16e486 100644
+--- a/apps/web/src/features/projects/preparation/index.tsx
++++ b/apps/web/src/features/projects/preparation/index.tsx
+@@ -48,7 +48,11 @@ export function ReadinessSummary({ ready, missing, onOpen }: { ready: boolean; m
+   return <div className="preparation-readiness" data-testid="preparation-readiness" role="status"><strong>{ready ? '已准备，可继续生成与执行' : '准备条件未完成'}</strong>{missing.length > 0 && <ul>{missing.map(item => <li key={item}><button type="button" className="link-button" onClick={() => onOpen(item as PreparationStep)}>{item}</button></li>)}</ul>}{ready && <Check size={18} aria-label="准备完成" />}</div>;
+ }
+ 
+-export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defaultSleep }: { projectId: string; onReady?: (packId: string) => void; onOpenStep?: (step: PreparationStep) => void; sleep?: (milliseconds: number) => Promise<void> }) {
++type PreparationProps = { projectId: string; onReady?: (packId: string) => void; onOpenStep?: (step: PreparationStep) => void; sleep?: (milliseconds: number) => Promise<void> };
++export function PreparationPanel(props: PreparationProps) { return <PreparationWorkspace key={props.projectId} {...props} />; }
++
++function PreparationWorkspace({ projectId, onReady, onOpenStep, sleep = defaultSleep }: PreparationProps) {
++  const [loaded, setLoaded] = useState(false);
+   const [step, setStep] = useState<PreparationStep>('source');
+   const [kind, setKind] = useState<SourceKind>('local');
+   const [locator, setLocator] = useState('');
+@@ -88,6 +92,7 @@ export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defau
+       setWorkspaces(w.data.workspaces || []);
+       setPacks(p.data.packs || []);
+       setProfiles(prof.data.profiles || []);
++      setLoaded(true);
+     } catch (e) {
+       setError(e instanceof Error ? e.message : '准备状态加载失败');
+     }
+@@ -95,6 +100,7 @@ export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defau
+   useEffect(() => { void load(); }, [load]);
+ 
+   useEffect(() => {
++    if (!loaded) return;
+     if (!selectedConnectionId) {
+       setSelectedLineId(persistSelection(projectId, 'line', ''));
+       setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+@@ -120,9 +126,10 @@ export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defau
+       setSelectedLineId(persistSelection(projectId, 'line', match?.id || ''));
+       setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+     }
+-  }, [connections, lines, projectId, selectedConnectionId, selectedLineId]);
++  }, [loaded, connections, lines, projectId, selectedConnectionId, selectedLineId]);
+ 
+   useEffect(() => {
++    if (!loaded) return;
+     if (!selectedLineId) {
+       setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+       return;
+@@ -134,13 +141,11 @@ export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defau
+       const match = candidates[0];
+       setSelectedWorkspaceId(persistSelection(projectId, 'workspace', match?.id || ''));
+     }
+-  }, [projectId, selectedLineId, selectedWorkspaceId, workspaces]);
++  }, [loaded, projectId, selectedLineId, selectedWorkspaceId, workspaces]);
+ 
+   useEffect(() => {
+-    setSelected(current => new Set([...current].filter(id => {
+-      const file = files.find(item => item.id === id);
+-      return Boolean(file && file.status === 'current' && safeRelative(file.relative_path || file.path));
+-    })));
++    const validIds = new Set(files.filter(file => file.status === 'current' && safeRelative(file.relative_path || file.path)).map(file => file.id));
++    setSelected(current => new Set([...current].filter(id => validIds.has(id))));
+   }, [files]);
+ 
+   const run = async (name: string, action: () => Promise<void>) => {
+@@ -156,24 +161,33 @@ export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defau
+     setRepositories(result.data.repositories || []);
+   });
+   const chooseRepo = (value: string) => { setSelectedRepository(value); const repo = repositories.find(item => item.full_name === value); setLocator(value); setBranch(repo?.default_branch || 'main'); };
+-  const chooseConnection = (value: string) => { setSelectedConnectionId(persistSelection(projectId, 'connection', value)); setSelectedLineId(persistSelection(projectId, 'line', '')); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); };
+-  const chooseLine = (value: string) => { setSelectedLineId(persistSelection(projectId, 'line', value)); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); };
+-  const chooseWorkspace = (value: string) => setSelectedWorkspaceId(persistSelection(projectId, 'workspace', value));
++  const clearFiles = () => { setFiles([]); setSelected(new Set()); };
++  const chooseConnection = (value: string) => { setSelectedConnectionId(persistSelection(projectId, 'connection', value)); setSelectedLineId(persistSelection(projectId, 'line', '')); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); clearFiles(); };
++  const chooseLine = (value: string) => { setSelectedLineId(persistSelection(projectId, 'line', value)); setSelectedWorkspaceId(persistSelection(projectId, 'workspace', '')); clearFiles(); };
++  const chooseWorkspace = (value: string) => { setSelectedWorkspaceId(persistSelection(projectId, 'workspace', value)); clearFiles(); };
+   const createConnection = () => void run('source', async () => {
+     const githubProfile = profiles.find(item => item.provider === 'github' && item.status === 'available' && item.lifecycle_status !== 'disabled');
+     const result = await mutateV2<{ connection: Connection }>(`${base}/repository-connections`, { provider: kind === 'github' ? 'git' : 'local', source_kind: kind === 'github' ? 'git' : 'local', source_locator: locator.trim(), branch: branch.trim() || 'main', read_only: true, ...(githubProfile ? { provider_profile_id: githubProfile.id } : {}) }, 'POST', 0);
++    setConnections(current => [...current.filter(item => item.id !== result.data.connection.id), result.data.connection]);
+     setSelectedConnectionId(persistSelection(projectId, 'connection', result.data.connection.id));
+     setSelectedLineId(persistSelection(projectId, 'line', ''));
+     setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
+     setFiles([]); setSelected(new Set()); setStep('workspace');
+   });
++  const showWorkspace = (current: Workspace) => {
++    setWorkspaces(rows => [...rows.filter(item => item.id !== current.id), current]);
++    setSelectedWorkspaceId(persistSelection(projectId, 'workspace', current.id));
++  };
+   const pollWorkspace = (id: string, current: Workspace) => pollWorkspaceUntil(id, current, async (workspaceId) => {
+     const listed = await apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`);
+-    return (listed.data.workspaces || []).find(item => item.id === workspaceId) || null;
++    const latest = (listed.data.workspaces || []).find(item => item.id === workspaceId) || null;
++    if (latest) showWorkspace(latest);
++    return latest;
+   }, { sleep });
+   const createWorkspace = () => void run('workspace', async () => {
+     if (!selectedLine || selectedLine.status !== 'ready') throw new Error('请选择当前可用的仓库分支');
+     const result = await mutateV2<{ workspace: Workspace; operation?: { operation_id?: string } }>(`${base}/repository-workspaces`, { line_id: selectedLine.id, relative_path: `projects/${projectId}/workspace`, defer: true }, 'POST', 0);
++    showWorkspace(result.data.workspace); setStep('workspace'); clearFiles();
+     const current = await pollWorkspace(result.data.workspace.id, result.data.workspace);
+     setSelectedWorkspaceId(persistSelection(projectId, 'workspace', current.id));
+     if (current.status === 'orphaned') { setStep('workspace'); throw new Error(current.error_code || 'workspace_orphaned'); }
+@@ -183,6 +197,7 @@ export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defau
+   const retryWorkspace = () => void run('workspace-retry', async () => {
+     if (!workspace) throw new Error('workspace_not_selected');
+     const result = await mutateV2<{ workspace: Workspace }>(`${base}/repository-workspaces/${encodeURIComponent(workspace.id)}/refresh`, {}, 'POST', workspace.revision);
++    showWorkspace(result.data.workspace); setStep('workspace'); clearFiles();
+     const current = await pollWorkspace(result.data.workspace.id, result.data.workspace);
+     setSelectedWorkspaceId(persistSelection(projectId, 'workspace', current.id));
+     if (current.status === 'orphaned') throw new Error(current.error_code || 'workspace_orphaned');
+@@ -212,7 +227,12 @@ export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defau
+     setPacks([pack.data.pack]); setStep('pack'); onReady?.(pack.data.pack.id);
+   });
+   const latestPack = packs.slice().sort((a, b) => Number(b.revision || 0) - Number(a.revision || 0))[0];
+-  const excluded = useMemo(() => Object.fromEntries(files.filter(file => !/^text\//i.test(file.media_type) || file.byte_length > 256 * 1024).map(file => [file.id, /^text\//i.test(file.media_type) ? '文件过大' : '二进制文件'])), [files]);
++  const excluded = useMemo(() => Object.fromEntries(files.flatMap(file => {
++    if (!safeRelative(file.relative_path || file.path)) return [[file.id, '路径越界']];
++    if (!/^text\//i.test(file.media_type)) return [[file.id, '二进制文件']];
++    if (file.byte_length > 256 * 1024) return [[file.id, '文件过大']];
++    return [];
++  })), [files]);
+   const missing = useMemo(() => [!selectedConnection || !selectedLine || selectedLine.status !== 'ready' ? 'source' : '', !workspace || !['ready', 'released'].includes(workspace.status) ? 'workspace' : '', !latestPack ? 'context' : '', !latestPack ? 'pack' : ''].filter(Boolean) as PreparationStep[], [latestPack, selectedConnection, selectedLine, workspace]);
+   const ready = Boolean(workspace && latestPack?.status === 'sealed' && !missing.includes('source') && !missing.includes('workspace'));
+   const open = (value: PreparationStep) => { setStep(value); onOpenStep?.(value); };
+@@ -222,19 +242,19 @@ export function PreparationPanel({ projectId, onReady, onOpenStep, sleep = defau
+ 
+ function readSelection(projectId: string, kind: string) { try { return sessionStorage.getItem(`aiws:preparation:${projectId}:${kind}`) || ''; } catch { return ''; } }
+ function persistSelection(projectId: string, kind: string, value: string) { try { if (value) sessionStorage.setItem(`aiws:preparation:${projectId}:${kind}`, value); else sessionStorage.removeItem(`aiws:preparation:${projectId}:${kind}`); } catch {} return value; }
+-function safeRelative(value: string) { const text = String(value || '').replaceAll('\\', '/'); return Boolean(text && !text.startsWith('/') && !/^[A-Za-z]:\//.test(text) && !text.split('/').includes('..') && !text.split('/').some(part => !part || part === '.' || part.includes(':'))); }
++function safeRelative(value: string) { const text = String(value || '').replaceAll('\\', '/'); return Boolean(text && !text.startsWith('/') && !/^[A-Za-z]:\//.test(text) && !text.includes('\0') && !text.split('/').some(part => !part || ['.', '..', '.git', 'node_modules'].includes(part) || part.includes(':') || /[. ]$/.test(part))); }
+ 
+ async function waitOperation(operationId: string) { for (let attempt = 0; attempt < 40; attempt += 1) { const result = await apiV2<{ status: string }>(`/api/v2/operations/${encodeURIComponent(operationId)}`); if (['succeeded', 'failed', 'cancelled', 'expired'].includes(result.data.status)) { if (result.data.status !== 'succeeded') throw new Error(`操作未完成：${result.data.status}`); return; } await new Promise(resolve => setTimeout(resolve, 250)); } throw new Error('操作等待超时，可从操作中心继续'); }
+ 
+-export async function pollWorkspaceUntil(id: string, initial: Workspace, fetchLatest: (workspaceId: string) => Promise<Workspace | null>, options: { maxAttempts?: number; intervalMs?: number; sleep?: (milliseconds: number) => Promise<void> } = {}) {
+-  const maxAttempts = Number.isInteger(options.maxAttempts) && (options.maxAttempts as number) > 0 ? options.maxAttempts as number : 120;
+-  const intervalMs = Number.isFinite(options.intervalMs) ? Number(options.intervalMs) : 1000;
++export async function pollWorkspaceUntil(id: string, initial: Workspace, fetchLatest: (workspaceId: string) => Promise<Workspace | null>, options: { sleep?: (milliseconds: number) => Promise<void> } = {}) {
+   const pause = options.sleep || defaultSleep;
+   let latest = initial;
+-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
++  if (['ready', 'released', 'orphaned'].includes(latest.status)) return latest;
++  for (let attempt = 0; attempt < 120; attempt += 1) {
++    await pause(1000);
++    const found = await fetchLatest(id);
++    if (found?.id === id) latest = found;
+     if (['ready', 'released', 'orphaned'].includes(latest.status)) return latest;
+-    await pause(intervalMs);
+-    latest = (await fetchLatest(id)) || latest;
+   }
+   throw new Error('workspace_provisioning_timeout');
+ }
+diff --git a/apps/web/src/features/terminal/TerminalPage.tsx b/apps/web/src/features/terminal/TerminalPage.tsx
+index 28ee8f3..a7a99d7 100644
+--- a/apps/web/src/features/terminal/TerminalPage.tsx
++++ b/apps/web/src/features/terminal/TerminalPage.tsx
+@@ -268,20 +268,21 @@ export function TerminalPage({ projectId, selectedProject, navigate, notify, ter
+ 
+   const openTerminal = async (approval: Approval) => {
+     if (!online || busy || approval.status !== 'approved') return;
+-    const requestedWorkspace = String(approval.request.workspace_id || workspaceId);
++    const requestedWorkspace = String(approval.request.workspace_id || '');
+     const workspace = workspaces.find((item) => item.id === requestedWorkspace);
+     if (!workspace) return notify('已批准的代码仓库工作区不可用。', 'error');
+     setBusy(`open:${approval.id}`);
+     try {
++      if (!['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id'].every(field => Object.hasOwn(approval.request, field))) throw new Error('审批缺少完整 Terminal 参数，请重新申请。');
+       const result = await mutateV2<TerminalReceipt>('/api/v2/terminals', {
+         project_id: projectId,
+         workspace_id: workspace.id,
+         approval_id: approval.id,
+-        runtime: String(approval.request.runtime),
+-        cwd: String(approval.request.cwd),
+-        cols: Number(approval.request.cols),
+-        rows: Number(approval.request.rows),
+-        assist_session_id: approval.request.assist_session_id == null ? null : String(approval.request.assist_session_id)
++        runtime: approval.request.runtime,
++        cwd: approval.request.cwd,
++        cols: approval.request.cols,
++        rows: approval.request.rows,
++        assist_session_id: approval.request.assist_session_id
+       }, 'POST', workspace.revision);
+       setSelectedId(result.data.terminal.id);
+       applySession(result.data.terminal);
+diff --git a/apps/web/src/test/assist.test.tsx b/apps/web/src/test/assist.test.tsx
+index beb27ad..8dd8db2 100644
+--- a/apps/web/src/test/assist.test.tsx
++++ b/apps/web/src/test/assist.test.tsx
+@@ -6,6 +6,7 @@ import type { Project } from '../types';
+ import type { WorkspacePageProps } from '../workspace';
+ 
+ const projectId = 'prj_assist_ui';
++const briefId = 'brief_resource_ui';
+ const project = { id: projectId, name: 'Assist UI', description: '', status: 'active', onboarding_state: 'confirmed', revision: 2, confirmed_brief_revision: 1, updated_at: '2026-08-18T00:00:00.000Z' } as Project;
+ const pack = { id: 'pack_assist_ui', pack_hash: 'a'.repeat(64), status: 'sealed' };
+ const profile = { id: 'profile_assist_ui', label: 'Codex local', provider: 'codex', status: 'available', revision: 1 };
+@@ -112,27 +113,31 @@ function assistScenario(initialStatus = 'completed') {
+   return { mutations, complete: () => { session = { ...session, turns: [{ ...session.turns![0], status: 'completed', messages: [{ id: 'message_completed', role: 'assistant', kind: 'response', content: 'Completion after reopening', sequence: 2 }] }] }; } };
+ }
+ 
+-it('attaches only explicitly requested saved page context and detects revision/hash drift', async () => {
++it.each(['revision', 'hash', 'both'])('attaches a real Brief ID only on request and detects %s drift', async drift => {
+   const { mutations } = assistScenario();
+-  const assistContext = { route: 'brief' as const, projectId, resourceType: 'brief', resourceId: projectId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' };
++  const assistContext = { route: 'brief' as const, projectId, resourceType: 'brief', resourceId: briefId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' };
+   const view = render(<AssistPage {...props({ assistContext })} />);
+   await screen.findByText('Existing response');
+   expect(mutations).toHaveLength(0);
+   fireEvent.click(screen.getByRole('button', { name: '附加当前页面' }));
+   await screen.findByText('当前 Brief 已附加');
+-  expect(mutations[0]).toMatchObject({ revision: '2', body: { reference_type: 'brief', reference_id: projectId, reference_revision: 1, reference_hash: assistContext.contentHash } });
+-  view.rerender(<AssistPage {...props({ assistContext: { ...assistContext, revision: 2, contentHash: 'b'.repeat(64) } })} />);
++  expect(mutations[0]).toMatchObject({ revision: '2', body: { reference_type: 'brief', reference_id: briefId, reference_revision: 1, reference_hash: assistContext.contentHash } });
++  const next = { ...assistContext, revision: drift === 'hash' ? 1 : 2, contentHash: drift === 'revision' ? assistContext.contentHash : 'b'.repeat(64) };
++  view.rerender(<AssistPage {...props({ assistContext: next })} />);
+   expect(screen.getByRole('alert')).toHaveTextContent('旧引用已过期');
+   expect(mutations).toHaveLength(1);
+   fireEvent.click(screen.getByRole('button', { name: '附加当前页面' }));
+   await waitFor(() => expect(mutations).toHaveLength(2));
+   await waitFor(() => expect(screen.queryByText(/旧引用已过期/)).toBeNull());
+-  expect(mutations[1]).toMatchObject({ revision: '3', body: { reference_revision: 2, reference_hash: 'b'.repeat(64) } });
++  expect(mutations[1]).toMatchObject({ revision: '3', body: { reference_id: briefId, reference_revision: next.revision, reference_hash: next.contentHash } });
++  fireEvent.click(screen.getByRole('button', { name: '附加当前页面' }));
++  await waitFor(() => expect(screen.getByRole('button', { name: '附加当前页面' })).toBeEnabled());
++  expect(mutations).toHaveLength(2);
+ });
+ 
+ it('attaches a Brief review request once and preserves the loaded conversation offline', async () => {
+   const { mutations } = assistScenario();
+-  const pageProps = props({ assistContext: { route: 'brief', projectId, resourceType: 'brief', resourceId: projectId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' }, assistAttachRequest: 1 });
++  const pageProps = props({ assistContext: { route: 'brief', projectId, resourceType: 'brief', resourceId: briefId, revision: 1, contentHash: 'a'.repeat(64), label: '当前 Brief' }, assistAttachRequest: 1 });
+   const view = render(<AssistPage {...pageProps} surface="drawer" />);
+   await screen.findByText('当前 Brief 已附加');
+   expect(mutations).toHaveLength(1);
+diff --git a/apps/web/src/test/project-onboarding.test.tsx b/apps/web/src/test/project-onboarding.test.tsx
+index 43aa7a9..e42df9c 100644
+--- a/apps/web/src/test/project-onboarding.test.tsx
++++ b/apps/web/src/test/project-onboarding.test.tsx
+@@ -201,7 +201,7 @@ it.each([false, true])('opens Assist from the complete Brief surface with saved=
+   const button = await screen.findByRole('button', { name: '在 Assist 中审阅当前 Brief' });
+   if (!saved) fireEvent.change(screen.getByLabelText('目标'), { target: { value: 'Unsaved draft content' } });
+   fireEvent.click(button);
+-    if (saved) expect(pageProps.openAssist).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project_1', resourceType: 'brief', resourceId: 'brief_1', revision: 1, contentHash: 'a'.repeat(64) }), true);
++  if (saved) expect(pageProps.openAssist).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'project_1', resourceType: 'brief', resourceId: 'brief_1', revision: 1, contentHash: 'a'.repeat(64) }), true);
+   else {
+     expect(pageProps.openAssist).toHaveBeenCalledWith(expect.objectContaining({ label: '未保存 Brief 草稿', resourceId: undefined }), false);
+     expect(screen.getByLabelText('目标')).toHaveValue('Unsaved draft content');
+diff --git a/apps/web/src/test/project-preparation.test.tsx b/apps/web/src/test/project-preparation.test.tsx
+index 3ef7b14..50aa31c 100644
+--- a/apps/web/src/test/project-preparation.test.tsx
++++ b/apps/web/src/test/project-preparation.test.tsx
+@@ -1,6 +1,55 @@
+-import { render, screen } from '@testing-library/react';
+-import { describe, expect, it, vi } from 'vitest';
+-import { SourceSelector, ReadinessSummary } from '../features/projects/preparation';
++import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++import { PreparationPanel, pollWorkspaceUntil, SourceSelector, ReadinessSummary } from '../features/projects/preparation';
++
++beforeEach(() => sessionStorage.clear());
++
++function envelope(data: unknown, status = 200) { return new Response(JSON.stringify({ request_id: 'preparation', data, meta: { api_version: '2' } }), { status, headers: { 'content-type': 'application/json' } }); }
++
++function scenario() {
++  const connection = { id: 'connection_selected', provider: 'local', source_kind: 'local', source_revision: 'commit-right', source_hash: 'a'.repeat(64), status: 'ready', revision: 1 };
++  const line = { id: 'line_selected', line_kind: 'external_readonly', status: 'ready', source_revision: connection.source_revision, source_hash: connection.source_hash, revision: 1, updated_at: '2026-09-19T03:00:00Z' };
++  let workspace = { id: 'workspace_selected', line_id: line.id, status: 'ready', relative_path: 'projects/project_prepare/workspace', revision: 2, updated_at: '2026-09-19T04:00:00Z', error_code: '' };
++  const mutations: Array<{ url: string; body: Record<string, unknown>; revision: string | null }> = [];
++  const fileRequests: URL[] = [];
++  let filePage = (offset: number) => ({ files: [file('file_a'), file('file_b')], next_cursor: null as number | null });
++  let workspaceReads = 0;
++  const fetcher = vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
++    const url = new URL(String(input), 'http://fixture');
++    if (options?.method === 'POST') {
++      const body = JSON.parse(String(options.body));
++      mutations.push({ url: url.pathname, body, revision: new Headers(options.headers).get('X-Expected-Revision') });
++      if (url.pathname.endsWith('/repository-connections')) return envelope({ connection }, 201);
++      if (url.pathname.endsWith('/repository-workspaces')) { workspace = { ...workspace, status: 'requested', revision: 1 }; return envelope({ workspace }, 202); }
++      if (url.pathname.endsWith('/refresh')) { workspace = { ...workspace, status: 'provisioning', revision: workspace.revision + 1, error_code: '' }; return envelope({ workspace }, 202); }
++      throw new Error(`Unexpected mutation ${url}`);
++    }
++    if (url.pathname.endsWith('/repository-connections')) return envelope({ connections: [{ ...connection, id: 'connection_wrong', source_revision: 'wrong', source_hash: 'b'.repeat(64) }, connection] });
++    if (url.pathname.endsWith('/repository-lines')) return envelope({ lines: [
++      { ...line, id: 'wrong_hash', source_hash: 'b'.repeat(64), updated_at: '2099' },
++      { ...line, id: 'wrong_revision', source_revision: 'wrong', updated_at: '2099' },
++      { ...line, id: 'wrong_kind', line_kind: 'development', updated_at: '2099' },
++      { ...line, id: 'older_match', updated_at: '2026-01-01' }, line
++    ] });
++    if (url.pathname.endsWith('/repository-workspaces')) { workspaceReads += 1; return envelope({ workspaces: [
++      { ...workspace, id: 'workspace_wrong', line_id: 'wrong_hash', updated_at: '2099' },
++      { ...workspace, id: 'workspace_older', updated_at: '2026-01-01' }, workspace
++    ] }); }
++    if (url.pathname.endsWith('/context/packs')) return envelope({ packs: [] });
++    if (url.pathname.endsWith('/profiles')) return envelope({ profiles: [] });
++    if (url.pathname.endsWith('/files')) { fileRequests.push(url); expect(url.searchParams.get('workspace_id')).toBe(workspace.id); expect(url.searchParams.get('limit')).toBe('500'); return envelope(filePage(Number(url.searchParams.get('offset')))); }
++    throw new Error(`Unexpected request ${url}`);
++  });
++  vi.stubGlobal('fetch', fetcher);
++  return { mutations, fileRequests, connection, line, get workspace() { return workspace; }, get workspaceReads() { return workspaceReads; }, changeWorkspace: (values: Partial<typeof workspace>) => { workspace = { ...workspace, ...values }; }, pages: (fn: typeof filePage) => { filePage = fn; } };
++}
++
++function file(id: string) { return { id, path: `${id}.txt`, media_type: 'text/plain', byte_length: 20, content_sha256: 'a'.repeat(64), status: 'current', revision: 1 }; }
++async function chooseSource() {
++  await screen.findByRole('option', { name: 'commit-right' });
++  fireEvent.change(screen.getByLabelText('仓库连接'), { target: { value: 'connection_selected' } });
++  await waitFor(() => expect(sessionStorage.getItem('aiws:preparation:project_prepare:line')).toBe('line_selected'));
++}
+ 
+ describe('project preparation controls', () => {
+   it('offers local and GitHub sources with an editable branch', () => {
+@@ -17,3 +66,104 @@ describe('project preparation controls', () => {
+     expect(open).toHaveBeenCalledWith('source');
+   });
+ });
++
++it('preserves remembered selections through initial loading and matches current fingerprint, line kind and update time', async () => {
++  scenario();
++  sessionStorage.setItem('aiws:preparation:project_prepare:connection', 'connection_selected');
++  render(<PreparationPanel projectId="project_prepare" />);
++  await screen.findByLabelText('仓库连接');
++  await waitFor(() => expect(sessionStorage.getItem('aiws:preparation:project_prepare:workspace')).toBe('workspace_selected'));
++  expect(screen.getByLabelText('仓库连接')).toHaveValue('connection_selected');
++  expect(sessionStorage.getItem('aiws:preparation:project_prepare:line')).toBe('line_selected');
++  fireEvent.click(screen.getByRole('button', { name: 'context' }));
++  fireEvent.click(screen.getByRole('button', { name: '返回工作区' }));
++  expect(screen.getByLabelText('准备分支')).toHaveValue('line_selected');
++  expect(screen.getByLabelText('托管工作区')).toHaveValue('workspace_selected');
++});
++
++it.each(['requested', 'provisioning'])('keeps %s workspaces in the Workspace step until the selected workspace is ready', async status => {
++  const state = scenario();
++  const waits: Array<() => void> = [];
++  const sleep = vi.fn((_milliseconds: number) => new Promise<void>(resolve => waits.push(resolve)));
++  render(<PreparationPanel projectId="project_prepare" sleep={sleep} />);
++  await chooseSource();
++  fireEvent.click(screen.getByRole('button', { name: 'context' }));
++  fireEvent.click(screen.getByRole('button', { name: '返回工作区' }));
++  fireEvent.click(screen.getByRole('button', { name: '创建托管工作区' }));
++  await waitFor(() => expect(sleep).toHaveBeenCalledTimes(1));
++  expect(screen.queryByTestId('preparation-context')).toBeNull();
++  state.changeWorkspace({ status });
++  await act(async () => { waits.shift()?.(); });
++  await waitFor(() => expect(sleep).toHaveBeenCalledTimes(2));
++  expect(screen.getByTestId('preparation-workspace-status')).toHaveTextContent(status);
++  expect(state.mutations[0].body.line_id).toBe('line_selected');
++  state.changeWorkspace({ status: 'ready', revision: 3 });
++  await act(async () => { waits.shift()?.(); });
++  await screen.findByTestId('preparation-context');
++  expect(sleep.mock.calls.every(args => args[0] === 1000)).toBe(true);
++});
++
++it('shows orphan errors with retry and source navigation, then refreshes using the selected workspace revision', async () => {
++  const state = scenario();
++  const sleep = vi.fn(async () => { state.changeWorkspace({ status: 'orphaned', error_code: 'source_drift', revision: 4 }); });
++  render(<PreparationPanel projectId="project_prepare" sleep={sleep} />);
++  await chooseSource();
++  fireEvent.click(screen.getByRole('button', { name: 'context' }));
++  fireEvent.click(screen.getByRole('button', { name: '返回工作区' }));
++  fireEvent.click(screen.getByRole('button', { name: '创建托管工作区' }));
++  expect(await screen.findByRole('alert')).toHaveTextContent('source_drift');
++  expect(screen.getByTestId('preparation-workspace-status')).toHaveTextContent('orphaned');
++  expect(screen.getAllByRole('button', { name: '返回来源' }).length).toBeGreaterThan(0);
++  sleep.mockImplementation(async () => { state.changeWorkspace({ status: 'ready', error_code: '', revision: 6 }); });
++  fireEvent.click(screen.getByRole('button', { name: '重试物化' }));
++  await screen.findByTestId('preparation-context');
++  expect(state.mutations.at(-1)).toMatchObject({ url: '/api/v2/projects/project_prepare/repository-workspaces/workspace_selected/refresh', revision: '4' });
++});
++
++it('enforces 120 one-second polls and accepts readiness on the final poll', async () => {
++  const initial = { id: 'selected', line_id: 'line', status: 'requested', relative_path: 'workspace', revision: 1 };
++  const sleep = vi.fn(async (_milliseconds: number) => {});
++  const latest = vi.fn(async () => ({ ...initial, status: 'provisioning' }));
++  await expect(pollWorkspaceUntil(initial.id, initial, latest, { sleep })).rejects.toThrow('workspace_provisioning_timeout');
++  expect(latest).toHaveBeenCalledTimes(120);
++  expect(sleep).toHaveBeenCalledTimes(120);
++  expect(sleep.mock.calls.every(([ms]) => ms === 1000)).toBe(true);
++  let calls = 0;
++  await expect(pollWorkspaceUntil(initial.id, initial, async () => ({ ...initial, status: ++calls === 120 ? 'ready' : 'provisioning' }), { sleep })).resolves.toMatchObject({ status: 'ready' });
++  expect(calls).toBe(120);
++});
++
++it('loads Files with limit 500 and follows next_cursor before clearing invalid selected IDs on reload', async () => {
++  const state = scenario();
++  state.pages(offset => offset === 0 ? { files: [file('missing'), file('stale'), file('outside'), file('valid')], next_cursor: 700 } : { files: [file('last')], next_cursor: null });
++  render(<PreparationPanel projectId="project_prepare" />);
++  await chooseSource();
++  fireEvent.click(screen.getByRole('button', { name: 'context' }));
++  fireEvent.click(screen.getByRole('button', { name: '加载文件' }));
++  await screen.findByText('last.txt');
++  for (const name of ['missing', 'stale', 'outside', 'valid']) fireEvent.click(screen.getByRole('checkbox', { name: new RegExp(name + '[.]txt') }));
++  expect(state.fileRequests.map(url => url.searchParams.get('offset'))).toEqual(['0', '700']);
++  state.pages(() => ({ files: [{ ...file('stale'), status: 'deleted' }, { ...file('outside'), path: '../outside.txt' }, file('valid')], next_cursor: null }));
++  fireEvent.click(screen.getByRole('button', { name: '加载文件' }));
++  await screen.findByText('../outside.txt');
++  expect(screen.queryByText('missing.txt')).toBeNull();
++  await waitFor(() => expect(screen.getByRole('checkbox', { name: /stale[.]txt/ })).not.toBeChecked());
++  await waitFor(() => expect(screen.getByRole('checkbox', { name: /outside[.]txt/ })).not.toBeChecked());
++  expect(screen.getByRole('checkbox', { name: /outside[.]txt/ })).toBeDisabled();
++  expect(screen.getByRole('checkbox', { name: /valid[.]txt/ })).toBeChecked();
++  fireEvent.click(screen.getByRole('button', { name: '继续封存' }));
++  expect(screen.getByText(/1 项/)).toBeVisible();
++});
++
++it('stops Files paging at 10000 even when the API offers another page', async () => {
++  const state = scenario();
++  state.pages(offset => ({ files: Array.from({ length: 500 }, (_, index) => file(`row_${offset + index}`)), next_cursor: offset + 500 }));
++  render(<PreparationPanel projectId="project_prepare" />);
++  await chooseSource();
++  fireEvent.click(screen.getByRole('button', { name: 'context' }));
++  fireEvent.click(screen.getByRole('button', { name: '加载文件' }));
++  await screen.findByText('row_9999.txt', {}, { timeout: 10000 });
++  expect(state.fileRequests).toHaveLength(20);
++  expect(state.fileRequests.at(-1)?.searchParams.get('offset')).toBe('9500');
++  expect(screen.queryByText('row_10000.txt')).toBeNull();
++}, 15000);
+diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
+index 17760bd..7b834c7 100644
+--- a/apps/web/vite.config.ts
++++ b/apps/web/vite.config.ts
+@@ -1,11 +1,14 @@
+ import react from '@vitejs/plugin-react';
+ import { defineConfig, loadEnv } from 'vite';
+ import { VitePWA } from 'vite-plugin-pwa';
++// @ts-expect-error The Web package intentionally omits Node typings; Vite loads this in Node.
++import { Agent } from 'node:http';
+ 
+ export default defineConfig(({ mode }) => {
+   const env = loadEnv(mode, '.', '');
+   const runtimeEnv = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env || {};
+   const target = runtimeEnv.AIWS_WEB_API_TARGET || env.AIWS_WEB_API_TARGET || 'http://127.0.0.1:4317';
++  const proxyAgent = new Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 8 });
+   return {
+     plugins: [react(), VitePWA({
+       strategies: 'injectManifest',
+@@ -26,9 +29,9 @@ export default defineConfig(({ mode }) => {
+     })],
+     server: {
+       proxy: {
+-        '/api': { target, ws: true },
+-        '/health': { target },
+-        '/readyz': { target }
++        '/api': { target, ws: true, agent: proxyAgent },
++        '/health': { target, agent: proxyAgent },
++        '/readyz': { target, agent: proxyAgent }
+       }
+     },
+     build: {
+diff --git a/docs/architecture/v3-clean-development-plan.md b/docs/architecture/v3-clean-development-plan.md
+index a0bc6f9..ee5424d 100644
+--- a/docs/architecture/v3-clean-development-plan.md
++++ b/docs/architecture/v3-clean-development-plan.md
+@@ -1211,3 +1211,16 @@ lineage. The additive test is
+ `tests/p10/remote-workspace-auth.test.mjs`; maintenance Evidence is append-only
+ under `docs/evidence/post-p10-development-reliability-20260905/` and does not
+ promote a Catalog row.
++
++### 21.5 P1/P2 boundary risk convergence
++
++Owner: Platform/Testing, Files, Context, Assist, Terminal and Frontend. Phase:
++post-P10 D-040 maintenance over 6ae200a7cecef063b67d15fb8e7734ee80f4940f.
++GS-001 through GS-007 review covers upstream-first development baselines,
++shared port startup leases, strict Terminal approval bindings and independent
++API/Web boundary regressions. Gate and owner/path inventory changes are
++committed separately from business corrections. Existing package commands,
++parallel verification groups, schema v9 and released Catalog statuses remain
++fixed. Maintenance verification retains literal failed and successful command
++outputs and a fresh isolated rollback; it does not replace P1-P10 Evidence.
++Acceptance follows the boundary maintenance inventory in docs/testing.md.
+diff --git a/docs/testing.md b/docs/testing.md
+index 986fd3b..65373c7 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -121,6 +121,14 @@ pnpm verify:dev -- --all
+ pnpm verify:dev -- --explain
+ ```
+ 
++An explicit `--base` takes precedence. Otherwise the base is the merge-base of
++HEAD with the branch upstream, then `origin/main`, then `main`, with `HEAD^`
++as the final fallback when those refs are absent. A configured upstream that
++is missing, or an existing ref whose merge-base cannot be verified, fails as
++`git_base_unverifiable`. Results retain `base`, `base_source`, `head`, and
++separate committed, worktree, staged and untracked path lists. Classification
++is still mandatory for their union, including newly added tests.
++
+ Every development run includes `pnpm check`, `pnpm scan:clean`, and
+ `git diff --check`. Catalog reverse mapping selects the remaining local tests;
+ new or unmapped paths fail as `unclassified_changed_path`. Governance changes
+@@ -129,7 +137,11 @@ select P4, P3.1, and Historical integration. Shared Clean core changes select
+ P1-P10 plus Clean integration/security. Web router, shell, service-worker, or
+ Vite changes add build and E2E. The channel excludes live GitHub, Provider,
+ deletion, Docker publication, and release probes. Duplicate commands are
+-collapsed while retaining every satisfied Catalog/test reference.
++collapsed while retaining every satisfied Catalog/test reference. The Web
++component suite, build checks, E2E, and isolated performance probes run as one
++bounded development wave. E2E uses the shared port lease and an isolated
++temporary home, so it does not reserve a fixed browser/server resource or
++replay external actions when another wave member starts or stops.
+ 
+ The pre-push formal Gate continues to be `pnpm verify`. Its active inventory is:
+ 
+@@ -172,6 +184,11 @@ pnpm evidence:p10 -- --verify
+ git diff --check
+ ```
+ 
++Gate child environments strip Git hook context variables (`GIT_DIR`,
++`GIT_WORK_TREE`, index/prefix/object overrides) before running temporary-clone
++and nested test commands. This preserves the exact pending HEAD check while
++ensuring `git -C <fixture>` operates on its declared fixture repository.
++
+ The single layered integration/security executions satisfy their Clean,
+ Historical, and combined command references without duplicate test work. The
+ formal `pnpm test` call is Unit-only because Web already ran; standalone
+@@ -256,8 +273,8 @@ links/reparse/special paths and is bounded to 10,000 files and 100 MiB. Assist
+ session scope, lifecycle, reference revision/hash bindings, and interaction
+ project/turn/operation links are rechecked inside their write transactions;
+ P10 lifecycle and review handlers use the same session predicate. Terminal
+-open requests bind the complete workspace/runtime/cwd/size/session shape when
+-the approval carries the strict shape. The Web preparation journey persists
++open requests require and bind the complete workspace/runtime/cwd/size/session
++shape. The Web preparation journey persists
+ connection/line/workspace selections, matches lines by source fingerprint,
+ waits up to 120 one-second polls (with an injectable sleep in component tests),
+ and consumes Files pages at 500 rows up to 10,000 entries while removing stale
+@@ -267,7 +284,13 @@ must match the approved request exactly; no legacy defaults are accepted.
+ E2E and release startup share `scripts/lib/port-lease.mjs`. A lock file and an
+ OS listener probe are held until readiness, and only pre-side-effect address
+ failures retry with bounded backoff after complete process/temporary-state
+-cleanup.
++cleanup. `tests/p10/port-lease.test.mjs` is owned by Platform/Testing under
++post-P10 D-040, registered in the Clean Catalog, compatibility aggregate and the
++P1 gate-sync inventory. It uses real child listeners for collisions, readiness,
++bounded retries and process/directory/lock disposal; the formal gate keeps its
++existing parallel E2E/release ordering. `tests/p10/development-reliability.test.mjs`
++owns real-Git baseline and unclassified-path regressions. The existing P4/P5
++and Web suites own the Files/Context/Assist/Terminal and preparation boundaries.
+ 
+ The synchronized focused regression inventory is:
+ 
+diff --git a/feature-catalog.clean.json b/feature-catalog.clean.json
+index a8c258c..175a8c1 100644
+--- a/feature-catalog.clean.json
++++ b/feature-catalog.clean.json
+@@ -175,6 +175,7 @@
+         "apps/web/src/styles.css",
+         "apps/web/src/test/identity-access.test.tsx",
+         "apps/web/package.json",
++        "apps/web/vite.config.ts",
+         "apps/web/src/features/operations/OperationsPage.tsx",
+         "apps/web/src/features/operations/index.ts",
+         "apps/web/src/test/operations-p8.test.tsx",
+diff --git a/feature-catalog.json b/feature-catalog.json
+index 77b65c6..f61f9b3 100644
+--- a/feature-catalog.json
++++ b/feature-catalog.json
+@@ -197,6 +197,7 @@
+         "apps/web/src/styles.css",
+         "apps/web/src/test/identity-access.test.tsx",
+         "apps/web/package.json",
++        "apps/web/vite.config.ts",
+         "apps/web/src/features/operations/OperationsPage.tsx",
+         "apps/web/src/features/operations/index.ts",
+         "apps/web/src/test/operations-p8.test.tsx",
+diff --git a/packages/contracts/src/clean-v2.mjs b/packages/contracts/src/clean-v2.mjs
+index e4313d5..729b907 100644
+--- a/packages/contracts/src/clean-v2.mjs
++++ b/packages/contracts/src/clean-v2.mjs
+@@ -190,7 +190,7 @@ export const CLEAN_V2_SCHEMAS = Object.freeze({
+   'assist.goal.v2': closed({ goal: { anyOf: [looseObject, { type: 'null' }] }, operation: p4Operation, replayed: { type: 'boolean' } }, ['goal']),
+   'assist.references.v2': closed({ references: { type: 'array', items: looseObject }, operation: p4Operation, replayed: { type: 'boolean' } }, ['references']),
+ 
+-  'files.query.v2': p5Query({ project_id: id, path: p4String, workspace_id: id, limit: { type: 'integer', minimum: 1, maximum: 500 }, offset: { type: 'integer', minimum: 0 } }, ['project_id']),
++  'files.query.v2': p5Query({ project_id: id, file_id: id, path: p4String, workspace_id: id, limit: { type: 'integer', minimum: 1, maximum: 500 }, offset: { type: 'integer', minimum: 0 } }, ['project_id']),
+   'files.v2': p5List('files'),
+   'file.content.v2': looseObject,
+   'attachment.query.v2': p5Query({ project_id: id, attachment_id: id }, ['attachment_id']),
+diff --git a/scripts/e2e.mjs b/scripts/e2e.mjs
+index 108518f..c0a5a27 100644
+--- a/scripts/e2e.mjs
++++ b/scripts/e2e.mjs
+@@ -1,22 +1,16 @@
+ import fs from 'node:fs';
+-import os from 'node:os';
+ import path from 'node:path';
+ import { chromium } from '@playwright/test';
+ import AxeBuilder from '@axe-core/playwright';
+-import { executableInvocation, spawnGateProcess, terminateProcessTree } from './lib/gate-process.mjs';
+-import { acquirePortLease, launchWithPortLease, waitForHttpReady } from './lib/port-lease.mjs';
++import { nodeInvocation } from './lib/gate-process.mjs';
++import { startProbeWithPorts } from './lib/port-lease.mjs';
+ 
+ const root = process.cwd();
+-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-e2e-'));
+-let apiLease = await acquirePortLease({ lockPrefix: 'aiws-p10-e2e-api' });
+-let webLease = await acquirePortLease({ lockPrefix: 'aiws-p10-e2e-web' });
+-let apiPort = apiLease.port;
+-let webPort = webLease.port;
++let startup, apiPort, webPort, base, browser, context, page;
+ const vaultKey = 'p10-clean-e2e-vault-key';
+ const reportDir = path.join(root, '.ai-workspace', 'e2e-clean-p10');
+ fs.rmSync(reportDir, { recursive: true, force: true });
+ fs.mkdirSync(reportDir, { recursive: true });
+-const children = [];
+ const requests = [];
+ const browserErrors = [];
+ const httpErrors = [];
+@@ -24,59 +18,6 @@ const accessibilityReceipts = [];
+ const drawerReceipts = [];
+ const onboardingLayoutReceipts = [];
+ 
+-const apiLaunch = await launchWithPortLease({
+-  lease: apiLease,
+-  acquire: () => acquirePortLease({ lockPrefix: 'aiws-p10-e2e-api' }),
+-  start: (lease) => start(process.execPath, ['apps/api/server.mjs'], {
+-    AIWS_CLEAN_PORT: String(lease.port), AIWS_CLEAN_HOME: home,
+-    AIWS_CLEAN_CORS_ORIGINS: `http://127.0.0.1:${webPort}`,
+-    AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_BUILD: 'v3-clean-p10-e2e',
+-    AIWS_CLEAN_MCP_PEPPER: 'p10-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p10-clean-e2e-gateway-secret',
+-    AIWS_CLEAN_PROVIDER_MODE: 'deterministic', AIWS_RUNNER_POLL_INTERVAL_MS: '10'
+-  }),
+-  ready: (lease, child) => waitForHttpReady(`http://127.0.0.1:${lease.port}/readyz`, {
+-    child,
+-    readyOutput: new RegExp(`V3-Clean listening on http://127[.]0[.]0[.]1:${lease.port}\\b`),
+-    accept: async response => response.ok && (await response.json()).data?.user_version === 9
+-  }),
+-  cleanup: async (child) => {
+-    await terminateProcessTree(child);
+-    removeTree(home);
+-    fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+-  }
+-});
+-apiLease = apiLaunch.lease;
+-apiPort = apiLaunch.port;
+-const api = apiLaunch.child;
+-children.push(api);
+-
+-const viteEntry = path.join(root, 'apps', 'web', 'node_modules', 'vite', 'bin', 'vite.js');
+-const webLaunch = await launchWithPortLease({
+-  lease: webLease,
+-  acquire: () => acquirePortLease({ lockPrefix: 'aiws-p10-e2e-web' }),
+-  start: (lease) => start(process.execPath, [viteEntry, '--host', '127.0.0.1', '--port', String(lease.port), '--strictPort'], {
+-    AIWS_WEB_API_TARGET: `http://127.0.0.1:${apiPort}`, VITE_AIWS_E2E: '1'
+-  }, path.join(root, 'apps', 'web')),
+-  ready: (lease, child) => waitForHttpReady(`http://127.0.0.1:${lease.port}/`, {
+-    child,
+-    readyOutput: new RegExp(`http://127[.]0[.]0[.]1:${lease.port}/`)
+-  }),
+-  cleanup: (child) => terminateProcessTree(child)
+-});
+-webLease = webLaunch.lease;
+-webPort = webLaunch.port;
+-const web = webLaunch.child;
+-children.push(web);
+-const base = `http://127.0.0.1:${webPort}`;
+-
+-const browser = await chromium.launch({ headless: true });
+-const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+-const page = await context.newPage();
+-page.on('request', (request) => requests.push(request.url()));
+-page.on('response', (response) => { if (response.status() >= 400) httpErrors.push(`${response.status()}:${response.url()}`); });
+-page.on('pageerror', (error) => browserErrors.push(`pageerror:${error.message}`));
+-page.on('console', (message) => { if (message.type() === 'error') browserErrors.push(`console:${message.text()}`); });
+-
+ async function pageApi(pathname, options = {}) {
+   return page.evaluate(async ({ pathname, options }) => {
+     const response = await fetch(pathname, {
+@@ -91,6 +32,35 @@ async function pageApi(pathname, options = {}) {
+ }
+ 
+ try {
++  startup = await startProbeWithPorts({ prefix: 'aiws-p10-e2e', start: async scope => {
++    const [apiLease, webLease] = scope.leases;
++    const apiPort = apiLease.port, webPort = webLease.port;
++    const apiBase = `http://127.0.0.1:${apiPort}`, base = `http://127.0.0.1:${webPort}`;
++    await apiLease.handoff();
++    const api = scope.spawn(nodeInvocation('apps/api/server.mjs'), { cwd: root, workspaceRoot: root, env: {
++      AIWS_CLEAN_PORT: String(apiPort), AIWS_CLEAN_HOME: scope.directory, AIWS_CLEAN_CORS_ORIGINS: base,
++      AIWS_CLEAN_VAULT_KEY: vaultKey, AIWS_CLEAN_BUILD: 'v3-clean-p10-e2e',
++      AIWS_CLEAN_MCP_PEPPER: 'p10-clean-e2e-mcp-pepper', AIWS_GATEWAY_SECRET: 'p10-clean-e2e-gateway-secret',
++      AIWS_CLEAN_PROVIDER_MODE: 'deterministic', AIWS_RUNNER_POLL_INTERVAL_MS: '10'
++    } });
++    await scope.ready(0, `${apiBase}/readyz`, { child: api, readyOutput: new RegExp(`V3-Clean listening on http://127[.]0[.]0[.]1:${apiPort}\\b`), accept: async response => response.ok && (await response.json()).data?.user_version === 9 });
++    await webLease.handoff();
++    const viteEntry = path.join(root, 'apps/web/node_modules/vite/bin/vite.js');
++    const web = scope.spawn(nodeInvocation(viteEntry, ['--host', '127.0.0.1', '--port', String(webPort), '--strictPort']), {
++      cwd: path.join(root, 'apps/web'), workspaceRoot: root, env: { AIWS_WEB_API_TARGET: apiBase, VITE_AIWS_E2E: '1' }
++    });
++    await scope.ready(1, `${base}/`, { child: web, readyOutput: new RegExp(`http://127[.]0[.]0[.]1:${webPort}/`) });
++    const browser = scope.browser(await chromium.launch({ headless: true }));
++    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
++    const page = await context.newPage();
++    await page.goto(`${base}/readyz`, { waitUntil: 'domcontentloaded' });
++    return { apiPort, webPort, base, browser, context, page };
++  } });
++  ({ apiPort, webPort, base, browser, context, page } = startup);
++  page.on('request', request => requests.push(request.url()));
++  page.on('response', response => { if (response.status() >= 400) httpErrors.push(`${response.status()}:${response.url()}`); });
++  page.on('pageerror', error => browserErrors.push(`pageerror:${error.message}`));
++  page.on('console', message => { if (message.type() === 'error') browserErrors.push(`console:${message.text()}`); });
+   await page.goto(`${base}/#/setup`, { waitUntil: 'domcontentloaded' });
+   try { await page.getByRole('heading', { name: '创建本地所有者', exact: true }).waitFor({ timeout: 8_000 }); }
+   catch (error) { process.stderr.write(`Clean Web bootstrap body:\n${await page.locator('body').innerText()}\nURL=${page.url()}\nRequests=${JSON.stringify(requests)}\n`); throw error; }
+@@ -527,6 +497,8 @@ try {
+   const workbench = await workflowWorkbenchJourney(browser, await context.storageState(), project.id, providerProfile.body.data.profile.id);
+   const legacyRequests = requests.filter((url) => /\/api\/v1(?:\/|$)/.test(url));
+   if (legacyRequests.length) throw new Error(`active Clean Web emitted /api/v1: ${legacyRequests.join(', ')}`);
++  const proxyDiagnostics = startup.scope.childOutput(1).split(/\r?\n/).filter(line => /proxy error|EADDRINUSE|ERR_NO_BUFFER_SPACE|ENOBUFS|status of 500/i.test(line));
++  assert(proxyDiagnostics.length === 0, `proxy diagnostics:${JSON.stringify(proxyDiagnostics)}`);
+   assert(browserErrors.length === 0, `browser errors:${JSON.stringify(browserErrors)} http:${JSON.stringify(httpErrors)}`);
+   const checkpoints = await pageApi(`/api/v2/executions/${executionId}/checkpoints`);
+   const attempts = await pageApi(`/api/v2/executions/${executionId}/attempts`);
+@@ -534,7 +506,7 @@ try {
+     schema_version: 'aiws.v3-clean.p10-e2e-receipt.v1', status: 'passed', provisional: false,
+     api_port: apiPort, web_port: webPort, viewports: ['mobile', 'laptop', 'desktop'],
+     routes: ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer'], business_groups: ['identity-acl','provider-settings','project-brief','workflow','repository','context','assist','files-approval','terminal-bridge','runner-execution','evidence','parser','quality','outcome','mcp-exchange-gateway','delivery','operations-recovery','offline-pwa','web-complete-experience'], request_count: requests.length,
+-    legacy_api_v1_requests: legacyRequests, browser_errors: browserErrors, http_errors: httpErrors,
++    legacy_api_v1_requests: legacyRequests, browser_errors: browserErrors, http_errors: httpErrors, proxy_diagnostics: proxyDiagnostics,
+     onboarding: { system: ['owner-team','codex-probe','github-skip','summary'], project: ['intake','brief-template','workflow-generation','critic','proposal-apply','brief-confirm'], secret_storage: 'passed' },
+     drawer: drawerReceipts, accessibility: accessibilityReceipts, onboarding_layouts: onboardingLayoutReceipts, workbench,
+     layouts: layoutReceipts, context_pack_hash: pack.body.data.pack.pack_hash,
+@@ -554,11 +526,7 @@ try {
+   }, null, 2)}\n`);
+   process.stdout.write(`P10 Clean E2E passed: 19 business groups and complete workflow routes across 3 viewports; overlaps=0; /api/v1 requests=0\n`);
+ } finally {
+-  apiLease.release();
+-  webLease.release();
+-  await browser.close();
+-  for (const child of children.reverse()) await stop(child);
+-  removeTree(home);
++  await startup?.scope.dispose();
+ }
+ 
+ async function workflowWorkbenchJourney(browser, storageState, projectId, providerId) {
+@@ -687,21 +655,6 @@ async function workflowWorkbenchJourney(browser, storageState, projectId, provid
+   } finally { await workContext.close(); }
+ }
+ 
+-function start(command, args, env = {}, cwd = root) {
+-  return spawnGateProcess(executableInvocation(command, args, command === process.execPath ? 'node' : 'executable'), {
+-    cwd,
+-    workspaceRoot: root,
+-    env,
+-    stdoutPrefix: `[${path.basename(command)}] `,
+-    stderrPrefix: `[${path.basename(command)}] `
+-  });
+-}
+-
+-async function stop(child) {
+-  if (!child || child.exitCode != null) return;
+-  await terminateProcessTree(child);
+-}
+-
+ function assert(condition, message) { if (!condition) throw new Error(`e2e_assertion_failed:${message}`); }
+ 
+ async function auditAccessibility(targetPage, label) {
+@@ -791,11 +744,3 @@ async function inspectLayout(targetPage) {
+     return { horizontal_overflow: root.scrollWidth > root.clientWidth + 1, scroll_width: root.scrollWidth, client_width: root.clientWidth, overlaps: overlaps.slice(0, 20), overflowing_elements };
+   });
+ }
+-
+-function removeTree(target) {
+-  for (let attempt = 0; attempt < 5; attempt += 1) {
+-    try { fs.rmSync(target, { recursive: true, force: true }); return; }
+-    catch { /* SQLite handles may release just after a child exits on Windows. */ }
+-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+-  }
+-}
+diff --git a/scripts/lib/port-lease.mjs b/scripts/lib/port-lease.mjs
+index 234d7c8..f2c94ff 100644
+--- a/scripts/lib/port-lease.mjs
++++ b/scripts/lib/port-lease.mjs
+@@ -144,6 +144,7 @@ export async function startProbeWithPorts({ prefix, portCount = 2, start, retryD
+     const scope = {
+       directory, leases, attempt: attempt + 1,
+       spawn(invocation, options) { const child = spawnGateProcess(invocation, options); observeChild(child); children.push(child); return child; },
++      childOutput(index) { const child = children[index]; return child ? (watched.get(child)?.output || '') : ''; },
+       browser(browser) { browsers.push(browser); return browser; },
+       async ready(index, url, options) { await waitForHttpReady(url, options); await leases[index].release(); },
+       async dispose() {
+@@ -170,28 +171,3 @@ export async function startProbeWithPorts({ prefix, portCount = 2, start, retryD
+     }
+   }
+ }
+-
+-/** Compatibility launcher for probes that own their temporary home and lease.
+- * Only startup is retried; callers invoke external actions after this returns. */
+-export async function launchWithPortLease({ lease, acquire, start, ready, cleanup, retryDelays = PORT_RETRY_DELAYS_MS } = {}) {
+-  if (!lease || typeof start !== 'function' || typeof ready !== 'function' || typeof acquire !== 'function') throw new TypeError('port_launcher_invalid');
+-  let current = lease;
+-  for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
+-    let child = null;
+-    try {
+-      await current.handoff();
+-      child = await start(current);
+-      observeChild(child);
+-      await ready(current, child);
+-      await current.release();
+-      return { lease: current, port: current.port, child, attempt: attempt + 1 };
+-    } catch (error) {
+-      try { await cleanup?.(child); } catch { /* preserve the startup failure */ }
+-      try { await current.release(); } catch { /* the next lease is independent */ }
+-      const retryable = isAddressInUseError(error) || isAddressInUseError(watched.get(child)?.output);
+-      if (!retryable || attempt === retryDelays.length) throw retryable ? errorWithCode('port_start_retry_exhausted', error) : error;
+-      await pause(retryDelays[attempt]);
+-      current = await acquire();
+-    }
+-  }
+-}
+diff --git a/scripts/lib/v3-clean-p1-scope.mjs b/scripts/lib/v3-clean-p1-scope.mjs
+index a4518b6..59c1750 100644
+--- a/scripts/lib/v3-clean-p1-scope.mjs
++++ b/scripts/lib/v3-clean-p1-scope.mjs
+@@ -436,6 +436,7 @@ const P9_FILES = new Set([
+ const P9_PREFIXES = Object.freeze(['tests/p9/', 'apps/web/src/offline/', 'apps/web/src/features/outcome/', 'apps/web/src/features/delivery/']);
+ 
+ const P10_FILES = new Set([
++  'scripts/lib/port-lease.mjs',
+   'scripts/development-receipt.mjs',
+   'apps/api/src/clean/migrations/009-final-business-parity-governance.mjs',
+   'apps/api/src/clean/p10-service.mjs',
+diff --git a/scripts/v3-clean-p10-release-probe.mjs b/scripts/v3-clean-p10-release-probe.mjs
+index df57595..6d04d78 100644
+--- a/scripts/v3-clean-p10-release-probe.mjs
++++ b/scripts/v3-clean-p10-release-probe.mjs
+@@ -1,56 +1,44 @@
+ import fs from 'node:fs';
+-import os from 'node:os';
+ import path from 'node:path';
+ import { createHash } from 'node:crypto';
+-import { spawn, spawnSync } from 'node:child_process';
++import { spawnSync } from 'node:child_process';
+ import { DatabaseSync } from 'node:sqlite';
+ import { chromium } from '@playwright/test';
+ import { openCleanDatabase } from '../apps/api/src/clean/database.mjs';
+-import { acquirePortLease, launchWithPortLease, waitForHttpReady } from './lib/port-lease.mjs';
++import { startProbeWithPorts } from './lib/port-lease.mjs';
++import { nodeInvocation } from './lib/gate-process.mjs';
+ 
+ const root = process.cwd();
+ const baselineCommit = 'bb55746b7e08cf7ee764d06a8fa23da91ad48e2f';
+ const reportRoot = path.join(root, '.ai-workspace', 'p10-release-probe');
+-const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-release-'));
+-const apiHome = path.join(temporaryRoot, 'runtime');
+-const activePointer = path.join(temporaryRoot, 'active.pointer');
+-let apiLease = await acquirePortLease({ lockPrefix: 'aiws-p10-release-api' });
+-let originLease = await acquirePortLease({ lockPrefix: 'aiws-p10-release-origin' });
+-let apiPort = apiLease.port;
+-let originPort = originLease.port;
+-let dynamicOrigin = `http://127.0.0.1:${originPort}`;
+-let base = `http://127.0.0.1:${apiPort}`;
+-let child = null;
++let temporaryRoot, apiHome, activePointer, apiPort, dynamicOrigin, base, startup;
+ let browser = null;
+ 
+ try {
+   fs.rmSync(reportRoot, { recursive: true, force: true });
+   fs.mkdirSync(reportRoot, { recursive: true });
+   const bundle = createReleaseBundle();
+-  const snapshots = createSnapshots(bundle);
+-  const launched = await launchWithPortLease({
+-    lease: apiLease,
+-    acquire: () => acquirePortLease({ lockPrefix: 'aiws-p10-release-api' }),
+-    start: (lease) => { apiPort = lease.port; base = `http://127.0.0.1:${apiPort}`; return startApi(); },
+-    ready: (lease, processHandle) => waitForHttpReady(`http://127.0.0.1:${lease.port}/readyz`, {
+-      child: processHandle,
+-      timeoutMs: 60_000,
+-      readyOutput: new RegExp(`V3-Clean listening on http://127[.]0[.]0[.]1:${lease.port}\\b`),
+-      accept: async response => response.ok && (await response.json()).data?.user_version === 9
+-    }),
+-    cleanup: async (processHandle) => {
+-      await stop(processHandle).catch(() => undefined);
+-      removeTree(apiHome);
+-    }
+-  });
+-  apiLease = launched.lease;
+-  apiPort = launched.port;
++  startup = await startProbeWithPorts({ prefix: 'aiws-p10-release', start: async scope => {
++    const [apiLease, originLease] = scope.leases;
++    temporaryRoot = scope.directory;
++    apiHome = path.join(temporaryRoot, 'runtime');
++    activePointer = path.join(temporaryRoot, 'active.pointer');
++    apiPort = apiLease.port;
++    dynamicOrigin = `http://127.0.0.1:${originLease.port}`;
++    base = `http://127.0.0.1:${apiPort}`;
++    await apiLease.handoff();
++    const child = startApi(scope);
++    await scope.ready(0, `${base}/readyz`, { child, timeoutMs: 60000, readyOutput: new RegExp(`V3-Clean listening on http://127[.]0[.]0[.]1:${apiPort}\\b`), accept: async response => response.ok && (await response.json()).data?.user_version === 9 });
++    // This second port is an exact CORS origin fixture, never a web server.
++    // Retain its listener and lock through the entire probe.
++    browser = scope.browser(await chromium.launch({ headless: true }));
++    const page = await browser.newPage();
++    await page.goto(`${base}/readyz`, { waitUntil: 'domcontentloaded' });
++    await page.close();
++    return {};
++  } });
+   base = `http://127.0.0.1:${apiPort}`;
+-  child = launched.child;
+-  // The dynamic origin is only a CORS fixture; retain its lock until the API
+-  // has passed readiness so a concurrent probe cannot reuse it during boot.
+-  originLease.markReady?.();
+-  originLease.release();
++  const snapshots = createSnapshots(bundle);
+   const httpReceipt = await verifyHttp();
+   const browserReceipt = await verifyBrowser();
+   const image = process.argv.includes('--skip-docker') ? { status: 'skipped', provisional: true } : await dockerRelease();
+@@ -93,11 +81,7 @@ try {
+   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+   process.exitCode = 1;
+ } finally {
+-  apiLease.release();
+-  originLease.release();
+-  if (browser) await browser.close().catch(() => undefined);
+-  if (child) await stop(child);
+-  removeTree(temporaryRoot);
++  await startup?.scope.dispose();
+ }
+ 
+ function createReleaseBundle() {
+@@ -157,8 +141,8 @@ function createSnapshots(bundle) {
+   return { baseline, modified, initialPointer: initial, modifiedPointer: next };
+ }
+ 
+-function startApi() {
+-  return spawn(process.execPath, ['apps/api/server.mjs'], {
++function startApi(scope) {
++  return scope.spawn(nodeInvocation('apps/api/server.mjs'), {
+     cwd: root,
+     env: {
+       ...process.env,
+@@ -201,7 +185,6 @@ async function verifyHttp() {
+ }
+ 
+ async function verifyBrowser() {
+-  browser = await chromium.launch({ headless: true });
+   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+   const page = await context.newPage();
+   const errors = [];
+@@ -484,30 +467,9 @@ function treeHash(directory) { return sha256(JSON.stringify([...files(directory)
+ function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
+ function sha256File(file) { return sha256(fs.readFileSync(file)); }
+ function git(...args) { const result = run('git', args); if (result.status !== 0) throw new Error(`git_${args[0]}_failed`); return result.stdout.trim(); }
+-function run(command, args, timeout = 30_000) { return spawnSync(command, args, { cwd: root, encoding: 'utf8', timeout, windowsHide: true, maxBuffer: 128 * 1024 * 1024 }); }
++function run(command, args, timeout = 30_000) { return spawnSync(command, args, { cwd: root, encoding: 'utf8', timeout, windowsHide: true, shell: false, maxBuffer: 128 * 1024 * 1024 }); }
+ 
+ function tarExecutable() {
+   const systemTar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+   return process.platform === 'win32' && fs.existsSync(systemTar) ? systemTar : 'tar';
+ }
+-
+-async function stop(processHandle) {
+-  if (processHandle.exitCode != null) return;
+-  processHandle.kill();
+-  await new Promise((resolve) => {
+-    const timer = setTimeout(resolve, 1500);
+-    processHandle.once('exit', () => { clearTimeout(timer); resolve(); });
+-  });
+-  if (processHandle.exitCode == null && process.platform === 'win32') {
+-    await new Promise((resolve) => {
+-      const killer = spawn('taskkill', ['/PID', String(processHandle.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+-      killer.once('exit', resolve);
+-    });
+-  }
+-}
+-
+-function removeTree(target) {
+-  for (let attempt = 0; attempt < 5; attempt += 1) {
+-    try { fs.rmSync(target, { recursive: true, force: true }); return; } catch { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); }
+-  }
+-}
+diff --git a/tests/p10/development-reliability.test.mjs b/tests/p10/development-reliability.test.mjs
+index c69c107..732296b 100644
+--- a/tests/p10/development-reliability.test.mjs
++++ b/tests/p10/development-reliability.test.mjs
+@@ -8,7 +8,8 @@ import { canonicalJson, sha256Hex } from '../../apps/api/src/clean/canonical.mjs
+ import {
+   GATE_ERROR_CODES,
+   pnpmInvocation,
+-  runGateCommand
++  runGateCommand,
++  gateEnvironment
+ } from '../../scripts/lib/gate-process.mjs';
+ import { gateBudget, gateRecordFailure, GATE_BUDGETS_MS } from '../../scripts/lib/gate-process.mjs';
+ import { formalInputFailure } from '../../scripts/verify.mjs';
+@@ -41,6 +42,22 @@ test('hard gate limits are fixed and over-budget success is rejected', () => {
+   assert.throws(() => gateBudget('override', 1), /gate_budget_invalid/);
+ });
+ 
++test('gate child environments do not inherit Git hook repository context', () => {
++  const previous = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE, GIT_PREFIX: process.env.GIT_PREFIX, CUSTOM: process.env.CUSTOM };
++  process.env.GIT_DIR = 'outer/.git'; process.env.GIT_WORK_TREE = 'outer'; process.env.GIT_PREFIX = 'outer-prefix'; process.env.CUSTOM = 'keep';
++  try {
++    const env = gateEnvironment({ CUSTOM: 'override', GIT_DIR: 'attempted-override' });
++    assert.equal(env.GIT_DIR, undefined);
++    assert.equal(env.GIT_WORK_TREE, undefined);
++    assert.equal(env.GIT_PREFIX, undefined);
++    assert.equal(env.CUSTOM, 'override');
++  } finally {
++    for (const [key, value] of Object.entries(previous)) {
++      if (value == null) delete process.env[key]; else process.env[key] = value;
++    }
++  }
++});
++
+ test('a self-reported ok flag never masks nonzero exit, signal, truncation or redaction failure', () => {
+   const valid = { ok: true, exit_status: 0, signal: null, error_code: null, duration_ms: 1,
+     output: { stdout: '', stderr: '' }, capture: { stdout_truncated: false, stderr_truncated: false }, redaction: { passed: true } };
+@@ -157,6 +174,7 @@ test('formal verification uses immutable P5-P9 Evidence and only current P10 pro
+   assert.deepEqual(plan.filter((entry) => entry.id.startsWith('p10-') && entry.id.endsWith('-probe')).map((entry) => entry.id), [
+     'p10-parser-probe', 'p10-github-deletion-probe', 'p10-release-probe'
+   ]);
++  assert.match(fs.readFileSync('scripts/verify.mjs', 'utf8'), /specification\.id === 'web-test'.*releasePromise/s);
+   assert.equal(plan.filter((entry) => entry.id === 'web-test').length, 1);
+   assert.equal(plan.filter((entry) => entry.id === 'test-p31').length, 1);
+   assert.equal(plan.find((entry) => entry.id === 'check').env.AIWS_CHECK_SKIP_WEB_TYPECHECK, '1');
+@@ -271,7 +289,7 @@ test('development receipt reports persisted execution metrics and leaves SQLite,
+     const approval = await state.runtime.assist.createApproval({
+       project_id: fixture.project.id,
+       action: 'terminal.open',
+-      request: { purpose: 'receipt-test' },
++      request: { workspace_id: fixture.workspace.id, runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native', cwd: '', cols: 120, rows: 32, assist_session_id: null },
+       expected_revision: 0,
+       idempotency_key: 'development-receipt-approval'
+     }, state.principal);
+@@ -498,7 +516,9 @@ test('development baseline prefers upstream and records staged, worktree, and un
+     fs.writeFileSync(path.join(directory, 'committed.txt'), 'committed');
+     git(directory, 'add', '.');
+     git(directory, '-c', 'core.hooksPath=', 'commit', '-m', 'feature');
+-    git(directory, 'branch', '--set-upstream-to=origin/main', 'feature');
++    const upstreamCommit = git(directory, 'rev-parse', 'HEAD');
++    git(directory, 'update-ref', 'refs/remotes/origin/feature', upstreamCommit);
++    git(directory, 'branch', '--set-upstream-to=origin/feature', 'feature');
+     fs.writeFileSync(path.join(directory, 'worktree.txt'), 'baseline-worktree');
+     git(directory, 'add', 'worktree.txt');
+     git(directory, '-c', 'core.hooksPath=', 'commit', '-m', 'tracked worktree');
+@@ -508,11 +528,19 @@ test('development baseline prefers upstream and records staged, worktree, and un
+     fs.writeFileSync(path.join(directory, 'untracked.txt'), 'untracked');
+     const state = repositoryState(directory);
+     assert.equal(state.base_source, 'merge-base HEAD @{upstream}');
+-    assert.ok(state.base_paths.includes('committed.txt'));
++    assert.equal(state.base, upstreamCommit);
++    assert.deepEqual(state.base_paths, ['worktree.txt']);
+     assert.deepEqual(state.staged_paths, ['staged.txt']);
+     assert.deepEqual(state.worktree_paths, ['worktree.txt']);
+     assert.deepEqual(state.untracked_paths, ['untracked.txt']);
+     assert.ok(state.changed_paths.includes('staged.txt'));
++    const explicit = repositoryState(directory, 'main');
++    assert.equal(explicit.base_source, 'requested:main');
++    assert.ok(explicit.base_paths.includes('committed.txt'));
++    assert.deepEqual(selectDevCommands({ changedPaths: state.changed_paths, catalog: { features: [] } }).unclassified_paths, state.changed_paths);
++    git(directory, 'update-ref', '-d', 'refs/remotes/origin/feature');
++    assert.throws(() => repositoryState(directory), error => error.code === 'git_base_unverifiable');
++    assert.equal(repositoryState(directory, 'main').base, explicit.base);
+   } finally {
+     fs.rmSync(directory, { recursive: true, force: true });
+     fs.rmSync(remote, { recursive: true, force: true });
+@@ -536,6 +564,17 @@ test('development baseline falls back deterministically and fails with git_base_
+     assert.equal(repositoryState(directory).base_source, 'merge-base HEAD main');
+     git('switch', '-c', 'orphan');
+     assert.equal(repositoryState(directory).base_source, 'merge-base HEAD main');
++    fs.writeFileSync(path.join(directory, 'second.txt'), 'second');
++    git('add', '.');
++    git('-c', 'core.hooksPath=', 'commit', '-m', 'second');
++    const second = git('rev-parse', 'HEAD');
++    git('update-ref', 'refs/remotes/origin/main', second);
++    assert.equal(repositoryState(directory).base_source, 'merge-base HEAD origin/main');
++    assert.equal(repositoryState(directory).base, second);
++    git('update-ref', '-d', 'refs/remotes/origin/main');
++    assert.equal(repositoryState(directory).base_source, 'merge-base HEAD main');
++    git('branch', '-D', 'main');
++    assert.equal(repositoryState(directory).base_source, 'HEAD^');
+     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-empty-'));
+     try {
+       const init = spawnSync('git', ['init', '-b', 'solo'], { cwd: empty, encoding: 'utf8', windowsHide: true });
+diff --git a/tests/p5/assist-files.test.mjs b/tests/p5/assist-files.test.mjs
+index 05dd256..432bef0 100644
+--- a/tests/p5/assist-files.test.mjs
++++ b/tests/p5/assist-files.test.mjs
+@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
+ import fs from 'node:fs';
+ import path from 'node:path';
+ import test from 'node:test';
+-import { close, createAssistPrerequisites, createProject, createWorkspace, open, waitForOperation } from './helpers.mjs';
++import { canonicalJson, sha256Hex } from '../../apps/api/src/clean/canonical.mjs';
++import { close, closeServer, createAssistPrerequisites, createProject, createWorkspace, listen, open, waitForOperation } from './helpers.mjs';
++import { open as openP10 } from '../p10/helpers.mjs';
+ 
+ test('Assist persists opaque provider lineage and enforces completion, interaction and retry invariants', async () => {
+   const state = await open();
+@@ -153,3 +155,224 @@ test('Files index workspaces on first list, skips unsafe entries, and binds Cont
+     state.runtime.context.files = priorOwner;
+   } finally { await close(state); }
+ });
++
++test('Files HTTP and Context independently bind Unicode bytes, revisions, ACL and disk drift', async () => {
++  const state = await open();
++  const { server, base } = await listen(state.runtime);
++  try {
++    const project = await createProject(state, 'file-http');
++    const foreign = await createProject(state, 'file-http-other');
++    const { workspace, directory } = await createWorkspace(state, project, 'file-http');
++    const bytes = Buffer.from('\u4e2d\u6587 context\n');
++    fs.writeFileSync(path.join(directory, 'note.txt'), bytes);
++    fs.writeFileSync(path.join(directory, 'binary.bin'), Buffer.from([0xff, 0xfe, 0x80]));
++    const request = apiClient(base, state.proof);
++    const list = await request(`/projects/${project.id}/files?workspace_id=${workspace.id}&limit=500`);
++    assert.equal(list.status, 200);
++    const text = list.body.data.files.find(file => file.path === 'note.txt');
++    const binary = list.body.data.files.find(file => file.path === 'binary.bin');
++    assert.equal(text.content_sha256, sha256Hex(bytes));
++    const preview = await request(`/projects/${project.id}/files/${text.id}`);
++    assert.equal(preview.status, 200, JSON.stringify(preview.body));
++    assert.equal(preview.body.data.content, bytes.toString('utf8'));
++    const metadata = await request(`/projects/${project.id}/files/${binary.id}`);
++    assert.equal(metadata.body.data.content, null);
++    assert.equal(metadata.body.data.download_only, true);
++    assert.equal((await request(`/projects/${foreign.id}/files?workspace_id=${workspace.id}`)).body.error.code, 'scope_denied');
++    const source = revision => ({ file_ref_id: text.id, expected_file_revision: revision, expected_file_hash: sha256Hex(bytes), source_type: 'file', canonical_uri: 'file/checked', title: 'Checked', content: 'ignored supplied content', source_revision: 'spoofed' });
++    const created = await request(`/projects/${project.id}/context/sources`, source(1));
++    assert.equal(created.body.data.source.source_revision, '1');
++    assert.equal(created.body.data.source.source_hash, sha256Hex(bytes));
++    fs.writeFileSync(path.join(directory, 'note.txt'), 'changed');
++    assert.throws(() => state.runtime.files.readIndexedFile(project.id, text.id, 1, text.content_sha256, state.principal), error => error.code === 'file_stale');
++    await state.runtime.files.indexWorkspace(workspace.id, project.id, state.principal);
++    fs.writeFileSync(path.join(directory, 'note.txt'), bytes);
++    await state.runtime.files.indexWorkspace(workspace.id, project.id, state.principal);
++    const updated = await request(`/projects/${project.id}/context/sources`, source(3));
++    assert.equal(updated.body.data.source.id, created.body.data.source.id);
++    assert.equal(updated.body.data.source.source_revision, '3');
++    assert.equal(updated.body.data.source.source_hash, sha256Hex(bytes));
++    assert.ok(updated.body.data.source.revision > created.body.data.source.revision);
++    for (const [revision, hash] of [[1, text.content_sha256], [3, 'f'.repeat(64)]]) assert.throws(() => state.runtime.files.readIndexedFile(project.id, text.id, revision, hash, state.principal), error => error.code === 'file_stale');
++    assert.equal((await request(`/projects/${project.id}/context/sources`, { ...source(3), file_ref_id: binary.id, expected_file_revision: 1, expected_file_hash: binary.content_sha256 })).body.error.code, 'file_not_previewable');
++    fs.unlinkSync(path.join(directory, 'note.txt'));
++    await state.runtime.files.indexWorkspace(workspace.id, project.id, state.principal);
++    assert.throws(() => state.runtime.files.readIndexedFile(project.id, text.id, null, null, state.principal), error => error.code === 'file_stale' && error.details.status === 'stale');
++    await state.runtime.identity.setAclEntry(project.id, { resource: 'files', action: 'read', effect: 'deny', principal_actor_id: state.principal.actorId, expected_revision: 0, idempotency_key: 'file-http-acl-deny' }, state.principal);
++    assert.throws(() => state.runtime.files.readIndexedFile(project.id, binary.id, 1, binary.content_sha256, state.principal), error => error.code === 'permission_denied');
++    assert.equal((await request(`/projects/${project.id}/files?workspace_id=${workspace.id}`)).status, 403);
++  } finally { await closeServer(server); await close(state); }
++});
++
++test('Files excludes symlinks, junctions, special paths and enforces actual file and workspace quotas', async t => {
++  const state = await open();
++  try {
++    const project = await createProject(state, 'file-limits');
++    const { workspace, directory } = await createWorkspace(state, project, 'file-limits');
++    const outside = path.join(state.root, 'outside');
++    fs.mkdirSync(outside); fs.writeFileSync(path.join(outside, 'private.txt'), 'outside bytes');
++    fs.symlinkSync(outside, path.join(directory, 'linked-directory'), process.platform === 'win32' ? 'junction' : 'dir');
++    fs.writeFileSync(path.join(directory, 'special.txt'), 'never opened');
++    const originalStat = fs.lstatSync;
++    const mocked = t.mock.method(fs, 'lstatSync', (file, ...args) => {
++      const stat = originalStat(file, ...args);
++      if (String(file) === path.join(directory, 'special.txt')) return new Proxy(stat, { get(target, property) { return property === 'isSocket' ? () => true : typeof target[property] === 'function' ? target[property].bind(target) : target[property]; } });
++      return stat;
++    });
++    fs.writeFileSync(path.join(directory, 'limit.txt'), Buffer.alloc(1024 * 1024, 65));
++    fs.writeFileSync(path.join(directory, 'oversize.txt'), Buffer.alloc(1024 * 1024 + 1, 65));
++    const first = await state.runtime.files.listFiles(project.id, { workspace_id: workspace.id }, state.principal);
++    assert.deepEqual(first.files.map(file => file.path), ['limit.txt']);
++    mocked.mock.restore();
++    fs.unlinkSync(path.join(directory, 'special.txt'));
++    for (let index = 0; index < 101; index += 1) fs.writeFileSync(path.join(directory, `quota-${String(index).padStart(3, '0')}.txt`), Buffer.alloc(1024 * 1024, 65));
++    await state.runtime.files.indexWorkspace(workspace.id, project.id, state.principal);
++    const quota = state.runtime.db.get("SELECT count(*) AS n,sum(byte_length) AS bytes FROM file_refs WHERE workspace_id=? AND status='current'", [workspace.id]);
++    assert.equal(quota.bytes, 100 * 1024 * 1024);
++    assert.equal(quota.n, 100);
++    const manyProject = await createProject(state, 'file-count');
++    const many = await createWorkspace(state, manyProject, 'file-count');
++    for (let index = 0; index < 10001; index += 1) fs.writeFileSync(path.join(many.directory, `${String(index).padStart(5, '0')}.txt`), '');
++    const page = await state.runtime.files.listFiles(manyProject.id, { workspace_id: many.workspace.id, limit: 500 }, state.principal);
++    assert.equal(page.total, 10000); assert.equal(page.files.length, 500); assert.equal(page.next_cursor, 500);
++    const last = await state.runtime.files.listFiles(manyProject.id, { workspace_id: many.workspace.id, limit: 500, offset: 9500 }, state.principal);
++    assert.equal(last.files.length, 500); assert.equal(last.next_cursor, null);
++  } finally { await close(state); }
++});
++
++async function referenceFixture(state, suffix) {
++  const project = await createProject(state, suffix);
++  const { workspace, directory } = await createWorkspace(state, project, suffix);
++  const { pack, profile } = await createAssistPrerequisites(state, project, suffix);
++  const brief = await state.runtime.project.createBrief(project.id, { objective: 'Reference fixture', acceptance: ['checked'], expected_revision: project.revision, idempotency_key: `${suffix}-brief-key` }, state.principal);
++  const workflow = await state.runtime.project.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'stream', kind: 'workstream', title: 'Stream' }, { id: 'task', kind: 'task', parent_id: 'stream', title: 'Task', contract: { acceptance: ['done'] } }] }, expected_revision: 1, idempotency_key: `${suffix}-workflow-key` }, state.principal);
++  const attachment = await state.runtime.files.createAttachment({ project_id: project.id, filename: 'note.txt', content_base64: Buffer.from('attached').toString('base64'), idempotency_key: `${suffix}-attachment-key` }, state.principal);
++  fs.writeFileSync(path.join(directory, 'file.txt'), 'indexed');
++  const file = (await state.runtime.files.listFiles(project.id, { workspace_id: workspace.id }, state.principal)).files[0];
++  const session = (await state.runtime.assist.createSession({ project_id: project.id, scope: 'project', scope_id: project.id, context_pack_id: pack.id, profile_id: profile.id, repository_workspace_id: workspace.id, idempotency_key: `${suffix}-session-key` }, state.principal)).session;
++  const connection = state.runtime.project.listRepositoryConnections(project.id, state.principal)[0];
++  const operation = state.runtime.operations.get(attachment.operation.operation_id, { actorId: state.principal.actorId });
++  const operationSummary = Object.fromEntries(['operation_id', 'command_id', 'status', 'revision', 'resource_type', 'resource_id', 'project_id', 'terminal', 'retryable', 'poll_uri', 'events_uri'].map(key => [key, operation[key]]));
++  operationSummary.terminal = true;
++  const references = [
++    ['brief', brief.brief.id, 1, brief.revision_record.content_sha256],
++    ['workflow', workflow.workflow.id, 1, workflow.workflow.current.graph_sha256],
++    ['repository', connection.id, connection.revision, connection.source_hash],
++    ['context_pack', pack.id, pack.revision, pack.pack_hash],
++    ['attachment', attachment.attachment.id, 1, attachment.attachment.content_sha256],
++    ['file', file.id, 1, file.content_sha256],
++    ['operation', operation.operation_id, operation.revision, sha256Hex(canonicalJson(operationSummary))]
++  ];
++  return { project, workspace, pack, profile, workflow, session, references };
++}
++
++test('Assist API accepts exactly scoped resources and rejects missing, foreign and stale bindings for all seven types', async () => {
++  const state = await openP10();
++  const { server, base } = await listen(state.runtime);
++  try {
++    const own = await referenceFixture(state, 'reference-own');
++    const foreign = await referenceFixture(state, 'reference-other');
++    const request = apiClient(base, state.proof);
++    const route = `/assist/sessions/${own.session.id}/references`;
++    for (const [index, [type, id, revision, hash]] of own.references.entries()) {
++      assert.match(hash, /^[a-f0-9]{64}$/);
++      const input = { reference_type: type, reference_id: id, reference_revision: revision, reference_hash: hash };
++      const sessionRevision = state.runtime.db.get('SELECT revision FROM assist_sessions WHERE id=?', [own.session.id]).revision;
++      for (const [override, code] of [[{ reference_id: 'missing' }, 'scope_denied'], [{ reference_id: foreign.references[index][1] }, 'scope_denied'], [{ reference_revision: revision + 1 }, 'reference_stale'], [{ reference_hash: 'f'.repeat(64) }, 'reference_stale']]) {
++        const result = await request(route, { ...input, ...override }, sessionRevision);
++        assert.equal(result.body.error?.code, code, `${type}:${JSON.stringify(result.body)}`);
++      }
++      const result = await request(route, input, sessionRevision);
++      assert.equal(result.status, 201, `${type}:${JSON.stringify(result.body)}`);
++      assert.ok(result.body.data.references.some(item => item.reference_id === id && item.reference_revision === revision && item.reference_hash === hash));
++    }
++    const queued = await state.runtime.assist.createTurn({ session_id: own.session.id, expected_revision: state.runtime.db.get('SELECT revision FROM assist_sessions WHERE id=?', [own.session.id]).revision, message: 'pending', defer: true, idempotency_key: 'references-queued-turn' }, state.principal);
++    assert.equal((await request(route, { reference_type: 'operation', reference_id: queued.operation_id }, state.runtime.db.get('SELECT revision FROM assist_sessions WHERE id=?', [own.session.id]).revision)).body.error.code, 'scope_denied');
++    for (const [scope, scopeId] of [['project', own.project.id], ['workflow', own.workflow.workflow.id], ['workstream', 'stream'], ['task', 'task']]) {
++      const input = { project_id: own.project.id, scope, scope_id: scopeId, context_pack_id: own.pack.id, profile_id: own.profile.id };
++      assert.equal((await request('/assist/sessions', input)).status, 201);
++      assert.equal((await request('/assist/sessions', { ...input, scope_id: foreign.project.id })).body.error.code, 'scope_denied');
++      assert.equal((await request('/assist/sessions', { ...input, scope_id: 'missing' })).body.error.code, 'scope_denied');
++    }
++    for (const [scope, scopeId] of [['task', 'stream'], ['workstream', 'task']]) assert.equal((await request('/assist/sessions', { project_id: own.project.id, scope, scope_id: scopeId, context_pack_id: own.pack.id, profile_id: own.profile.id })).body.error.code, 'scope_denied');
++  } finally { await closeServer(server); await close(state); }
++});
++
++function apiClient(base, proof) {
++  let sequence = 0;
++  return async (route, body, revision = 0) => {
++    const response = await fetch(`${base}/api/v2${route}`, { method: body === undefined ? 'GET' : 'POST', headers: { cookie: `aiws_session=${proof}`, 'content-type': 'application/json', 'Idempotency-Key': `boundary-request-${++sequence}`, 'X-Expected-Revision': String(revision) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
++    return { status: response.status, body: await response.json() };
++  };
++}
++
++test('P4 file-backed Context fails explicitly when the Files owner is absent', async () => {
++  const state = await open({ targetVersion: 4 });
++  try {
++    const project = await createProject(state, 'p4-file-owner');
++    assert.equal(state.runtime.files, null);
++    await assert.rejects(() => state.runtime.context.createSource(project.id, { source_type: 'file', file_ref_id: 'not-an-implicit-path', idempotency_key: 'p4-no-files-owner' }, state.principal), error => error.code === 'files_owner_unavailable');
++  } finally { await close(state); }
++});
++
++test('Assist interactions bind project, turn, operation and session then recheck lifecycle for decisions, reviews, forks and resume', async () => {
++  const state = await openP10();
++  const { server, base } = await listen(state.runtime);
++  try {
++    const own = await referenceFixture(state, 'links-own');
++    const other = await referenceFixture(state, 'links-other');
++    const makeTurn = async fixture => {
++      const op = await state.runtime.assist.createTurn({ session_id: fixture.session.id, expected_revision: fixture.session.revision, message: 'Review context', defer: true, idempotency_key: `links-turn-${fixture.project.id}` }, state.principal);
++      const turn = state.runtime.db.get('SELECT * FROM assist_turns WHERE operation_id=?', [op.operation_id]);
++      await state.runtime.assist.executeTurn(turn.id, state.principal);
++      return state.runtime.db.get('SELECT * FROM assist_turns WHERE id=?', [turn.id]);
++    };
++    const turn = await makeTurn(own), foreignTurn = await makeTurn(other);
++    const request = apiClient(base, state.proof);
++    const shape = { workspace_id: own.workspace.id, runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native', cwd: '', cols: 120, rows: 32, assist_session_id: own.session.id };
++    const pending = [];
++    for (const kind of ['approval', 'input']) {
++      const route = kind === 'approval' ? '/approvals' : '/user-inputs';
++      const input = { project_id: own.project.id, assist_turn_id: turn.id, ...(kind === 'approval' ? { action: 'terminal.open', request: shape } : { prompt_summary: 'Choose next step', input_schema: { type: 'string' } }) };
++      for (const overrides of [{ project_id: other.project.id }, { assist_turn_id: foreignTurn.id }, { assist_turn_id: 'missing' }, { operation_id: foreignTurn.operation_id }, { operation_id: own.references[6][1] }]) {
++        assert.equal((await request(route, { ...input, ...overrides })).body.error.code, 'scope_denied');
++      }
++      if (kind === 'approval') for (const override of [{ assist_session_id: other.session.id }, { workspace_id: other.workspace.id }, { assist_session_id: null }]) assert.equal((await request(route, { ...input, request: { ...shape, ...override } })).body.error.code, 'scope_denied');
++      const created = await request(route, input);
++      assert.equal(created.status, 201, JSON.stringify(created.body));
++      const row = created.body.data[kind];
++      assert.equal(row.assist_turn_id, turn.id);
++      assert.equal(row.operation_id, turn.operation_id);
++      const decided = await request(`${route}/${row.id}/${kind === 'approval' ? 'decide' : 'answer'}`, kind === 'approval' ? { decision: 'approved' } : { response: { value: 'continue' } }, row.revision);
++      assert.equal(decided.status, 200, JSON.stringify(decided.body));
++      const next = await request(route, input);
++      assert.equal(next.status, 201);
++      pending.push({ kind, route, row: next.body.data[kind], input });
++    }
++    const revision = () => state.runtime.db.get('SELECT revision FROM assist_sessions WHERE id=?', [own.session.id]).revision;
++    const archive = await state.runtime.p10Service.archiveAssistSession(own.session.id, { expected_revision: revision(), idempotency_key: 'links-archive' }, state.principal);
++    for (const { kind, route, row, input } of pending) {
++      const result = await request(`${route}/${row.id}/${kind === 'approval' ? 'decide' : 'answer'}`, kind === 'approval' ? { decision: 'approved' } : { response: { value: 'continue' } }, row.revision);
++      assert.equal(result.body.error.code, 'assist_session_inactive');
++      assert.equal(result.body.error.details.lifecycle_status, 'archived');
++      assert.equal((await request(route, input)).body.error.code, 'assist_session_inactive');
++      assert.throws(() => state.runtime.assist.resumeForInteraction(kind, row.id, state.principal), error => error.code === 'assist_session_inactive');
++    }
++    const deleted = await state.runtime.p10Service.deleteAssistSession(own.session.id, { expected_revision: archive.session.revision, idempotency_key: 'links-delete' }, state.principal);
++    for (const [route, body, expected] of [
++      [`/assist/sessions/${own.session.id}/fork`, { title: 'invalid fork' }, deleted.session.revision],
++      [`/assist/sessions/${own.session.id}/references`, { reference_type: 'brief', reference_id: own.references[0][1] }, deleted.session.revision],
++      [`/assist/turns/${turn.id}/review-comments`, { content: 'invalid review' }, turn.revision]
++    ]) {
++      const result = await request(route, body, expected);
++      assert.equal(result.body.error.code, 'assist_session_inactive');
++      assert.equal(result.body.error.details.lifecycle_status, 'deleted');
++    }
++    assert.equal((await request(`/assist/turns/${turn.id}/review-comments`)).body.error.code, 'assist_session_inactive');
++    await assert.rejects(() => state.runtime.assist.executeTurn(turn.id, state.principal, { resume: true }), error => error.code === 'assist_session_inactive');
++    assert.equal(state.runtime.assist.listSessions({ project_id: own.project.id }, state.principal).sessions.length, 0);
++    await state.runtime.p10Service.restoreDeletedAssistSession(own.session.id, { expected_revision: deleted.session.revision, idempotency_key: 'links-restore' }, state.principal);
++    assert.equal(state.runtime.assist.getSession(own.session.id, state.principal).deleted_at, null);
++    assert.equal(state.runtime.db.integrity().semantic.valid, true);
++  } finally { await closeServer(server); await close(state); }
++});
+diff --git a/tests/p5/http-contract.test.mjs b/tests/p5/http-contract.test.mjs
+index 374af3b..930af73 100644
+--- a/tests/p5/http-contract.test.mjs
++++ b/tests/p5/http-contract.test.mjs
+@@ -155,6 +155,18 @@ test('P5 terminal HTTP route keeps revision and replay cursor contracts', async
+     const terminalShape = { workspace_id: workspace.id, runtime, cwd: '', cols: 120, rows: 32, assist_session_id: null };
+     const approval = await state.runtime.assist.createApproval({ project_id: project.id, action: 'terminal.open', request: terminalShape, expected_revision: 0, idempotency_key: 'p5-http-terminal-approval' }, state.principal);
+     const decided = await state.runtime.assist.decideApproval(approval.approval.id, { decision: 'approved', expected_revision: approval.approval.revision, idempotency_key: 'p5-http-terminal-decision' }, state.principal);
++    const complete = { project_id: project.id, approval_id: approval.approval.id, ...terminalShape };
++    for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
++      const missing = { ...complete }; delete missing[field];
++      const rejected = await json(await fetch(`${base}/api/v2/terminals`, { method: 'POST', headers: headers(state.proof, `terminal-missing-${field}`, 0), body: JSON.stringify(missing) }));
++      assert.equal(rejected.response.status, 400);
++      assert.equal(rejected.body.error.code, 'schema_invalid');
++    }
++    for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows']) {
++      const rejected = await json(await fetch(`${base}/api/v2/terminals`, { method: 'POST', headers: headers(state.proof, `terminal-null-${field}`, 0), body: JSON.stringify({ ...complete, [field]: null }) }));
++      assert.equal(rejected.body.error.code, 'schema_invalid');
++    }
++    assert.equal(children.length, 0);
+     const opened = await json(await fetch(`${base}/api/v2/terminals`, {
+       method: 'POST',
+       headers: headers(state.proof, 'p5-http-terminal-open', 0),
+@@ -222,6 +234,7 @@ test('P5 terminal WebSocket upgrades, replays cursor and acknowledges sequenced
+     const current = state.runtime.terminal.get(terminal.id, state.principal);
+     ws.send(JSON.stringify({ type: 'input', revision: current.revision, client_sequence: current.last_client_sequence + 1, data: 'echo ws\n' }));
+     await new Promise((resolve) => setTimeout(resolve, 30));
++    await new Promise((resolve, reject) => { const deadline = Date.now() + 1000; const poll = () => messages.some((message) => message.type === 'ack' && message.action === 'input') ? resolve() : Date.now() >= deadline ? reject(new Error(`ws_input_ack_timeout:${JSON.stringify(messages)}`)) : setTimeout(poll, 10); poll(); });
+     assert.ok(messages.some((message) => message.type === 'ack' && message.action === 'input'));
+     ws.close();
+     await new Promise((resolve) => ws.once('close', resolve));
+diff --git a/tests/p5/terminal-bridge.test.mjs b/tests/p5/terminal-bridge.test.mjs
+index 6389753..a22c57f 100644
+--- a/tests/p5/terminal-bridge.test.mjs
++++ b/tests/p5/terminal-bridge.test.mjs
+@@ -6,6 +6,7 @@ import test from 'node:test';
+ import { canonicalJson } from '../../apps/api/src/clean/canonical.mjs';
+ import { start as startBridge } from '../../apps/windows-native-bridge/server.mjs';
+ import { close, createAssistPrerequisites, createProject, createWorkspace, open } from './helpers.mjs';
++import { open as openP10 } from '../p10/helpers.mjs';
+ 
+ class FakePtyProcess {
+   constructor() { this.dataListeners = []; this.exitListeners = []; this.writes = []; }
+@@ -14,7 +15,7 @@ class FakePtyProcess {
+   write(value) { this.writes.push(String(value)); }
+   resize(cols, rows) { this.size = { cols, rows }; }
+   emit(value) { for (const listener of this.dataListeners) listener(value); }
+-  kill() { for (const listener of this.exitListeners.splice(0)) listener({ exitCode: 0 }); }
++  kill() { this.killed = true; for (const listener of this.exitListeners.splice(0)) listener({ exitCode: 0 }); }
+ }
+ 
+ test('Terminal consumes one approval, replays by idempotency and persists redacted cursor output', async () => {
+@@ -43,6 +44,7 @@ test('Terminal consumes one approval, replays by idempotency and persists redact
+     assert.equal(replayed.replayed, true);
+     assert.equal(replayed.terminal.id, opened.terminal.id);
+     assert.equal(children.length, 1);
++    await assert.rejects(() => state.runtime.terminal.open({ ...request, idempotency_key: 'terminal-consume-twice' }, state.principal), error => error.code === 'approval_consumed');
+ 
+     children[0].emit('prefix sk-');
+     children[0].emit(`abcdefghijklmnop suffix ${state.root}\n`);
+@@ -121,7 +123,7 @@ test('Windows Bridge pairing shares one secret, rejects nonce replay, rotates an
+ 
+ test('Assist Terminal approvals bind project, workspace revision and session, then return one operation reference', async () => {
+   const children = [];
+-  const state = await open({ targetVersion: 9, pty: { spawn: () => { const child = new FakePtyProcess(); children.push(child); return child; } } });
++  const state = await open({ targetVersion: 9, config: { providerMode: 'deterministic' }, pty: { spawn: () => { const child = new FakePtyProcess(); children.push(child); return child; } } });
+   try {
+     const project = await createProject(state, 'assist-terminal');
+     const foreignProject = await createProject(state, 'assist-terminal-foreign');
+@@ -176,3 +178,73 @@ test('Assist Terminal approvals bind project, workspace revision and session, th
+     assert.equal(state.runtime.db.integrity().semantic.valid, true);
+   } finally { await close(state); }
+ });
++
++test('Terminal rejects every absent/null field and exact approval drift before spawning', async () => {
++  const fixture = await strictTerminalFixture('strict-shape');
++  const { state, request, approval, children } = fixture;
++  try {
++    for (const field of ['project_id', 'workspace_id', 'approval_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
++      const missing = { ...request }; delete missing[field];
++      await assert.rejects(() => state.runtime.terminal.open(missing, state.principal), error => error.code === 'schema_invalid', field);
++      await assert.rejects(() => state.runtime.terminal.open({ ...request, [field]: null }, state.principal), error => error.code === (field === 'assist_session_id' ? 'approval_request_mismatch' : 'schema_invalid'), field);
++    }
++    for (const override of [{ cols: '120' }, { rows: 4 }, { cols: 401 }, { runtime: '' }, { cwd: 0 }, { assist_session_id: '' }]) await assert.rejects(() => state.runtime.terminal.open({ ...request, ...override }, state.principal), error => error.code === 'schema_invalid');
++    for (const override of [{ cols: 121 }, { rows: 33 }, { cwd: './' }, { runtime: request.runtime === 'windows_native' ? 'linux_native' : 'windows_native' }]) await assert.rejects(() => state.runtime.terminal.open({ ...request, ...override }, state.principal), error => error.code === 'approval_request_mismatch');
++    const original = state.runtime.db.get('SELECT request_json FROM runtime_approvals WHERE id=?', [approval.id]).request_json;
++    for (const field of ['workspace_id', 'runtime', 'cwd', 'cols', 'rows', 'assist_session_id']) {
++      const invalid = JSON.parse(original); delete invalid[field];
++      state.runtime.db.run('UPDATE runtime_approvals SET request_json=? WHERE id=?', [JSON.stringify(invalid), approval.id]);
++      await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'schema_invalid');
++    }
++    state.runtime.db.run('UPDATE runtime_approvals SET request_json=? WHERE id=?', [original, approval.id]);
++    const other = await createProject(state, 'strict-other');
++    const otherWorkspace = await createWorkspace(state, other, 'strict-other');
++    await assert.rejects(() => state.runtime.terminal.open({ ...request, workspace_id: otherWorkspace.workspace.id }, state.principal), error => error.code === 'scope_denied');
++    await assert.rejects(() => state.runtime.terminal.open({ ...request, project_id: other.id }, state.principal), error => error.code === 'scope_denied');
++    const expires = state.runtime.db.get('SELECT expires_at FROM runtime_approvals WHERE id=?', [approval.id]).expires_at;
++    state.runtime.db.run('UPDATE runtime_approvals SET expires_at=? WHERE id=?', ['2000-01-01T00:00:00Z', approval.id]);
++    await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'approval_expired');
++    state.runtime.db.run('UPDATE runtime_approvals SET expires_at=? WHERE id=?', [expires, approval.id]);
++    assert.equal(children.length, 0);
++    const opened = await state.runtime.terminal.open(request, state.principal);
++    assert.equal(opened.terminal.cwd, '');
++    assert.equal(children.length, 1);
++  } finally { await close(state); }
++});
++
++test('Terminal rechecks deleted/archived sessions and lifecycle changes during lease acquisition', async () => {
++  const { state, request, children, session } = await strictTerminalFixture('strict-lifecycle');
++  try {
++    const archive = await state.runtime.p10Service.archiveAssistSession(session.id, { expected_revision: session.revision, idempotency_key: 'strict-lifecycle-archive' }, state.principal);
++    await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'assist_session_inactive' && error.details.lifecycle_status === 'archived');
++    const deleted = await state.runtime.p10Service.deleteAssistSession(session.id, { expected_revision: archive.session.revision, idempotency_key: 'strict-lifecycle-delete' }, state.principal);
++    await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'assist_session_inactive' && error.details.lifecycle_status === 'deleted');
++    assert.equal(children.length, 0);
++    const restored = await state.runtime.p10Service.restoreDeletedAssistSession(session.id, { expected_revision: deleted.session.revision, idempotency_key: 'strict-lifecycle-restore' }, state.principal);
++    const acquire = state.runtime.terminal.acquireLease.bind(state.runtime.terminal);
++    state.runtime.terminal.acquireLease = async (...args) => {
++      const lease = await acquire(...args);
++      await state.runtime.p10Service.archiveAssistSession(session.id, { expected_revision: restored.session.revision, idempotency_key: 'strict-lifecycle-race' }, state.principal);
++      return lease;
++    };
++    await assert.rejects(() => state.runtime.terminal.open(request, state.principal), error => error.code === 'assist_session_inactive');
++    assert.equal(children.length, 1);
++    assert.equal(children[0].killed, true);
++    assert.deepEqual(children[0].writes, []);
++    assert.equal(state.runtime.db.get('SELECT count(*) AS n FROM terminal_sessions').n, 0);
++    assert.equal(state.runtime.db.get('SELECT status FROM repository_workspaces WHERE id=?', [request.workspace_id]).status, 'released');
++  } finally { await close(state); }
++});
++
++async function strictTerminalFixture(suffix) {
++  const children = [];
++  const state = await openP10({ runtime: { pty: { spawn: () => { const child = new FakePtyProcess(); children.push(child); return child; } } } });
++  const project = await createProject(state, suffix);
++  const { workspace } = await createWorkspace(state, project, suffix);
++  const { pack, profile } = await createAssistPrerequisites(state, project, suffix);
++  const { session } = await state.runtime.assist.createSession({ project_id: project.id, context_pack_id: pack.id, profile_id: profile.id, idempotency_key: `${suffix}-session` }, state.principal);
++  const shape = { workspace_id: workspace.id, runtime: process.platform === 'win32' ? 'windows_native' : 'linux_native', cwd: '', cols: 120, rows: 32, assist_session_id: session.id };
++  const { approval } = await state.runtime.assist.createApproval({ project_id: project.id, action: 'terminal.open', request: shape, expected_revision: workspace.revision, idempotency_key: `${suffix}-approval` }, state.principal);
++  await state.runtime.assist.decideApproval(approval.id, { decision: 'approved', expected_revision: approval.revision, idempotency_key: `${suffix}-decision` }, state.principal);
++  return { state, children, session, approval, request: { ...shape, project_id: project.id, approval_id: approval.id, expected_revision: workspace.revision, idempotency_key: `${suffix}-open-key` } };
++}

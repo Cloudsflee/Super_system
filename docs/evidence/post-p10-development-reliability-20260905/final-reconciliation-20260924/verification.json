@@ -1,0 +1,16 @@
+{
+  "schema_version": "aiws.reconciliation.verification.v1",
+  "baseline_commit": "3e33067fc6ea205f07b590e076ac35f1040a21aa",
+  "implementation_commit": "8ec4ac973a18482e60aa9ae042232f6b28d1c03a",
+  "status": "passed",
+  "commands": [
+    {"command":"pnpm check","exit_status":0,"summary":"check passed: 517 source files, 407 syntax files, 60 scripts"},
+    {"command":"pnpm test:p5","exit_status":0,"summary":"35 tests passed"},
+    {"command":"pnpm test:p10","exit_status":0,"summary":"102 tests passed"},
+    {"command":"pnpm --filter @aiws/web test","exit_status":0,"summary":"23 files, 113 tests passed"},
+    {"command":"pnpm verify:dev","exit_status":0,"summary":"clean_blocking=[]"},
+    {"command":"pnpm verify:dev -- --base 6ae200a7cecef063b67d15fb8e7734ee80f4940f","exit_status":0,"summary":"clean_blocking=[]"},
+    {"command":"pnpm verify -- --pre-push","exit_status":0,"summary":"formal gate passed; rollback byte_exact_mismatches=[]"},
+    {"command":"git diff --check","exit_status":0,"summary":""}
+  ]
+}

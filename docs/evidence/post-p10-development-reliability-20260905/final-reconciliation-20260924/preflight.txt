@@ -1,0 +1,14 @@
+Target: strict boundary reconciliation from 3e33067 to 8ec4ac9.
+目标: Restore strict API/transaction, Web regression, and probe ownership behavior.
+Non-target: production volumes/pointers, migrations, P1-P10 formal Evidence and Catalog status.
+非目标: 生产资源、migration、正式 Evidence、Catalog 状态。
+Forbidden: reset/rebase, historical runtime restoration, formal Evidence edits.
+禁止项: reset/rebase、历史 runtime 恢复、正式 Evidence 修改。
+Reuse: f56e0b0 strict maintenance implementation, existing gates, shared Operation/Event/CAS/ACL owners.
+复用项: f56e0b0 严格维护实现、现有 Gate、共享 Operation/Event/CAS/ACL owner。
+Delete/retire: legacy terminal defaults and duplicate probe startup ownership.
+删除/退役: 旧 Terminal 默认兼容路径与重复探针启动 owner。
+Acceptance commands: pnpm check; pnpm test:p5; pnpm test:p10; pnpm verify:dev; pnpm verify -- --pre-push; git diff --check.
+验收命令: 上述 Gate 均以当前 HEAD 执行并记录。
+Rollback artifact: rollback.ps1 with dry-run and isolated actual apply; rollback-receipt.json.
+回滚工件: rollback.ps1、dry-run/actual apply、rollback-receipt.json。

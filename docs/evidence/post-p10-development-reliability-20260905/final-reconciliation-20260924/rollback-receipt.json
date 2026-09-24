@@ -1,0 +1,10 @@
+{
+  "schema_version": "aiws.reconciliation.rollback-receipt.v1",
+  "baseline_commit": "3e33067fc6ea205f07b590e076ac35f1040a21aa",
+  "implementation_commit": "8ec4ac973a18482e60aa9ae042232f6b28d1c03a",
+  "dry_run_exit_status": 0,
+  "actual_apply_exit_status": 0,
+  "byte_exact_mismatches": [],
+  "post_apply_diff_exit_status": 0,
+  "status": "passed"
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": "aiws.reconciliation.manifest.v1",
+  "baseline_commit": "3e33067fc6ea205f07b590e076ac35f1040a21aa",
+  "implementation_commit": "8ec4ac973a18482e60aa9ae042232f6b28d1c03a",
+  "files": [
+    {
+      "path": "original-hashes.json",
+      "sha256": "34cecd039a82229486b8b478976090068f595479740257e8c29f081c9878f625",
+      "byte_length": 4526
+    },
+    {
+      "path": "modified-artifact.json",
+      "sha256": "9b506d3c2dc0e7fa4840f54455f03a318ab1e57e8c9598ff0cbf51fc53bb8b8b",
+      "byte_length": 4534
+    },
+    {
+      "path": "modified-artifact.tgz",
+      "sha256": "ba53c5bce06bc9c96b7c69f74518442f29c6e49e71972ce55736420b138ad92a",
+      "byte_length": 214270
+    },
+    {
+      "path": "change.patch",
+      "sha256": "9e74a3cca1b300a9567fa1846e0ec98c1b214e10bc8a407916637aa50afbcdd6",
+      "byte_length": 139285
+    },
+    {
+      "path": "verification.json",
+      "sha256": "25576f9521bd2948307daa25c4418364d4a09c13ddca9953ad9ab572c4b64710",
+      "byte_length": 1022
+    },
+    {
+      "path": "rollback.ps1",
+      "sha256": "ae06972aa060867f950082c6f4c8c93cea78422f8664864a48309c9afa725ff2",
+      "byte_length": 840
+    },
+    {
+      "path": "rollback-receipt.json",
+      "sha256": "093cfe7480736307a4fe963adb9d3fe04f892040b74c245f485c7d6620f98819",
+      "byte_length": 362
+    },
+    {
+      "path": "preflight.txt",
+      "sha256": "91d165e442c48a841dd3bb06994abec5d03e7edd8b7fb75cba7341f4e4ddf397",
+      "byte_length": 1191
+    }
+  ]
+}\n
