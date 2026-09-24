@@ -62,13 +62,6 @@ export class CleanFilesService {
   }
 
   async indexWorkspace(workspaceId, projectId, principal) {
-    // Keep a small compatibility bridge for internal callers that used the
-    // pre-P10 `(workspaceId, principal)` shape; all new callers pass the
-    // project explicitly and are checked below.
-    if (principal == null && projectId && typeof projectId === 'object') {
-      principal = projectId;
-      projectId = null;
-    }
     const workspace = this.workspaceRow(workspaceId, projectId);
     assertProject(this.authorization, principal, 'read', workspace.project_id, { resource: 'files' });
     const directory = this.workspaceDirectory(workspace);

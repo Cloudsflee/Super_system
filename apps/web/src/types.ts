@@ -45,7 +45,7 @@ export interface WorkflowDraft {
   source_brief_revision: number;
   source_brief_hash?: string;
   status: string;
-  hierarchy_mode?: 'two_level' | 'legacy_compat';
+  hierarchy_mode?: 'two_level';
   generation_status?: string;
   critic_status?: string;
   last_generation_id?: string | null;
@@ -227,7 +227,7 @@ export interface Workflow {
   name: string;
   graph_hash: string;
   tasks: WorkflowTask[];
-  hierarchy_mode?: 'two_level' | 'legacy_compat';
+  hierarchy_mode?: 'two_level';
   draft_revision?: number;
   layout_revision?: number;
   created_at: string;
