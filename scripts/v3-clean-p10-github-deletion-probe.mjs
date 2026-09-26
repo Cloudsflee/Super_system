@@ -25,6 +25,8 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
     const account = await githubJson('/user', token);
     const owner = String(account.value?.login || credential.username || '');
     if (!owner) throw new Error('github_account_missing');
+    const oauthScopes = String(account.oauth_scopes || '').split(',').map((item) => item.trim()).filter(Boolean);
+    if (oauthScopes.length && !oauthScopes.includes('delete_repo')) throw new Error('github_fixture_creator_delete_scope_missing');
     const suffix = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${process.pid}-${randomBytes(4).toString('hex')}`;
     const name = `aiws-p10-delete-${suffix}`.toLowerCase();
     const fullName = `${owner}/${name}`;
@@ -111,7 +113,10 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
     error.code = `github_p10_${stage}_${String(error?.code || error?.message || 'failed').replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 80)}`;
     throw error;
   } finally {
-    if (created?.id) await cleanupCreatedRepository(created, token).catch(() => undefined);
+    if (created?.id) {
+      try { await cleanupCreatedRepository(created, token); }
+      catch (error) { throw new Error(`github_fixture_cleanup_failed:${String(error?.message || error)}`, { cause: error }); }
+    }
     token.fill(0);
     privateKey.fill(0);
   }
@@ -212,7 +217,7 @@ async function githubJson(route, token, { method = 'GET', body = null, allowStat
   let value = {};
   try { value = text ? JSON.parse(text) : {}; } catch { value = {}; }
   if (!response.ok && !allowStatus.includes(response.status)) throw new Error(`github_fixture_request_${response.status}`);
-  return { status: response.status, value };
+  return { status: response.status, value, oauth_scopes: response.headers.get('x-oauth-scopes') || '' };
 }
 
 function encodeRepository(value) {
