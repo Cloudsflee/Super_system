@@ -35,6 +35,7 @@ import { clearWorkspaceScope, queryClient, workspaceQueryKey } from './query';
 import { ProjectEventSynchronizer, type EventSyncState } from './events';
 import { OutboxStatus } from './offline/OutboxStatus';
 import { statusLabel } from './i18n';
+import { usePendingInteractions } from './hooks/usePendingInteractions';
 
 export type PageKey = WorkspaceRoute;
 
@@ -207,23 +208,10 @@ function WorkspaceLayout() {
     return () => clearTimeout(timer);
   }, [notice]);
 
+  const pendingInteractionsQuery = usePendingInteractions(projectId, setupReady);
   useEffect(() => {
-    if (!setupReady || !projectId) { setPendingInteractions(0); return; }
-    let disposed = false;
-    const load = async () => {
-      try {
-        const query = `?project_id=${encodeURIComponent(projectId)}&status=pending`;
-        const [approvals, inputs] = await Promise.all([
-          apiV2<{ approvals: unknown[] }>(`/api/v2/approvals${query}`),
-          apiV2<{ inputs: unknown[] }>(`/api/v2/user-inputs${query}`)
-        ]);
-        if (!disposed) setPendingInteractions((approvals.data.approvals || []).length + (inputs.data.inputs || []).length);
-      } catch { if (!disposed) setPendingInteractions(0); }
-    };
-    void load();
-    const timer = setInterval(() => void load(), 10_000);
-    return () => { disposed = true; clearInterval(timer); };
-  }, [page, projectId, setupReady]);
+    setPendingInteractions(pendingInteractionsQuery.data?.count || 0);
+  }, [pendingInteractionsQuery.data?.count]);
 
   const closeNavigation = useCallback(() => {
     const restoreFocus = drawerRef.current?.classList.contains('is-open') === true;

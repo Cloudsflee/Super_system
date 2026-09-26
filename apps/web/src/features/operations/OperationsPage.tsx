@@ -3,6 +3,7 @@ import { ArchiveRestore, Check, GitPullRequestDraft, LoaderCircle, Play, Refresh
 import { apiV2, mutateV2, shortHash } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
 import { commandLabel, errorCodeLabel, kindLabel, statusLabel } from '../../i18n';
+import { usePendingInteractions } from '../../hooks/usePendingInteractions';
 
 type Delivery = { id: string; branch_name: string; status: string; target_head_sha: string; revision: number; updated_at?: string };
 type Operation = { operation_id: string; command_id: string; status: string; revision: number; error_code?: string; parent_operation_id?: string | null; reconciliation_state?: string };
@@ -29,19 +30,18 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
   const [fault, setFault] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
+  const pendingInteractionsQuery = usePendingInteractions(projectId, Boolean(projectId));
 
   const load = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const [delivery, operation, batches, deployment, backup, approval, input, ready] = await Promise.all([
+      const [delivery, operation, batches, deployment, backup, ready] = await Promise.all([
         apiV2<{ deliveries: Delivery[] }>(`/api/v2/deliveries?project_id=${encodeURIComponent(projectId)}`),
         apiV2<{ operations: Operation[] }>(`/api/v2/operations?project_id=${encodeURIComponent(projectId)}`),
         apiV2<{ imports: ImportBatch[] }>('/api/v2/imports'),
         apiV2<{ active: Candidate | null; candidates: Candidate[] }>('/api/v2/system/deployment'),
         apiV2<{ backups: Backup[] }>('/api/v2/backups'),
-        apiV2<{ approvals: Interaction[] }>(`/api/v2/approvals?project_id=${encodeURIComponent(projectId)}`),
-        apiV2<{ inputs: Interaction[] }>(`/api/v2/user-inputs?project_id=${encodeURIComponent(projectId)}`),
         fetch('/readyz', { credentials: 'same-origin', headers: { accept: 'application/json' } }).then(async (response) => ({ ok: response.ok, body: await response.json().catch(() => ({})) }))
       ]);
       setDeliveries(delivery.data.deliveries || []);
@@ -49,8 +49,6 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
       setImports(batches.data.imports || []);
       setCandidates(deployment.data.candidates || []);
       setBackups(backup.data.backups || []);
-      setApprovals(approval.data.approvals || []);
-      setInputs(input.data.inputs || []);
       setHealth(ready.ok && String((ready.body as { data?: { status?: string } }).data?.status || '') === 'ready' ? 'ready' : 'failed');
       setFault('');
     } catch (error) {
@@ -61,6 +59,10 @@ export function OperationsPage({ projectId, notify }: WorkspacePageProps) {
   }, [notify, projectId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    setApprovals(pendingInteractionsQuery.data?.approvals || []);
+    setInputs(pendingInteractionsQuery.data?.inputs || []);
+  }, [pendingInteractionsQuery.data]);
 
   const reconcile = async (delivery: Delivery) => run(`delivery:${delivery.id}`, async () => {
     await mutateV2(`/api/v2/deliveries/${encodeURIComponent(delivery.id)}/reconcile`, {}, 'POST', { expectedRevision: delivery.revision });
