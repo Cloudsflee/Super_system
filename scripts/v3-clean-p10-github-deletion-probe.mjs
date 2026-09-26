@@ -271,31 +271,28 @@ export async function cleanupCreatedRepository(created, token, fetchImpl = globa
  * installation binding; remote deletion remains App-owned.
  */
 export async function cleanupCreatedRepositoryWithApp(created, adapter, auth) {
-  const identity = auth();
   try {
-    const snapshot = await adapter.inspectRepository(identity, {
+    const snapshot = await adapter.inspectRepository(auth(), {
       fullName: created.full_name,
       repositoryId: created.id,
       branch: created.default_branch || 'main'
     });
     const head = String(snapshot.commit_sha || snapshot.revision || '');
     if (!/^[a-f0-9]{40}$/.test(head)) throw new Error('github_cleanup_head_missing');
-    const deleted = await adapter.deleteRepository(identity, {
+    const deleted = await adapter.deleteRepository(auth(), {
       repository: created.full_name,
       repositoryId: created.id,
       branch: created.default_branch || 'main',
       expectedHeadSha: head
     });
     if (deleted.deleted !== true || String(deleted.repository_id) !== String(created.id)) throw new Error('github_cleanup_identity_mismatch');
-    const reconciled = await adapter.reconcileRepositoryDeletion(identity, {
+    const reconciled = await adapter.reconcileRepositoryDeletion(auth(), {
       repository: created.full_name,
       repositoryId: created.id,
       expectedPreviouslyBound: true
     });
     if (reconciled.exists !== false) throw new Error('github_cleanup_reconcile_failed');
-  } finally {
-    identity.privateKey?.fill?.(0);
-  }
+  } finally { /* each App adapter call zeroes its own private-key lease */ }
 }
 
 async function githubJson(route, token, { method = 'GET', body = null, allowStatus = [], fetchImpl = globalThis.fetch } = {}) {
