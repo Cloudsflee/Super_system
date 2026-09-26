@@ -217,6 +217,7 @@
         "apps/web/src/features/workflow/WorkflowPage/index.ts",
         "apps/web/src/features/workflow/index.ts",
         "apps/web/src/hooks/useOperationStatus.ts",
+        "apps/web/src/hooks/usePendingInteractions.ts",
         "apps/web/src/styles.css",
         "apps/web/src/test/identity-access.test.tsx",
         "apps/web/src/test/operation-status.test.tsx",
