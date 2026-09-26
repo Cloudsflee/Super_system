@@ -120,7 +120,7 @@ export async function runGithubDeletionProbe({
     throw error;
   } finally {
     if (created?.id) {
-      try { await cleanupCreatedRepository(created, token, fetchImpl); }
+      try { await cleanupCreatedRepositoryWithApp(created, adapter, auth); }
       catch (error) { throw new Error(`github_fixture_cleanup_failed:${String(error?.message || error)}`, { cause: error }); }
     }
     token.fill(0);
@@ -258,6 +258,39 @@ export async function cleanupCreatedRepository(created, token, fetchImpl = globa
   if (String(current.value?.id || '') !== String(created.id)) throw new Error('github_cleanup_identity_mismatch');
   const deleted = await githubJson(route, token, { method: 'DELETE', allowStatus: [404], fetchImpl });
   if (![204, 404].includes(deleted.status)) throw new Error('github_cleanup_failed');
+}
+
+/**
+ * Cleanup for a partially completed probe uses the App installation identity.
+ * The PAT is intentionally limited to user-scoped repository creation and
+ * installation binding; remote deletion remains App-owned.
+ */
+export async function cleanupCreatedRepositoryWithApp(created, adapter, auth) {
+  const identity = auth();
+  try {
+    const snapshot = await adapter.inspectRepository(identity, {
+      fullName: created.full_name,
+      repositoryId: created.id,
+      branch: created.default_branch || 'main'
+    });
+    const head = String(snapshot.commit_sha || snapshot.revision || '');
+    if (!/^[a-f0-9]{40}$/.test(head)) throw new Error('github_cleanup_head_missing');
+    const deleted = await adapter.deleteRepository(identity, {
+      repository: created.full_name,
+      repositoryId: created.id,
+      branch: created.default_branch || 'main',
+      expectedHeadSha: head
+    });
+    if (deleted.deleted !== true || String(deleted.repository_id) !== String(created.id)) throw new Error('github_cleanup_identity_mismatch');
+    const reconciled = await adapter.reconcileRepositoryDeletion(identity, {
+      repository: created.full_name,
+      repositoryId: created.id,
+      expectedPreviouslyBound: true
+    });
+    if (reconciled.exists !== false) throw new Error('github_cleanup_reconcile_failed');
+  } finally {
+    identity.privateKey?.fill?.(0);
+  }
 }
 
 async function githubJson(route, token, { method = 'GET', body = null, allowStatus = [], fetchImpl = globalThis.fetch } = {}) {

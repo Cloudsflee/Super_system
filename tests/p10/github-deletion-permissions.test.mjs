@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { cleanupCreatedRepository, ensureAppRepositoryAccess } from '../../scripts/v3-clean-p10-github-deletion-probe.mjs';
+import { cleanupCreatedRepository, cleanupCreatedRepositoryWithApp, ensureAppRepositoryAccess } from '../../scripts/v3-clean-p10-github-deletion-probe.mjs';
 
 const repository = { id: '9001', full_name: 'fixture/generated', default_branch: 'main' };
 const auth = () => ({ appId: 'fixture-app', installationId: '77', privateKey: Buffer.from('fixture-key') });
@@ -73,4 +73,15 @@ test('GitHub deletion probe fails closed when PAT cleanup cannot remove the gene
     (error) => error.code === 'github_http_500'
   );
   assert.equal(calls, 2);
+});
+
+test('GitHub deletion probe cleanup uses the App owner and reconciles absence', async () => {
+  const calls = [];
+  const adapter = {
+    async inspectRepository(receivedAuth, input) { calls.push(['inspect', receivedAuth.appId, input.repositoryId]); return { commit_sha: 'a'.repeat(40) }; },
+    async deleteRepository(receivedAuth, input) { calls.push(['delete', receivedAuth.appId, input.repositoryId]); return { deleted: true, repository_id: input.repositoryId }; },
+    async reconcileRepositoryDeletion(receivedAuth, input) { calls.push(['reconcile', receivedAuth.appId, input.repositoryId]); return { exists: false, repository_id: input.repositoryId }; }
+  };
+  await cleanupCreatedRepositoryWithApp(repository, adapter, auth);
+  assert.deepEqual(calls, [['inspect', 'fixture-app', '9001'], ['delete', 'fixture-app', '9001'], ['reconcile', 'fixture-app', '9001']]);
 });
