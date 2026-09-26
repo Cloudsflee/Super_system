@@ -124,8 +124,13 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
     // repository-sensitive sequential gates so the fixed budget is spent on
     // validation rather than waiting.
     if (!dependencies.runGateCommand) {
-      const parallel = selection.commands.filter((command) => command.id.endsWith('-performance') || ['web-test', 'build', 'e2e'].includes(command.id));
-      const regular = selection.commands.filter((command) => !command.id.endsWith('-performance') && !['web-test', 'build', 'e2e'].includes(command.id));
+      // E2E owns a browser, Vite proxy and API child process. Keep it after
+      // the parallel cold-build wave so proxy disconnect diagnostics from
+      // another startup cannot turn a valid journey into a blocking failure.
+      const phaseTests = selection.commands.filter((command) => /^test-p(?:1|2|3|31|4|5|6|7|8|9|10)$/.test(command.id)).map((command) => command.id);
+      const parallelIds = new Set(['web-test', 'build', 'integration-clean', 'security-clean', ...phaseTests]);
+      const parallel = selection.commands.filter((command) => command.id.endsWith('-performance') || parallelIds.has(command.id));
+      const regular = selection.commands.filter((command) => !command.id.endsWith('-performance') && !parallelIds.has(command.id));
       const initialBudget = gateBudget('development', Date.now() - started);
       const parallelRuns = parallel.map((command) => runOne(command, initialBudget));
       for (const command of regular) {
@@ -335,9 +340,13 @@ function reverseCatalog(catalog, paths) {
   for (const changedPath of paths) {
     for (const feature of features) {
       const implementation = ['source_files', 'target_modules'].flatMap((field) => feature[field] || []).map(normalizePath);
+      const retired = (feature.retired_paths || []).map(normalizePath);
+      const maintenance = (feature.maintenance_paths || []).map(normalizePath);
       const verification = ['behavior_tests', 'ui_tests', 'tests', 'evidence', 'maintenance_evidence', 'release_receipts', 'parity_receipts'].flatMap((field) => feature[field] || []).map(normalizePath);
       const implementationHit = implementation.some((candidate) => pathMatches(changedPath, candidate));
-      if (!implementationHit && !verification.some((candidate) => pathMatches(changedPath, candidate))) continue;
+      const retiredHit = retired.some((candidate) => changedPath === candidate);
+      const maintenanceHit = maintenance.some((candidate) => pathMatches(changedPath, candidate));
+      if (!implementationHit && !retiredHit && !maintenanceHit && !verification.some((candidate) => pathMatches(changedPath, candidate))) continue;
       matched.set(feature.id, feature);
       if (implementationHit) implementationMatched.set(feature.id, feature);
       pathIds.add(changedPath);

@@ -3,10 +3,12 @@ import path from 'node:path';
 import { treeManifest } from './runner-input-provider.mjs';
 import { canonicalJson, sha256Hex } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
+import { createManifestInTransaction } from './receipts.mjs';
+import { DEFAULT_REDACTION_POLICY } from './redaction.mjs';
 
 // Owner: Repository. Phase: post-P10. Snapshots use the existing receipt ledger.
 export class CandidateWorkspace {
-  constructor({ db, root, repository }) { this.db = db; this.root = path.resolve(root); this.repository = repository; }
+  constructor({ db, root, repository, policy = DEFAULT_REDACTION_POLICY }) { this.db = db; this.root = path.resolve(root); this.repository = repository; this.policy = policy || DEFAULT_REDACTION_POLICY; }
   directory(execution) { return this.path(`candidates/${execution.id}/${execution.generation}`); }
   path(relative) { const target = path.resolve(this.root, relative); if (!target.startsWith(`${this.root}${path.sep}`)) fail('runner_path_invalid'); return target; }
   manifestHash(directory) { return sha256Hex(canonicalJson(treeManifest(directory))); }
@@ -22,7 +24,7 @@ export class CandidateWorkspace {
     fs.cpSync(managed, target, { recursive: true, errorOnExist: true, force: false });
     if (this.manifestHash(target) !== before || this.manifestHash(managed) !== before) fail('workspace_changed');
     const payload = canonicalJson({ workspace_id: workspace.id, workspace_revision: Number(workspace.revision), base_hash: before });
-    await this.db.withTransaction((tx) => tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,created_at) VALUES(?,'repository.candidate','verified',?,?,?)", [id,payload,sha256Hex(payload),new Date().toISOString()]));
+    await this.db.withTransaction((tx) => createManifestInTransaction(tx, { id, kind: 'repository.candidate', status: 'verified', payload: JSON.parse(payload), createdAt: new Date().toISOString(), policy: this.policy }));
     return target;
   }
   async publish(execution, managed, principal) {
@@ -48,7 +50,7 @@ export class CandidateWorkspace {
       fs.renameSync(staging, managed);
       if (this.manifestHash(managed) !== after) fail('workspace_changed');
       const payload = canonicalJson({ execution_id: execution.id, generation: execution.generation, before_sha256: pin.base_hash, after_sha256: after, rollback_ref: `rollback/${execution.id}/${execution.generation}`, fencing_token_hash: sha256Hex(lock.lock.fencing_token) });
-      await this.db.withTransaction((tx) => tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,created_at) VALUES(?,'repository.publication','verified',?,?,?)", [`publish-${execution.id}-${execution.generation}`,payload,sha256Hex(payload),new Date().toISOString()]));
+      await this.db.withTransaction((tx) => createManifestInTransaction(tx, { id: `publish-${execution.id}-${execution.generation}`, kind: 'repository.publication', status: 'verified', payload: JSON.parse(payload), createdAt: new Date().toISOString(), policy: this.policy }));
     } catch (error) {
       if (moved && fs.existsSync(backup)) { if (fs.existsSync(managed)) fs.renameSync(managed, staging); fs.renameSync(backup, managed); }
       throw error;

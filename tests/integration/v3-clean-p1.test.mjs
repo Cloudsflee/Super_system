@@ -6,6 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { createCleanRuntime } from '../../apps/api/src/clean/runtime.mjs';
 import { createCleanHttpHandler } from '../../apps/api/src/clean/http.mjs';
+import { canonicalJson, sha256Hex } from '../../apps/api/src/clean/canonical.mjs';
 
 function cleanConfig(root) {
   return { runtime: 'v3-clean', apiVersion: '2', host: '127.0.0.1', port: 0, home: root, databaseFile: path.join(root, 'data', 'state.sqlite'), casRoot: path.join(root, 'cas'), receiptRoot: path.join(root, 'receipts'), vaultRoot: path.join(root, 'vault'), cursorSecret: 'integration-cursor', sessionSecret: 'integration-session-secret', vaultMasterKey: 'integration-vault-master-key', runtimeBuild: 'integration', maxBodyBytes: 100000 };
@@ -15,6 +16,34 @@ async function provision(runtime, key) {
   await runtime.recovery;
   const setup = await runtime.identity.setupComplete({ display_name: 'Integration owner', team_name: 'Integration team', idempotency_key: key });
   return { setup, principal: runtime.identity.authenticateProof(setup.session.proof), cookie: `aiws_session=${setup.session.proof}` };
+}
+
+function appendProbe(runtime, {
+  actorId, commandId, idempotencyKey, aggregateType, aggregateId,
+  expectedRevision = null, operationId = null, request = {}, payload = {}, eventType = `${aggregateType}.updated`
+}) {
+  const requestHash = sha256Hex(canonicalJson(request));
+  const now = new Date().toISOString();
+  return runtime.db.withTransaction((tx) => {
+    const existing = runtime.operations.getIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey, requestHash, now });
+    if (existing?.response_json) return { ...JSON.parse(existing.response_json), replayed: true };
+    const current = tx.get('SELECT current_revision FROM aggregate_heads WHERE aggregate_type=? AND aggregate_id=?', [aggregateType, aggregateId]);
+    const revision = Number(current?.current_revision || 0);
+    if (expectedRevision != null && Number(expectedRevision) !== revision) {
+      const error = new Error('aggregate revision has changed');
+      error.code = 'revision_conflict';
+      throw error;
+    }
+    const nextRevision = revision + 1;
+    const event = runtime.events.appendAggregateInTransaction(tx, {
+      aggregateType, aggregateId, revision: nextRevision, payload,
+      operationId, actorId, type: eventType, data: payload, now
+    });
+    if (operationId) runtime.operations.linkInTransaction(tx, operationId, [[aggregateType, aggregateId]], now);
+    const response = { id: aggregateId, aggregate_type: aggregateType, revision: nextRevision, event_id: event.id, event_sequence: event.sequence };
+    runtime.operations.saveIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey, requestHash, response, operationId, now });
+    return response;
+  });
 }
 
 test('clean restart preserves terminal operation and SSE/JSON replay parity', async () => {
@@ -58,7 +87,7 @@ test('clean boundary validates readiness, aggregate CAS, cursors, and live SSE h
   const owner = await provision(runtime, 'integration-boundary-setup-1');
   const actorId = owner.principal.actorId;
 
-  const first = await runtime.platform.mutateAggregate({
+  const first = await appendProbe(runtime, {
     actorId,
     commandId: 'integration.aggregate',
     idempotencyKey: 'aggregate-key-1',
@@ -69,7 +98,7 @@ test('clean boundary validates readiness, aggregate CAS, cursors, and live SSE h
     result: { state: 'created' },
     eventType: 'probe.created'
   });
-  const replayed = await runtime.platform.mutateAggregate({
+  const replayed = await appendProbe(runtime, {
     actorId,
     commandId: 'integration.aggregate',
     idempotencyKey: 'aggregate-key-1',
@@ -83,7 +112,7 @@ test('clean boundary validates readiness, aggregate CAS, cursors, and live SSE h
   assert.equal(replayed.replayed, true);
   assert.equal(replayed.event_id, first.event_id);
   const linkedOperation = await runtime.operations.create({ actorId, commandId: 'integration.aggregate-link', idempotencyKey: 'aggregate-link-1', request: {}, resourceType: 'probe', resourceId: 'probe_aggregate_1' });
-  const linked = await runtime.platform.mutateAggregate({
+  const linked = await appendProbe(runtime, {
     actorId,
     commandId: 'integration.aggregate.linked',
     idempotencyKey: 'aggregate-linked-1',
@@ -96,7 +125,7 @@ test('clean boundary validates readiness, aggregate CAS, cursors, and live SSE h
   });
   assert.equal(linked.revision, 2);
   assert.equal(runtime.db.get("select count(*) as count from operation_links where operation_id=? and relation='target'", [linkedOperation.operation_id]).count, 1);
-  await assert.rejects(() => runtime.platform.mutateAggregate({
+  await assert.rejects(() => appendProbe(runtime, {
     actorId,
     commandId: 'integration.aggregate',
     idempotencyKey: 'aggregate-key-1',
@@ -105,7 +134,7 @@ test('clean boundary validates readiness, aggregate CAS, cursors, and live SSE h
     request: { state: 'changed' },
     payload: { state: 'changed' }
   }), (error) => error.code === 'idempotency_conflict');
-  await assert.rejects(() => runtime.platform.mutateAggregate({
+  await assert.rejects(() => appendProbe(runtime, {
     actorId,
     commandId: 'integration.aggregate.next',
     idempotencyKey: 'aggregate-key-2',

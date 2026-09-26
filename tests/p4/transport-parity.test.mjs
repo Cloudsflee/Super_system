@@ -33,7 +33,7 @@ test('REST, MCP HTTP, stdio and Gateway share command schemas and normalized res
     assert.deepEqual(stdio[1].result.tools, (await rpc(network.base, createdClient.token, 5, 'tools/list', {}, session)).payload.result.tools);
     assert.deepEqual(stdio[2].result.structuredContent, restMap.payload.data);
 
-    const gatewayBody = { name: 'context_map', arguments: { project_id: current.id }, mcp_token: createdClient.token };
+    const gatewayBody = { command_id: 'context_map', arguments: { project_id: current.id }, mcp_token: createdClient.token };
     const timestamp = String(Math.floor(Date.now() / 1000));
     const nonce = 'p4-transport-gateway-nonce';
     const gateway = await json(`${network.base}/api/v2/gateway/forward`, {
@@ -52,12 +52,12 @@ test('REST, MCP HTTP, stdio and Gateway share command schemas and normalized res
     assert.deepEqual(gateway.payload.data.result.result, restMap.payload.data);
 
     const sourceInput = {
-      project_id: current.id, kind: 'note', title: 'Parity source', uri: 'notes/parity', content: 'same receipt',
+      project_id: current.id, source_type: 'note', title: 'Parity source', canonical_uri: 'notes/parity', content: 'same receipt',
       expected_revision: 0, idempotency_key: 'p4-cross-transport-source'
     };
     const restCreated = await json(`${network.base}/api/v2/projects/${current.id}/context/sources`, {
       method: 'POST', headers: { cookie, 'content-type': 'application/json', 'Idempotency-Key': sourceInput.idempotency_key, 'X-Expected-Revision': '0' },
-      body: JSON.stringify({ kind: sourceInput.kind, title: sourceInput.title, uri: sourceInput.uri, content: sourceInput.content })
+      body: JSON.stringify({ source_type: sourceInput.source_type, title: sourceInput.title, canonical_uri: sourceInput.canonical_uri, content: sourceInput.content })
     });
     assert.equal(restCreated.status, 201);
     const mcpReplay = await rpc(network.base, createdClient.token, 6, 'tools/call', { name: 'context_source_create', arguments: sourceInput }, session);

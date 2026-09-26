@@ -111,16 +111,14 @@ function isGithubSource(source = {}) {
   if (provider === 'fixture' || provider === 'local' || provider === 'https') return false;
   if (provider === 'github' || provider === 'git') return true;
   if (source.kind !== 'git') return false;
-  return Boolean(source.provider_profile_id || source.github_profile_id || source.profile_id
-    || source.metadata?.provider_profile_id || source.metadata?.github_profile_id || source.metadata?.profile_id
+  return Boolean(source.provider_profile_id || source.metadata?.provider_profile_id
     || source.repository_id || source.full_name || source.repository_full_name
     || /^https:\/\/github\.com\//i.test(String(source.locator || '')));
 }
 
 function sourcePin(source = {}, expected = {}) {
   const metadata = source.metadata && typeof source.metadata === 'object' ? source.metadata : {};
-  const profileId = String(source.provider_profile_id || source.github_profile_id || source.profile_id
-    || metadata.provider_profile_id || metadata.github_profile_id || metadata.profile_id || '').trim();
+  const profileId = String(source.provider_profile_id || metadata.provider_profile_id || '').trim();
   if (!profileId) throw new PlatformError('github_profile_required', 'GitHub provider profile is required', {}, 409);
   const fullName = normalizeFullName(source.full_name || source.repository_full_name || metadata.repository_full_name || source.locator);
   const repositoryId = source.repository_id ?? source.github_repository_id ?? metadata.repository_id ?? null;

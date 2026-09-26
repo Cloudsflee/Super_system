@@ -67,6 +67,8 @@ export class CleanCommandDispatcher {
     const input = normalizeInput(entry.command_id, args);
     assertCleanV2(entry.input_schema, input);
     let result = await this.handlers.get(entry.command_id)(args, principal);
+    if (entry.output_schema === 'operation.receipt.v2') result = publicOperationReceipt(result);
+    if (entry.command_id === 'provider.codex.discovery.import' && result?.probe) result = { ...result, probe: publicOperationReceipt(result.probe) };
     // Keep domain adapters ergonomic for direct callers while exposing the
     // registered receipt shape consistently to every transport.
     if (entry.command_id === 'assist.session.create' && result && result.id && !result.session) {
@@ -93,10 +95,10 @@ export class CleanCommandDispatcher {
 
   #registerHandlers() {
     const add = (id, handler, options) => this.#add(id, handler, options);
-    add('context.source.list', (args, principal) => ({ sources: this.context.listSources(args.project_id, principal, args.q || args.query || '') }));
+    add('context.source.list', (args, principal) => ({ sources: this.context.listSources(args.project_id, principal, args.query || '') }));
     add('context.source.create', (args, principal) => this.context.createSource(args.project_id, args, principal));
     add('context.map', (args, principal) => this.context.map(args.project_id, principal));
-    add('context.search', (args, principal) => ({ results: this.context.search(args.project_id, principal, args.q || args.query || '', args) }));
+    add('context.search', (args, principal) => ({ results: this.context.search(args.project_id, principal, args.query || '', args) }));
     add('context.read', (args, principal) => this.context.read(args.project_id, args.node_id, principal, args));
     add('context.node.get', (args, principal) => this.context.read(args.project_id, args.node_id, principal, args));
     add('context.node.versions', (args, principal) => ({ versions: this.context.versions(args.project_id, args.node_id, principal) }));
@@ -117,17 +119,17 @@ export class CleanCommandDispatcher {
     add('mcp.tools.list', () => ({ tools: this.tools() }), { exposed: false });
     add('mcp.client.list', (args, principal) => ({ clients: this.mcp.listClients(principal, args.project_id) }));
     add('mcp.client.create', (args, principal) => this.mcp.createClient(args, principal));
-    add('mcp.client.revoke', (args, principal) => this.mcp.revokeClient(args.client_id || args.id, args, principal));
+    add('mcp.client.revoke', (args, principal) => this.mcp.revokeClient(args.client_id, args, principal));
     add('exchange.request.list', (args, principal) => ({ requests: this.mcp.listExchangeRequests(args.project_id, principal) }));
     add('exchange.request.create', (args, principal) => this.mcp.createExchangeRequest(args, principal));
-    add('exchange.request.approve', (args, principal) => this.mcp.approveExchange(args.request_id || args.id, args, principal));
-    add('exchange.request.reject', (args, principal) => this.mcp.rejectExchange(args.request_id || args.id, args, principal));
+    add('exchange.request.approve', (args, principal) => this.mcp.approveExchange(args.request_id, args, principal));
+    add('exchange.request.reject', (args, principal) => this.mcp.rejectExchange(args.request_id, args, principal));
     add('exchange.grant.list', (args, principal) => ({ grants: this.mcp.listGrants(args.project_id, principal) }));
-    add('exchange.grant.revoke', (args, principal) => this.mcp.revokeGrant(args.grant_id || args.id, args, principal));
-    add('exchange.grant.pack.create', (args, principal) => this.mcp.createGrantPack(args.grant_id || args.id, args, principal));
-    add('gateway.receipt.get', (args) => this.gateway.receipt(args.id), { exposed: false });
+    add('exchange.grant.revoke', (args, principal) => this.mcp.revokeGrant(args.grant_id, args, principal));
+    add('exchange.grant.pack.create', (args, principal) => this.mcp.createGrantPack(args.grant_id, args, principal));
+    add('gateway.receipt.get', (args) => this.gateway.receipt(args.gateway_receipt_id), { exposed: false });
     add('project.get', (args, principal) => this.projectWorkflow.getProject(args.id, principal));
-    add('operations.get', (args, principal) => this.operations.get(args.id, { actorId: actorOf(principal), projectId: args.project_id || null }));
+    add('operations.get', (args, principal) => this.operations.get(args.operation_id, { actorId: actorOf(principal), projectId: args.project_id || null }));
     add('operations.events', (args, principal) => {
       const operation = this.operations.get(args.operation_id, { actorId: actorOf(principal), projectId: args.project_id || null });
       return this.events.replay({ actorId: actorOf(principal), projectId: operation.project_id, operationId: operation.operation_id, cursor: args.cursor || 0, limit: args.limit || 500 });
@@ -141,15 +143,15 @@ export class CleanCommandDispatcher {
 
   #registerP10Handlers(add) {
     const bind = (id, handler) => add(id, handler, { exposed: this.registry.get(id)?.mcp?.exposed === true });
-    bind('profile.update', (args, principal) => this.identity.updateProfile(args.id, args, principal));
-    bind('profile.disable', (args, principal) => this.identity.disableProfile(args.id, args, principal));
-    bind('profile.enable', (args, principal) => this.identity.enableProfile(args.id, args, principal));
+    bind('profile.update', (args, principal) => this.identity.updateProfile(args.profile_id, args, principal));
+    bind('profile.disable', (args, principal) => this.identity.disableProfile(args.profile_id, args, principal));
+    bind('profile.enable', (args, principal) => this.identity.enableProfile(args.profile_id, args, principal));
     if (this.localSetup) {
       bind('provider.codex.discovery', (args, principal) => this.localSetup.discoverCodex(args, principal));
       bind('provider.codex.discovery.import', (args, principal) => this.localSetup.importCodex(args, principal));
       bind('provider.codex.device_login.start', (args, principal) => this.localSetup.startDeviceLogin(args, principal));
-      bind('provider.codex.device_login.get', (args, principal) => this.localSetup.deviceLogin(args.id, principal));
-      bind('provider.codex.device_login.cancel', (args, principal) => this.localSetup.cancelDeviceLogin(args.id, args, principal));
+      bind('provider.codex.device_login.get', (args, principal) => this.localSetup.deviceLogin(args.login_id, principal));
+      bind('provider.codex.device_login.cancel', (args, principal) => this.localSetup.cancelDeviceLogin(args.login_id, args, principal));
     }
     if (this.githubSetup) {
       bind('provider.github.discovery', (args, principal) => this.githubSetup.discover(args, principal));
@@ -158,35 +160,35 @@ export class CleanCommandDispatcher {
     }
     bind('brief.template.list', (args, principal) => this.p10Service.listBriefTemplates(args, principal));
     bind('brief.template.create', (args, principal) => this.p10Service.createBriefTemplate(args, principal));
-    bind('brief.template.update', (args, principal) => this.p10Service.updateBriefTemplate(args.id, args, principal));
-    bind('brief.template.archive', (args, principal) => this.p10Service.archiveBriefTemplate(args.id, args, principal));
-    bind('project.deletion.prepare', (args, principal) => this.p10Service.prepareProjectDeletion(args.id, args, principal));
-    bind('project.deletion.get', (args, principal) => this.p10Service.getProjectDeletion(args.id, principal));
-    bind('project.deletion.confirm', (args, principal) => this.p10Service.confirmProjectDeletion(args.id, args, principal));
-    bind('project.deletion.execute', (args, principal) => this.p10Service.executeProjectDeletion(args.id, args, principal));
-    bind('project.deletion.cancel', (args, principal) => this.p10Service.cancelProjectDeletion(args.id, args, principal));
-    bind('repository.deletion.prepare', (args, principal) => this.p10Service.prepareRepositoryDeletion(args.id, args, principal));
-    bind('repository.deletion.get', (args, principal) => this.p10Service.getRepositoryDeletion(args.id, principal));
-    bind('repository.deletion.creator_confirm', (args, principal) => this.p10Service.confirmRepositoryDeletion(args.id, 'creator', args, principal));
-    bind('repository.deletion.owner_confirm', (args, principal) => this.p10Service.confirmRepositoryDeletion(args.id, 'owner', args, principal));
-    bind('repository.deletion.execute', (args, principal) => this.p10Service.executeRepositoryDeletion(args.id, args, principal));
-    bind('repository.deletion.reconcile', (args, principal) => this.p10Service.reconcileRepositoryDeletion(args.id, args, principal));
-    bind('repository.deletion.cancel', (args, principal) => this.p10Service.cancelRepositoryDeletion(args.id, args, principal));
-    bind('assist.session.metadata', (args, principal) => this.p10Service.updateAssistSession(args.id, args, principal));
-    bind('assist.session.archive', (args, principal) => this.p10Service.archiveAssistSession(args.id || args.session_id, args, principal));
-    bind('assist.session.restore', (args, principal) => this.p10Service.restoreAssistSession(args.id || args.session_id, args, principal));
-    bind('assist.session.delete', (args, principal) => this.p10Service.deleteAssistSession(args.id || args.session_id, args, principal));
-    bind('assist.session.restore_deleted', (args, principal) => this.p10Service.restoreDeletedAssistSession(args.id || args.session_id, args, principal));
-    bind('assist.session.fork', (args, principal) => this.p10Service.forkAssistSession(args.id, args, principal));
-    bind('assist.session.side_thread', (args, principal) => this.p10Service.forkAssistSession(args.id, args, principal, 'side_thread'));
-    bind('assist.configuration.create', (args, principal) => this.p10Service.createAssistConfiguration(args.id, args, principal));
-    bind('assist.review.comments', (args, principal) => this.p10Service.listAssistReviewComments(args.id, principal));
-    bind('assist.review.comment', (args, principal) => this.p10Service.createAssistReviewComment(args.id, args, principal));
-    bind('assist.review.request_changes', (args, principal) => this.p10Service.createAssistReviewComment(args.id, args, principal, 'request_changes'));
-    bind('quality.policy.get', (args, principal) => this.quality.policy(args.id, principal));
-    bind('quality.policy.update', (args, principal) => this.quality.updatePolicy(args.id, args, principal));
-    bind('quality.prepare', (args, principal) => this.quality.prepare(args.id, args, principal));
-    bind('quality.advice.get', (args, principal) => this.quality.advice(args.id, principal));
+    bind('brief.template.update', (args, principal) => this.p10Service.updateBriefTemplate(args.template_id, args, principal));
+    bind('brief.template.archive', (args, principal) => this.p10Service.archiveBriefTemplate(args.template_id, args, principal));
+    bind('project.deletion.prepare', (args, principal) => this.p10Service.prepareProjectDeletion(args.project_id, args, principal));
+    bind('project.deletion.get', (args, principal) => this.p10Service.getProjectDeletion(args.deletion_intent_id, principal));
+    bind('project.deletion.confirm', (args, principal) => this.p10Service.confirmProjectDeletion(args.deletion_intent_id, args, principal));
+    bind('project.deletion.execute', (args, principal) => this.p10Service.executeProjectDeletion(args.deletion_intent_id, args, principal));
+    bind('project.deletion.cancel', (args, principal) => this.p10Service.cancelProjectDeletion(args.deletion_intent_id, args, principal));
+    bind('repository.deletion.prepare', (args, principal) => this.p10Service.prepareRepositoryDeletion(args.repository_target_id, args, principal));
+    bind('repository.deletion.get', (args, principal) => this.p10Service.getRepositoryDeletion(args.deletion_intent_id, principal));
+    bind('repository.deletion.creator_confirm', (args, principal) => this.p10Service.confirmRepositoryDeletion(args.deletion_intent_id, 'creator', args, principal));
+    bind('repository.deletion.owner_confirm', (args, principal) => this.p10Service.confirmRepositoryDeletion(args.deletion_intent_id, 'owner', args, principal));
+    bind('repository.deletion.execute', (args, principal) => this.p10Service.executeRepositoryDeletion(args.deletion_intent_id, args, principal));
+    bind('repository.deletion.reconcile', (args, principal) => this.p10Service.reconcileRepositoryDeletion(args.deletion_intent_id, args, principal));
+    bind('repository.deletion.cancel', (args, principal) => this.p10Service.cancelRepositoryDeletion(args.deletion_intent_id, args, principal));
+    bind('assist.session.metadata', (args, principal) => this.p10Service.updateAssistSession(args.session_id, args, principal));
+    bind('assist.session.archive', (args, principal) => this.p10Service.archiveAssistSession(args.session_id, args, principal));
+    bind('assist.session.restore', (args, principal) => this.p10Service.restoreAssistSession(args.session_id, args, principal));
+    bind('assist.session.delete', (args, principal) => this.p10Service.deleteAssistSession(args.session_id, args, principal));
+    bind('assist.session.restore_deleted', (args, principal) => this.p10Service.restoreDeletedAssistSession(args.session_id, args, principal));
+    bind('assist.session.fork', (args, principal) => this.p10Service.forkAssistSession(args.session_id, args, principal));
+    bind('assist.session.side_thread', (args, principal) => this.p10Service.forkAssistSession(args.session_id, args, principal, 'side_thread'));
+    bind('assist.configuration.create', (args, principal) => this.p10Service.createAssistConfiguration(args.session_id, args, principal));
+    bind('assist.review.comments', (args, principal) => this.p10Service.listAssistReviewComments(args.turn_id, principal));
+    bind('assist.review.comment', (args, principal) => this.p10Service.createAssistReviewComment(args.turn_id, args, principal));
+    bind('assist.review.request_changes', (args, principal) => this.p10Service.createAssistReviewComment(args.turn_id, args, principal, 'request_changes'));
+    bind('quality.policy.get', (args, principal) => this.quality.policy(args.workflow_id, principal));
+    bind('quality.policy.update', (args, principal) => this.quality.updatePolicy(args.workflow_id, args, principal));
+    bind('quality.prepare', (args, principal) => this.quality.prepare(args.execution_id, args, principal));
+    bind('quality.advice.get', (args, principal) => this.quality.advice(args.quality_review_id, principal));
   }
 
   #registerP5Handlers(add) {
@@ -195,66 +197,66 @@ export class CleanCommandDispatcher {
 
     bind('assist.session.list', (args, principal) => this.assist.listSessions(args, principal));
     bind('assist.session.create', (args, principal) => this.assist.createSession(args, principal));
-    bind('assist.session.get', (args, principal) => this.assist.getSession(args.id || args.session_id, principal));
+    bind('assist.session.get', (args, principal) => this.assist.getSession(args.session_id, principal));
     bind('assist.turn.create', (args, principal) => this.assist.createTurn(args, principal));
-    bind('assist.session.events', (args, principal) => this.assist.listEvents(args.id || args.session_id, args, principal));
-    bind('assist.goal.get', (args, principal) => this.assist.getGoal(args.id || args.session_id, principal));
-    bind('assist.goal.update', (args, principal) => this.assist.updateGoal(args.id || args.session_id, args, principal));
-    bind('assist.reference.list', (args, principal) => this.assist.listReferences(args.id || args.session_id, principal));
-    bind('assist.reference.create', (args, principal) => this.assist.createReference(args.id || args.session_id, args, principal));
-    bind('assist.session.pause', (args, principal) => this.assist.pauseSession(args.id || args.session_id, args, principal));
-    bind('assist.session.resume', (args, principal) => this.assist.resumeSession(args.id || args.session_id, args, principal));
-    bind('assist.session.cancel', (args, principal) => this.assist.cancelSession(args.id || args.session_id, args, principal));
-    bind('assist.turn.retry', (args, principal) => this.assist.retryTurn(args.id || args.turn_id, args, principal));
-    bind('assist.turn.cancel', (args, principal) => this.assist.cancelTurn(args.id || args.turn_id, args, principal));
-    bind('assist.turn.steer', (args, principal) => this.assist.steerTurn(args.id || args.turn_id, args, principal));
-    bind('assist.turn.interrupt', (args, principal) => this.assist.interruptTurn(args.id || args.turn_id, args, principal));
-    bind('assist.turn.follow-ups', (args, principal) => this.assist.steerTurn(args.id || args.turn_id, args, principal, 'assist.turn.follow-ups'));
+    bind('assist.session.events', (args, principal) => this.assist.listEvents(args.session_id, args, principal));
+    bind('assist.goal.get', (args, principal) => this.assist.getGoal(args.session_id, principal));
+    bind('assist.goal.update', (args, principal) => this.assist.updateGoal(args.session_id, args, principal));
+    bind('assist.reference.list', (args, principal) => this.assist.listReferences(args.session_id, principal));
+    bind('assist.reference.create', (args, principal) => this.assist.createReference(args.session_id, args, principal));
+    bind('assist.session.pause', (args, principal) => this.assist.pauseSession(args.session_id, args, principal));
+    bind('assist.session.resume', (args, principal) => this.assist.resumeSession(args.session_id, args, principal));
+    bind('assist.session.cancel', (args, principal) => this.assist.cancelSession(args.session_id, args, principal));
+    bind('assist.turn.retry', (args, principal) => this.assist.retryTurn(args.turn_id, args, principal));
+    bind('assist.turn.cancel', (args, principal) => this.assist.cancelTurn(args.turn_id, args, principal));
+    bind('assist.turn.steer', (args, principal) => this.assist.steerTurn(args.turn_id, args, principal));
+    bind('assist.turn.interrupt', (args, principal) => this.assist.interruptTurn(args.turn_id, args, principal));
+    bind('assist.turn.follow-ups', (args, principal) => this.assist.steerTurn(args.turn_id, args, principal, 'assist.turn.follow-ups'));
 
     bind('file.list', (args, principal) => this.files.listFiles(args.project_id, args, principal));
-    bind('file.get', (args, principal) => this.files.getFile(args.project_id, args.file_id || args.id, args, principal));
+    bind('file.get', (args, principal) => this.files.getFile(args.project_id, args.file_id, args, principal));
     bind('attachment.list', (args, principal) => this.files.listAttachments(args.project_id, args, principal));
     bind('attachment.create', (args, principal) => this.files.createAttachment(args, principal));
-    bind('attachment.content', (args, principal) => this.files.attachmentContent(args.id || args.attachment_id, principal));
-    bind('attachment.preview', (args, principal) => this.files.attachmentContent(args.id || args.attachment_id, principal, { preview: true }));
-    bind('attachment.delete', (args, principal) => this.files.deleteAttachment(args.id || args.attachment_id, args, principal));
+    bind('attachment.content', (args, principal) => this.files.attachmentContent(args.attachment_id, principal));
+    bind('attachment.preview', (args, principal) => this.files.attachmentContent(args.attachment_id, principal, { preview: true }));
+    bind('attachment.delete', (args, principal) => this.files.deleteAttachment(args.attachment_id, args, principal));
     bind('change.batch.list', (args, principal) => this.files.listBatches(args.project_id, principal));
     bind('change.batch.create', (args, principal) => this.files.createBatch(args, principal));
-    bind('change.batch.review', (args, principal) => this.files.reviewBatch(args.id || args.batch_id, principal));
-    bind('change.batch.approve', (args, principal) => this.files.approveBatch(args.id || args.batch_id, args, principal));
-    bind('change.batch.apply', (args, principal) => this.files.applyBatch(args.id || args.batch_id, args, principal));
-    bind('change.batch.undo', (args, principal) => this.files.undoBatch(args.id || args.batch_id, args, principal));
+    bind('change.batch.review', (args, principal) => this.files.reviewBatch(args.batch_id, principal));
+    bind('change.batch.approve', (args, principal) => this.files.approveBatch(args.batch_id, args, principal));
+    bind('change.batch.apply', (args, principal) => this.files.applyBatch(args.batch_id, args, principal));
+    bind('change.batch.undo', (args, principal) => this.files.undoBatch(args.batch_id, args, principal));
 
     bind('approval.list', (args, principal) => this.assist.listApprovals(args, principal));
     bind('approval.create', (args, principal) => this.assist.createApproval(args, principal));
-    bind('approval.decide', (args, principal) => this.assist.decideApproval(args.id || args.approval_id, args, principal));
+    bind('approval.decide', (args, principal) => this.assist.decideApproval(args.approval_id, args, principal));
     bind('user.input.list', (args, principal) => this.assist.listInputs(args, principal));
     bind('user.input.create', (args, principal) => this.assist.createInput(args, principal));
-    bind('user.input.answer', (args, principal) => this.assist.answerInput(args.id || args.input_id, args, principal));
-    bind('user.input.cancel', (args, principal) => this.assist.cancelInput(args.id || args.input_id, args, principal));
+    bind('user.input.answer', (args, principal) => this.assist.answerInput(args.input_id, args, principal));
+    bind('user.input.cancel', (args, principal) => this.assist.cancelInput(args.input_id, args, principal));
     bind('proposal.list', (args, principal) => this.assist.listProposals(args, principal));
     bind('proposal.create', (args, principal) => this.assist.createProposal(args, principal));
-    bind('proposal.apply', (args, principal) => this.assist.mutateProposal(args.id || args.proposal_id, 'apply', args, principal));
-    bind('proposal.reject', (args, principal) => this.assist.mutateProposal(args.id || args.proposal_id, 'reject', args, principal));
-    bind('proposal.undo', (args, principal) => this.assist.mutateProposal(args.id || args.proposal_id, 'undo', args, principal));
+    bind('proposal.apply', (args, principal) => this.assist.mutateProposal(args.proposal_id, 'apply', args, principal));
+    bind('proposal.reject', (args, principal) => this.assist.mutateProposal(args.proposal_id, 'reject', args, principal));
+    bind('proposal.undo', (args, principal) => this.assist.mutateProposal(args.proposal_id, 'undo', args, principal));
 
     bind('terminal.capabilities', () => this.terminal.capabilities());
     bind('terminal.list', (args, principal) => this.terminal.list(args, principal));
     bind('terminal.open', (args, principal) => this.terminal.open(args, principal));
-    bind('terminal.get', (args, principal) => this.terminal.get(args.id || args.terminal_id, principal));
-    bind('terminal.events', (args, principal) => this.terminal.eventsFor(args.id || args.terminal_id, args, principal));
-    bind('terminal.ws', (args, principal) => this.terminal.get(args.id || args.terminal_id, principal));
-    bind('terminal.resize', (args, principal) => this.terminal.resize(args.id || args.terminal_id, args, principal));
-    bind('terminal.signal', (args, principal) => this.terminal.signal(args.id || args.terminal_id, args, principal));
-    bind('terminal.stop', (args, principal) => this.terminal.stop(args.id || args.terminal_id, args, principal));
+    bind('terminal.get', (args, principal) => this.terminal.get(args.terminal_id, principal));
+    bind('terminal.events', (args, principal) => this.terminal.eventsFor(args.terminal_id, args, principal));
+    bind('terminal.ws', (args, principal) => this.terminal.get(args.terminal_id, principal));
+    bind('terminal.resize', (args, principal) => this.terminal.resize(args.terminal_id, args, principal));
+    bind('terminal.signal', (args, principal) => this.terminal.signal(args.terminal_id, args, principal));
+    bind('terminal.stop', (args, principal) => this.terminal.stop(args.terminal_id, args, principal));
 
     bind('bridge.device.list', (args, principal) => this.bridge.list(args, principal));
     bind('bridge.pair', (args, principal) => this.bridge.pair(args, principal));
-    bind('bridge.device.probe', (args, principal) => this.bridge.probe(args.id || args.device_id, args, principal));
-    bind('bridge.device.rotate', (args, principal) => this.bridge.rotate(args.id || args.device_id, args, principal));
-    bind('bridge.device.revoke', (args, principal) => this.bridge.revoke(args.id || args.device_id, args, principal));
-    bind('bridge.transfer.list', (args, principal) => this.bridge.listTransfers(args.id || args.device_id, args, principal));
-    bind('bridge.transfer.create', (args, principal) => this.bridge.createTransfer(args.id || args.device_id, args, principal));
+    bind('bridge.device.probe', (args, principal) => this.bridge.probe(args.device_id, args, principal));
+    bind('bridge.device.rotate', (args, principal) => this.bridge.rotate(args.device_id, args, principal));
+    bind('bridge.device.revoke', (args, principal) => this.bridge.revoke(args.device_id, args, principal));
+    bind('bridge.transfer.list', (args, principal) => this.bridge.listTransfers(args.device_id, args, principal));
+    bind('bridge.transfer.create', (args, principal) => this.bridge.createTransfer(args.device_id, args, principal));
   }
 
   #registerP6Handlers(add) {
@@ -262,23 +264,23 @@ export class CleanCommandDispatcher {
     const bind = (id, handler) => add(id, handler, exposed(id));
     bind('runner.profile.list', (args, principal) => this.runner.listProfiles(args, principal));
     bind('runner.profile.create', (args, principal) => this.runner.createProfile(args, principal));
-    bind('runner.profile.get', (args, principal) => ({ profile: this.runner.getProfile(args.profile_id || args.id, principal) }));
-    bind('runner.profile.update', (args, principal) => this.runner.updateProfile(args.profile_id || args.id, args, principal));
-    bind('runner.profile.probe', async (args, principal) => this.#operationResult(await this.runner.probeProfile(args.profile_id || args.id, args, principal), principal));
-    bind('runner.profile.disable', (args, principal) => this.runner.disableProfile(args.profile_id || args.id, args, principal));
+    bind('runner.profile.get', (args, principal) => ({ profile: this.runner.getProfile(args.profile_id, principal) }));
+    bind('runner.profile.update', (args, principal) => this.runner.updateProfile(args.profile_id, args, principal));
+    bind('runner.profile.probe', async (args, principal) => this.#operationResult(await this.runner.probeProfile(args.profile_id, args, principal), principal));
+    bind('runner.profile.disable', (args, principal) => this.runner.disableProfile(args.profile_id, args, principal));
 
     bind('execution.list', (args, principal) => this.execution.list(args.project_id, args, principal));
     bind('execution.create', (args, principal) => this.execution.create(args.project_id, args, principal));
-    bind('execution.get', (args, principal) => ({ execution: this.execution.get(args.execution_id || args.id, principal) }));
-    bind('execution.events', (args, principal) => this.execution.eventsFor(args.execution_id || args.id, args, principal));
-    bind('execution.attempts', (args, principal) => this.execution.attemptsFor(args.execution_id || args.id, args, principal));
-    bind('execution.checkpoints', (args, principal) => this.execution.checkpointsFor(args.execution_id || args.id, args, principal));
-    bind('execution.start', async (args, principal) => this.#operationResult(await this.execution.start(args.execution_id || args.id, args, principal), principal));
-    bind('execution.pause', (args, principal) => this.execution.pause(args.execution_id || args.id, args, principal));
-    bind('execution.resume', async (args, principal) => this.#operationResult(await this.execution.resume(args.execution_id || args.id, args, principal), principal));
-    bind('execution.cancel', (args, principal) => this.execution.cancel(args.execution_id || args.id, args, principal));
-    bind('execution.replan', (args, principal) => this.execution.replan(args.execution_id || args.id, args, principal));
-    bind('execution.stage.replay', async (args, principal) => this.#operationResult(await this.execution.replayStage(args.execution_id || args.id, args.stage, args, principal), principal));
+    bind('execution.get', (args, principal) => ({ execution: this.execution.get(args.execution_id, principal) }));
+    bind('execution.events', (args, principal) => this.execution.eventsFor(args.execution_id, args, principal));
+    bind('execution.attempts', (args, principal) => this.execution.attemptsFor(args.execution_id, args, principal));
+    bind('execution.checkpoints', (args, principal) => this.execution.checkpointsFor(args.execution_id, args, principal));
+    bind('execution.start', async (args, principal) => this.#operationResult(await this.execution.start(args.execution_id, args, principal), principal));
+    bind('execution.pause', (args, principal) => this.execution.pause(args.execution_id, args, principal));
+    bind('execution.resume', async (args, principal) => this.#operationResult(await this.execution.resume(args.execution_id, args, principal), principal));
+    bind('execution.cancel', (args, principal) => this.execution.cancel(args.execution_id, args, principal));
+    bind('execution.replan', (args, principal) => this.execution.replan(args.execution_id, args, principal));
+    bind('execution.stage.replay', async (args, principal) => this.#operationResult(await this.execution.replayStage(args.execution_id, args.stage, args, principal), principal));
   }
 
   #registerP7Handlers(add) {
@@ -328,24 +330,24 @@ export class CleanCommandDispatcher {
     bind('delivery.policy.create', (args, principal) => this.p8Service.createPolicy(args.project_id, args, principal));
     bind('github.repository.list', (args, principal) => this.p8Service.listGithubRepositories(args.profile_id, args, principal));
     bind('delivery.list', (args, principal) => this.p8Service.listDeliveries(args, principal));
-    bind('delivery.get', (args, principal) => this.p8Service.getDelivery(args.delivery_id || args.id, principal));
+    bind('delivery.get', (args, principal) => this.p8Service.getDelivery(args.delivery_id, principal));
     bind('delivery.submit', async (args, principal) => this.#operationResult(await this.p8Service.submit(args, principal), principal));
-    bind('delivery.intent.create', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'create_draft', args, principal), principal));
-    bind('delivery.intent.ready', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'mark_ready', args, principal), principal));
-    bind('delivery.intent.merge', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'merge', args, principal), principal));
-    bind('delivery.reconcile', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id || args.id, 'reconcile', args, principal), principal));
+    bind('delivery.intent.create', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id, 'create_draft', args, principal), principal));
+    bind('delivery.intent.ready', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id, 'mark_ready', args, principal), principal));
+    bind('delivery.intent.merge', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id, 'merge', args, principal), principal));
+    bind('delivery.reconcile', async (args, principal) => this.#operationResult(await this.p8Service.createIntent(args.delivery_id, 'reconcile', args, principal), principal));
     bind('deployment.get', (args, principal) => this.p8Service.getDeployment(args, principal));
-    bind('deployment.candidate.get', (args, principal) => this.p8Service.getDeploymentCandidate(args.candidate_id || args.id, principal));
+    bind('deployment.candidate.get', (args, principal) => this.p8Service.getDeploymentCandidate(args.candidate_id, principal));
     bind('deployment.candidate.create', (args, principal) => this.p8Service.createDeploymentCandidate(args, principal));
-    bind('deployment.verify', async (args, principal) => this.#operationResult(await this.p8Service.verifyDeployment(args.candidate_id || args.id, args, principal), principal));
+    bind('deployment.verify', async (args, principal) => this.#operationResult(await this.p8Service.verifyDeployment(args.candidate_id, args, principal), principal));
     bind('backup.list', (args, principal) => this.p8Service.listBackups(args, principal));
     bind('backup.create', async (args, principal) => this.#operationResult(await this.p8Service.createBackup(args, principal), principal));
     bind('restore.prepare', async (args, principal) => this.#operationResult(await this.p8Service.prepareRestore(args, principal), principal));
     bind('system.reset.prepare', async (args, principal) => this.#operationResult(await this.p8Service.prepareReset(args, principal), principal));
     bind('import.list', (args, principal) => this.p8Service.listImports(args, principal));
-    bind('import.get', (args, principal) => this.p8Service.getImport(args.import_id || args.id, principal));
+    bind('import.get', (args, principal) => this.p8Service.getImport(args.import_id, principal));
     bind('operations.list', (args, principal) => this.p8Service.listOperations(args, principal));
-    bind('operations.replay', async (args, principal) => this.#operationResult(await this.p8Service.replayOperation(args.operation_id || args.id, args, principal), principal));
+    bind('operations.replay', async (args, principal) => this.#operationResult(await this.p8Service.replayOperation(args.operation_id, args, principal), principal));
     bind('cas.gc.plan', (args, principal) => this.p8Service.gcPlan(args, principal));
     bind('cas.gc.apply', (args, principal) => this.p8Service.gcApply(args, principal));
   }
@@ -369,8 +371,8 @@ export class CleanCommandDispatcher {
 
 function normalizeInput(commandId, value) {
   const args = value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
-  if (commandId === 'project.get') return { id: String(args.id || args.project_id || '') };
-  if (commandId === 'operations.get') return { id: String(args.id || args.operation_id || '') };
+  if (commandId === 'project.get') return { id: String(args.id || '') };
+  if (commandId === 'operations.get') return { operation_id: String(args.operation_id || '') };
   if (commandId === 'operations.events') return {
     format: 'json',
     ...(args.cursor != null ? { cursor: String(args.cursor) } : {}),
@@ -381,4 +383,12 @@ function normalizeInput(commandId, value) {
 
 function actorOf(principal) {
   return String(principal?.effectiveActorId || principal?.actorId || '');
+}
+
+function publicOperationReceipt(value) {
+  if (!value || typeof value !== 'object') return value;
+  const result = { ...value, operation_id: value.operation_id || value.id };
+  delete result.id;
+  delete result.operation;
+  return result;
 }

@@ -19,6 +19,7 @@ import { RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, RUNNER_EXECUTION_CHECKPOI
 import { EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION_VERSION, EVIDENCE_QUALITY_PARSER_OUTCOME_TOOL_VERSION } from './migrations/007-evidence-quality-parser-outcome.mjs';
 import { DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION_VERSION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_TOOL_VERSION } from './migrations/008-delivery-deployment-importer-operations.mjs';
 import { FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION, FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION_VERSION, FINAL_BUSINESS_PARITY_GOVERNANCE_TOOL_VERSION } from './migrations/009-final-business-parity-governance.mjs';
+import { createManifestInTransaction } from './receipts.mjs';
 
 export const CLEAN_P2_USER_VERSION = IDENTITY_MIGRATION_VERSION;
 export const CLEAN_P2_TOOL_VERSION = IDENTITY_TOOL_VERSION;
@@ -291,8 +292,7 @@ function applyFreshMigrations(db, options, timestamp, targetVersion) {
     const metadataJson = canonicalJson({ bootstrap: true });
     db.prepare(`INSERT INTO actors(id,kind,display_name,status,metadata_json,metadata_sha256,revision,created_at,updated_at,created_by_actor_id,updated_by_actor_id)
       VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(bootstrapId, 'system', 'System Bootstrap', 'active', metadataJson, sha256Hex(metadataJson), 1, timestamp, timestamp, null, null);
-    db.prepare(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
-      VALUES(?,?,?,?,?,?,?,?)`).run('receipt_migration_001_clean_baseline', 'migration.baseline', 'verified', canonicalJson(baselineVerification), baselineVerificationSha, null, timestamp, null);
+    createManifestInTransaction(sqliteTransaction(db), { id: 'receipt_migration_001_clean_baseline', kind: 'migration.baseline', status: 'verified', payload: baselineVerification, createdAt: timestamp });
     for (const migration of [IDENTITY_MIGRATION, PROJECT_WORKFLOW_MIGRATION, CONTEXT_PROJECTION_MCP_MIGRATION, ASSIST_FILES_TERMINAL_BRIDGE_MIGRATION, RUNNER_EXECUTION_CHECKPOINT_REPLAY_MIGRATION, EVIDENCE_QUALITY_PARSER_OUTCOME_MIGRATION, DELIVERY_DEPLOYMENT_IMPORTER_OPERATIONS_MIGRATION, FINAL_BUSINESS_PARITY_GOVERNANCE_MIGRATION]) {
       if (targetVersion >= migration.version) applyMigrationInTransaction(db, migration, timestamp, options);
     }
@@ -350,9 +350,15 @@ function applyMigrationInTransaction(db, migration, timestamp, options = {}) {
   db.prepare(`INSERT INTO schema_migrations(migration_id,version,family,name,checksum,tool_version,snapshot_sha256,verification_receipt_sha256,applied_at)
     VALUES(?,?,?,?,?,?,?,?,?)`).run(migration.id, migration.version, migration.family, migration.name, migration.checksum, migration.toolVersion, snapshot, verificationSha, timestamp);
   if (migrationFaultMatches(options.failAt, migration, 'ledger')) throw new Error(`injected_${migration.version}_ledger_failure`);
-  db.prepare(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
-    VALUES(?,?,?,?,?,?,?,?)`).run(`receipt_migration_${migration.id}`, 'migration.applied', 'verified', canonicalJson(verification), verificationSha, null, timestamp, null);
+  createManifestInTransaction(sqliteTransaction(db), { id: `receipt_migration_${migration.id}`, kind: 'migration.applied', status: 'verified', payload: verification, createdAt: timestamp });
   if (migrationFaultMatches(options.failAt, migration, 'receipt')) throw new Error(`injected_${migration.version}_receipt_failure`);
+}
+
+// Database bootstrap runs directly against node:sqlite before CleanDatabase
+// exists.  Adapt its prepared statement API to the same receipt owner used by
+// all runtime services while preserving the enclosing migration transaction.
+function sqliteTransaction(db) {
+  return { run(sql, params = []) { return db.prepare(sql).run(...params); } };
 }
 
 function migrationFaultMatches(failAt, migration, stage) {

@@ -43,6 +43,36 @@ test('GitHub App ready transition falls back to the supported GraphQL mutation o
   ]);
 });
 
+test('GitHub deletion distinguishes App repository 404 from unproven visibility and installation denial', async () => {
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const privateKeyPem = privateKey.export({ type: 'pkcs1', format: 'pem' });
+  let status = 404;
+  const fetchImpl = async (url) => {
+    const parsed = new URL(url);
+    if (parsed.pathname === '/app/installations/1/access_tokens') return json({ token: 'fixture-installation-token' }, 201);
+    return json({ message: status === 403 ? 'forbidden' : 'not found' }, status);
+  };
+  const adapter = new GitHubAppAdapter({ fetchImpl, apiBaseUrl: 'https://github.fixture' });
+  const auth = { appId: '1', installationId: '1', privateKey: privateKeyPem };
+
+  await assert.rejects(
+    adapter.reconcileRepositoryDeletion({ ...auth, privateKey: privateKeyPem }, { repository: 'fixture/repo', repositoryId: '9001' }),
+    (error) => error.code === 'github_repository_visibility_unknown'
+  );
+  const absent = await adapter.reconcileRepositoryDeletion({ ...auth, privateKey: privateKeyPem }, { repository: 'fixture/repo', repositoryId: '9001', expectedPreviouslyBound: true });
+  assert.deepEqual(absent, { exists: false, repository_id: '9001', resolution: 'repository_not_found_after_bound_delete' });
+
+  status = 403;
+  await assert.rejects(
+    adapter.reconcileRepositoryDeletion({ ...auth, privateKey: privateKeyPem }, { repository: 'fixture/repo', repositoryId: '9001', expectedPreviouslyBound: true }),
+    (error) => error.code === 'github_installation_access_denied'
+  );
+  await assert.rejects(
+    adapter.deleteRepository({ ...auth, privateKey: privateKeyPem }, { repository: 'fixture/repo', repositoryId: '9001', branch: 'main', expectedHeadSha: 'a'.repeat(40) }),
+    (error) => error.code === 'github_installation_access_denied'
+  );
+});
+
 function json(value, status = 200) {
   return new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 }

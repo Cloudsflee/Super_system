@@ -39,7 +39,7 @@ try {
   const report = state.runtime.quality.report(quality.quality_review.id, state.principal).report;
   assert.equal(report.anchor_count, 500);
 
-  for (let index = 0; index < 100; index += 1) await state.runtime.project.createOutcomeRequirement(fixture.project.id, {
+  for (let index = 0; index < 100; index += 1) await state.runtime.projectWorkflow.createOutcomeRequirement(fixture.project.id, {
     requirement_key: `performance-${String(index).padStart(3, '0')}`,
     rubric: { evaluator: 'evidence_count', minimum: 1 }, workflow_revision: 1,
     idempotency_key: `p7-performance-requirement-${index}`

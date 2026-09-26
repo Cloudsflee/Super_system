@@ -44,6 +44,7 @@ import { GithubRepositoryAdapter, RepositoryAdapterRouter } from './github-repos
 import { GitHubAppAdapter, DeterministicGitHubAdapter } from './p8/github-adapter.mjs';
 
 export function createCleanRuntime(options = {}) {
+  rejectRuntimeCompatibilityOptions(options);
   const config = options.config || loadCleanConfig(options.env || process.env);
   const targetVersion = targetVersionFromOptions(options);
   const runtimePhase = runtimePhaseFromOptions(options, targetVersion);
@@ -145,9 +146,9 @@ export function createCleanRuntime(options = {}) {
   const terminal = targetVersion >= 5 ? new CleanTerminalService({ db, cas, events, operations, authorization, projectWorkflow, clock: options.now || undefined, config, pty: options.pty }) : null;
   const bridge = targetVersion >= 5 ? new CleanBridgeService({ db, events, operations, authorization, vault, clock: options.now || undefined, adapter: options.bridgeAdapter, config }) : null;
   const runnerAdapters = targetVersion >= 6 ? createRunnerAdapters({ options, config, bridge, db, vault }) : null;
-  const runner = targetVersion >= 6 ? new CleanRunnerService({ db, events, operations, authorization, vault, cas, adapters: runnerAdapters, clock: options.now || undefined, pollIntervalMs: options.runnerPollIntervalMs || config.runnerPollIntervalMs, config }) : null;
-  const execution = targetVersion >= 6 ? new CleanExecutionService({ db, events, operations, authorization, runner, projectWorkflow, assist, cas, clock: options.now || undefined, config, sleep: options.runnerSleep, retryDelays: options.runnerRetryDelays }) : null;
-  const evidence = targetVersion >= 7 ? new CleanEvidenceService({ db, cas, events, operations, authorization, files, clock: options.now || undefined, config, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
+  const runner = targetVersion >= 6 ? new CleanRunnerService({ db, events, operations, authorization, vault, cas, adapters: runnerAdapters, clock: options.now || undefined, pollIntervalMs: options.runnerPollIntervalMs || config.runnerPollIntervalMs, config, policy }) : null;
+  const execution = targetVersion >= 6 ? new CleanExecutionService({ db, events, operations, authorization, runner, projectWorkflow, assist, cas, clock: options.now || undefined, config, sleep: options.runnerSleep, retryDelays: options.runnerRetryDelays, policy }) : null;
+  const evidence = targetVersion >= 7 ? new CleanEvidenceService({ db, cas, events, operations, authorization, files, clock: options.now || undefined, config, bootstrapActorId: initialized.metadata.bootstrap_actor_id, policy }) : null;
   const parserAdapter = targetVersion >= 7 ? createParserAdapter(options, config, targetVersion) : null;
   const parser = targetVersion >= 7 ? new CleanParserService({ db, cas, events, operations, authorization, evidence, adapter: parserAdapter, clock: options.now || undefined, pollIntervalMs: options.parserPollIntervalMs || config.parserPollIntervalMs, sleep: options.parserSleep, retryDelays: options.parserRetryDelays, serviceIdentity: options.parserServiceIdentity, bootstrapActorId: initialized.metadata.bootstrap_actor_id }) : null;
   const qualityAdviceAdapter = targetVersion >= 9
@@ -237,9 +238,6 @@ export function createCleanRuntime(options = {}) {
     repositoryAdapter,
     resolveGithubAuth,
     dispatcher,
-    project: projectWorkflow,
-    repository: projectWorkflow,
-    workflow: projectWorkflow,
     authorization,
     vault,
     recovery,
@@ -305,6 +303,7 @@ function createAssistProvider(options, config) {
 // The degraded object deliberately has no repository, operation, or CAS
 // service, so a not-ready process cannot accidentally accept business writes.
 export function createNotReadyRuntime(options = {}, failure = null) {
+  rejectRuntimeCompatibilityOptions(options);
   const config = options.config || loadCleanConfig(options.env || process.env);
   const policy = options.policy || new RedactionPolicy();
   const targetVersion = targetVersionFromOptions(options);
@@ -351,9 +350,6 @@ export function createNotReadyRuntime(options = {}, failure = null) {
     localSetup: null,
     githubSetup: null,
     dispatcher: null,
-    project: null,
-    repository: null,
-    workflow: null,
     authorization: null,
     vault: null,
     recovery: Promise.resolve([]),
@@ -436,18 +432,27 @@ function parseGithubCredentialBundle(bytes) {
 }
 
 function targetVersionFromOptions(options = {}) {
-  if (options.targetVersion != null || options.schemaVersion != null) return Number(options.targetVersion ?? options.schemaVersion);
-  if (options.p10 || options.phase === 'p10' || options.cleanPhase === 'p10' || Number(options.runtimePhase) >= 10) return 9;
-  if (options.p9 || options.phase === 'p9' || options.cleanPhase === 'p9' || Number(options.runtimePhase) >= 9) return 8;
-  for (const version of [8, 7, 6, 5, 4, 3]) if (options[`p${version}`] || options.phase === `p${version}` || options.cleanPhase === `p${version}`) return version;
+  if (options.targetVersion != null) return Number(options.targetVersion);
+  // A runtime phase is only a diagnostic selector for explicit fixture
+  // callers.  The active server supplies both canonical values directly;
+  // compatibility aliases (schemaVersion, p10, phase, cleanPhase, …) are
+  // deliberately not interpreted here.
+  if (options.runtimePhase != null) {
+    const phase = Number(options.runtimePhase);
+    if (Number.isFinite(phase) && phase >= 10) return 9;
+  }
   return 2;
+}
+
+function rejectRuntimeCompatibilityOptions(options) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('clean_runtime_options_invalid');
+  const retiredKeys = ['schemaVersion', 'phase', 'cleanPhase', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10'];
+  const retired = retiredKeys.find((key) => Object.prototype.hasOwnProperty.call(options, key));
+  if (retired) throw new TypeError(`clean_runtime_option_retired:${retired}`);
 }
 
 function runtimePhaseFromOptions(options = {}, targetVersion = targetVersionFromOptions(options)) {
   if (options.runtimePhase != null) return Number(options.runtimePhase);
-  for (const phase of [10, 9, 8, 7, 6, 5, 4, 3, 2]) {
-    if (options[`p${phase}`] || options.phase === `p${phase}` || options.cleanPhase === `p${phase}`) return phase;
-  }
   return Number(targetVersion);
 }
 function hostIdentity(vault) {

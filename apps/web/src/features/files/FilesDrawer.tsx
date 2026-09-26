@@ -5,6 +5,7 @@ import { AssistMarkdown } from '../assist/AssistMarkdown';
 import OfficePreview from '../assist/OfficePreview';
 import PdfPreview from '../assist/PdfPreview';
 import { actionLabel, statusLabel } from '../../i18n';
+import { waitForOperation } from '../../hooks/useOperationStatus';
 
 type Attachment = { id: string; filename: string; media_type: string; byte_length: number; disposition: string; parser_status: string; status: string; revision: number; content_sha256: string };
 type FileRef = { id: string; path: string; relative_path?: string; content_sha256: string; byte_length: number; status: string; revision: number };
@@ -127,7 +128,7 @@ export function FilesDrawer({ open, projectId, sessionId, notify, onClose }: { o
     try {
       const result = await mutateV2<Record<string, unknown>>(`/api/v2/change-batches/${encodeURIComponent(selectedBatch.id)}/${next}`, {}, 'POST', selectedBatch.revision);
       const operationId = String((result.data.operation_id || (result.data.operation as { operation_id?: string } | undefined)?.operation_id) || '');
-      if (operationId) await waitOperation(operationId);
+      if (operationId) await waitForFileOperation(operationId);
       await load(); notify(`变更批次${next === 'approve' ? '已批准' : next === 'apply' ? '已应用' : '已撤销'}`);
     } catch (error) { notify(error instanceof ApiError ? error.message : `变更批次${next === 'approve' ? '批准' : next === 'apply' ? '应用' : '撤销'}失败`, 'error'); await load().catch(() => undefined); } finally { setBusy(''); }
   };
@@ -175,11 +176,12 @@ export function FilesDrawer({ open, projectId, sessionId, notify, onClose }: { o
   </aside>{preview && <PreviewDialog preview={preview} onClose={() => setPreview(null)} />}</>;
 }
 
-async function waitOperation(id: string) {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const result = await apiV2<{ status: string }>(`/api/v2/operations/${encodeURIComponent(id)}`); if (['succeeded', 'failed', 'cancelled', 'expired'].includes(result.data.status)) { if (result.data.status !== 'succeeded') throw new Error(`操作${statusLabel(result.data.status)}`); return; } await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error('操作等待超时');
+async function waitForFileOperation(id: string) {
+  const result = await waitForOperation({ operation_id: id, status: 'accepted' }, async (operationId, signal) => {
+    const response = await apiV2<{ status: string }>(`/api/v2/operations/${encodeURIComponent(operationId)}`, { signal });
+    return { operation_id: operationId, status: response.data.status };
+  }, { intervalMs: 50, timeoutMs: 4_000 });
+  if (result.status !== 'succeeded') throw new Error(`操作${statusLabel(result.status)}`);
 }
 function toBase64(bytes: Uint8Array) { let binary = ''; for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000)); return btoa(binary); }
 function decodeBase64(value: string) { try { return decodeURIComponent(Array.from(atob(value), (char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`).join('')); } catch { return '[预览不可用]'; } }

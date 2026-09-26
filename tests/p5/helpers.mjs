@@ -33,20 +33,20 @@ export async function open(overrides = {}) {
 }
 
 export async function createProject(state, suffix = 'fixture') {
-  return state.runtime.project.createProject({ name: `P5 ${suffix}`, idempotency_key: `p5-${suffix}-project-key` }, state.principal);
+  return state.runtime.projectWorkflow.createProject({ name: `P5 ${suffix}`, idempotency_key: `p5-${suffix}-project-key` }, state.principal);
 }
 
 export async function createWorkspace(state, project, suffix = 'workspace') {
-  await state.runtime.project.createRepositoryConnection(project.id, {
+  await state.runtime.projectWorkflow.createRepositoryConnection(project.id, {
     provider: 'fixture', source_kind: 'git', source_locator: `fixture/${suffix}`,
     source_revision: 'r1', source_hash: 'a'.repeat(64), idempotency_key: `p5-${suffix}-connection-key`
   }, state.principal);
-  const line = state.runtime.project.listRepositoryLines(project.id, state.principal)[0];
-  await state.runtime.project.reconcileRepositoryLine(line.id, {
+  const line = state.runtime.projectWorkflow.listRepositoryLines(project.id, state.principal)[0];
+  await state.runtime.projectWorkflow.reconcileRepositoryLine(line.id, {
     source_revision: 'r1', source_hash: 'a'.repeat(64), expected_revision: 1,
     idempotency_key: `p5-${suffix}-line-key`
   }, state.principal);
-  const created = await state.runtime.project.createRepositoryWorkspace(project.id, {
+  const created = await state.runtime.projectWorkflow.createRepositoryWorkspace(project.id, {
     line_id: line.id, expected_revision: 0, idempotency_key: `p5-${suffix}-workspace-key`
   }, state.principal);
   const workspace = state.runtime.db.get('SELECT * FROM repository_workspaces WHERE id=?', [created.workspace.id]);

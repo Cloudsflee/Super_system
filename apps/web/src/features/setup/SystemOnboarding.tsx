@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Check, ChevronRight, ExternalLink, Github, KeyRound, Laptop, LoaderCircle, RefreshCw, Search, ShieldCheck, UserRound, X } from 'lucide-react';
 import { ApiError, apiV2, mutateV2 } from '../../api';
 import { authTypeLabel, statusLabel } from '../../i18n';
 import { GithubSetup } from './GithubSetup';
+import { useOperationStatus } from '../../hooks/useOperationStatus';
 
 export type OnboardingAccount = { id: string; display_name: string; revision: number };
 export type OnboardingCredential = { id: string; provider: string; status: string; revision: number };
@@ -77,6 +78,7 @@ export function SystemOnboarding({ snapshot, refresh, onComplete }: Props) {
   const [markerRevision, setMarkerRevision] = useState(0);
   const [busy, setBusy] = useState('');
   const [failure, setFailure] = useState('');
+  const latestDeviceLogin = useRef<DeviceLogin | null>(null);
 
   const githubSkipped = Boolean(snapshot.account && localStorage.getItem(githubSkipKey(snapshot.account.id)) === SYSTEM_ONBOARDING_VERSION);
   const step = deriveSystemOnboardingStep(snapshot, githubSkipped || markerRevision > 0);
@@ -99,27 +101,27 @@ export function SystemOnboarding({ snapshot, refresh, onComplete }: Props) {
     if (step === 2 && codexMode === 'discover' && !discoveryLoaded && busy !== 'codex-discovery') void discoverCodex();
   }, [busy, codexMode, discoveryLoaded, step]);
 
-  useEffect(() => {
-    if (!deviceLogin || !deviceOperation || ['completed', 'failed', 'cancelled', 'expired', 'interrupted'].includes(deviceLogin.status)) return undefined;
-    let active = true;
-    let polling = false;
-    const poll = async () => {
-      if (polling) return;
-      polling = true;
-      try {
-        const response = await apiV2<{ login: DeviceLogin; operation: DeviceOperation }>(`/api/v2/provider-auth/codex/device-logins/${encodeURIComponent(deviceLogin.id)}`);
-        if (!active) return;
-        setDeviceLogin(response.data.login);
-        setDeviceOperation(response.data.operation);
-        if (response.data.login.status === 'completed') await refresh();
-      } catch (error) {
-         if (active) setFailure(error instanceof Error ? error.message : '设备登录状态获取失败');
-      } finally { polling = false; }
-    };
-    void poll();
-    const timer = setInterval(() => void poll(), 1000);
-    return () => { active = false; clearInterval(timer); };
-  }, [deviceLogin?.id, deviceLogin?.status, refresh]);
+  const fetchDeviceOperation = useCallback(async (operationId: string, signal: AbortSignal) => {
+    // The endpoint is keyed by the login resource id, which is also the
+    // operation resource id for this flow.
+    const response = await apiV2<{ login: DeviceLogin; operation: DeviceOperation }>(`/api/v2/provider-auth/codex/device-logins/${encodeURIComponent(operationId)}`, { signal });
+    latestDeviceLogin.current = response.data.login;
+    return response.data.operation;
+  }, []);
+  useOperationStatus(deviceOperation, {
+    enabled: Boolean(deviceLogin && deviceOperation && !['completed', 'failed', 'cancelled', 'expired', 'interrupted'].includes(deviceLogin.status)),
+    operationId: deviceLogin?.id,
+    intervalMs: 1000,
+    fetchStatus: fetchDeviceOperation,
+    onUpdate: (next) => {
+      setDeviceOperation(next);
+      if (latestDeviceLogin.current) setDeviceLogin(latestDeviceLogin.current);
+    },
+    onTerminal: () => {
+      if (latestDeviceLogin.current?.status === 'completed') void refresh();
+    },
+    onError: (error) => setFailure(error instanceof Error ? error.message : '设备登录状态获取失败')
+  });
 
   const run = async (key: string, action: () => Promise<void>) => {
     setBusy(key);

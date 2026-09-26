@@ -24,6 +24,8 @@ import {
   createCleanHttpHandler,
   loadCleanConfig,
   ReceiptService,
+  createManifest,
+  createManifestInTransaction,
   createCleanCommandRegistry,
   registryParity,
   validateCleanOwnership,
@@ -38,6 +40,16 @@ function fixture() {
   const receiptRoot = path.join(root, 'receipts');
   const config = { runtime: 'v3-clean', apiVersion: '2', host: '127.0.0.1', port: 0, home: root, databaseFile, casRoot, receiptRoot, vaultRoot: path.join(root, 'vault'), cursorSecret: 'p1-test-secret', sessionSecret: 'p1-test-session-secret', vaultMasterKey: 'p1-test-vault-master-key', runtimeBuild: 'p1-test', maxBodyBytes: 100000 };
   return { root, config, databaseFile, casRoot, receiptRoot };
+}
+
+function walkSourceFiles(directory) {
+  const files = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...walkSourceFiles(full));
+    else if (entry.isFile() && full.endsWith('.mjs')) files.push(full);
+  }
+  return files;
 }
 
 test('canonical JSON and SHA-256 are stable', () => {
@@ -191,9 +203,22 @@ test('expired aggregate idempotency keys are replaced before replay', async () =
     aggregateType: 'probe',
     aggregateId: 'probe_expiry'
   };
-  await runtime.platform.mutateAggregate({ ...base, request: { attempt: 1 }, payload: { attempt: 1 }, expiresAt: '2000-01-01T00:00:00.000Z' });
-  const second = await runtime.platform.mutateAggregate({ ...base, request: { attempt: 2 }, payload: { attempt: 2 } });
-  const replayed = await runtime.platform.mutateAggregate({ ...base, request: { attempt: 2 }, payload: { attempt: 2 } });
+  const mutate = (request, payload, expiresAt = null) => runtime.db.withTransaction((tx) => {
+    const now = new Date().toISOString();
+    const requestHash = sha256Hex(canonicalJson(request));
+    const prior = runtime.operations.getIdempotencyInTransaction(tx, { actorId: 'actor_system_bootstrap', commandId: base.commandId, idempotencyKey: base.idempotencyKey, requestHash, now });
+    if (prior?.response_json) return { ...JSON.parse(prior.response_json), replayed: true };
+    const head = tx.get('SELECT current_revision FROM aggregate_heads WHERE aggregate_type=? AND aggregate_id=?', [base.aggregateType, base.aggregateId]);
+    const revision = Number(head?.current_revision || 0) + 1;
+    const operation = runtime.operations.createInTransaction(tx, { actorId: 'actor_system_bootstrap', commandId: base.commandId, idempotencyKey: base.idempotencyKey, resourceType: base.aggregateType, resourceId: base.aggregateId, requestHash, expiresAt, status: 'succeeded' }, now);
+    const event = runtime.events.appendAggregateInTransaction(tx, { aggregateType: base.aggregateType, aggregateId: base.aggregateId, revision, operationId: operation.operation_id, actorId: 'actor_system_bootstrap', type: 'probe.updated', data: { revision }, payload, occurredAt: now });
+    const response = { id: base.aggregateId, revision, event_id: event.id };
+    runtime.operations.saveIdempotencyInTransaction(tx, { actorId: 'actor_system_bootstrap', commandId: base.commandId, idempotencyKey: base.idempotencyKey, requestHash, response, operationId: operation.operation_id, expiresAt, now });
+    return response;
+  });
+  await mutate({ attempt: 1 }, { attempt: 1 }, '2000-01-01T00:00:00.000Z');
+  const second = await mutate({ attempt: 2 }, { attempt: 2 });
+  const replayed = await mutate({ attempt: 2 }, { attempt: 2 });
   assert.equal(second.revision, 2);
   assert.equal(replayed.replayed, true);
   assert.equal(replayed.revision, 2);
@@ -349,6 +374,40 @@ test('download receipt expiry uses the injected platform clock', () => {
   now = '2026-08-19T00:00:02.000Z';
   assert.throws(() => receipts.consume(issued.receipt_id, { actorId: runtime.metadata.bootstrap_actor_id, casSha256: object.hash }), (error) => error.code === 'receipt_expired');
   runtime.close();
+});
+
+test('receipt manifests have one redacting, hashing, and CAS-binding owner', async () => {
+  const f = fixture();
+  const runtime = createCleanRuntime({ config: f.config });
+  const manifest = runtime.platform.createReceipt({
+    kind: 'provider.test',
+    status: 'verified',
+    payload: { token: 'sk-test-secret-value', value: 'kept' },
+    casSha256: 'a'.repeat(64)
+  });
+  const row = runtime.db.get('SELECT * FROM receipt_manifests WHERE id=?', [manifest.receipt_id]);
+  assert.equal(row.kind, 'provider.test');
+  assert.equal(row.status, 'verified');
+  assert.equal(row.cas_sha256, 'a'.repeat(64));
+  assert.deepEqual(JSON.parse(row.payload_json), { token: '[redacted]', value: 'kept' });
+  assert.equal(row.payload_sha256, sha256Hex(row.payload_json));
+  assert.equal(runtime.db.get("SELECT count(*) AS count FROM receipt_manifests WHERE kind='receipt.redaction'").count, 1);
+
+  const txManifest = await runtime.db.withTransaction((tx) => createManifestInTransaction(tx, {
+    kind: 'provider.tx', status: 'created', payload: { value: 1 }, createdAt: '2026-09-26T00:00:00.000Z'
+  }));
+  assert.equal(txManifest.kind, 'provider.tx');
+  assert.equal(runtime.db.get('SELECT payload_sha256 FROM receipt_manifests WHERE id=?', [txManifest.receipt_id]).payload_sha256, sha256Hex('{"value":1}'));
+  assert.throws(() => createManifest({ db: runtime.db, kind: 'bad kind', payload: {} }), /receipt kind is invalid/);
+  runtime.close();
+});
+
+test('active Clean receipt SQL has one static writer owner', () => {
+  const cleanRoot = path.resolve('apps/api/src/clean');
+  for (const file of walkSourceFiles(cleanRoot)) {
+    if (file.endsWith(`${path.sep}receipts.mjs`)) continue;
+    assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /INSERT\s+INTO\s+receipt_manifests/i, file);
+  }
 });
 
 test('API v2 probes, retired route, replay and cancel use one envelope', async () => {

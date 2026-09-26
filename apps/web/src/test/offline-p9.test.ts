@@ -93,9 +93,10 @@ describe('P9 outbox scheduling', () => {
 describe('strict v2 mutation boundary', () => {
   it('queues while the browser is offline and rejects retired paths', async () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
-    const result = await mutateOfflineV2('/projects/p', { name: 'offline' }, 'PATCH', { command: 'project.update', scope: { actorId: 'actor-offline', teamId: 'team', projectId: 'p' }, aggregateKey: 'project:p', expectedRevision: 1 });
+    const result = await mutateOfflineV2('/api/v2/projects/p', { name: 'offline' }, 'PATCH', { command: 'project.update', scope: { actorId: 'actor-offline', teamId: 'team', projectId: 'p' }, aggregateKey: 'project:p', expectedRevision: 1 });
     expect('queued' in result).toBe(true);
-    expect(normalizeV2Path('/projects/p')).toBe('/api/v2/projects/p');
+    expect(normalizeV2Path('/api/v2/projects/p')).toBe('/api/v2/projects/p');
+    expect(() => normalizeV2Path('/projects/p')).toThrow('canonical_api_path_required');
     expect(() => normalizeV2Path('/api/v1/projects/p')).toThrow('retired_api_route');
   });
 });

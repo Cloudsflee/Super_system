@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, apiV2, mutateV2, useWorkbenchOnline } from '../../api';
 import type { AssistPageContext, WorkspacePageProps } from '../../workspace';
 import type { Approval, Operation, Pack, Profile, Reference, Replay, Session, TerminalSummary, TimelineEvent, Workspace } from './types';
+import { useOperationStatus } from '../../hooks/useOperationStatus';
 
 export const ACTIVE_TURNS = new Set(['queued', 'running', 'awaiting_input']);
 const ACTIVE_OPERATIONS = new Set(['accepted', 'queued', 'running', 'paused']);
@@ -97,6 +98,10 @@ export function useAssistWorkspace(props: WorkspacePageProps) {
     setServiceAvailable(true); setError('');
   }, [loadSessions, loadPrerequisites, loadBundle]);
 
+  const fetchOperation = useCallback(async (operationId: string, signal: AbortSignal) => {
+    return (await apiV2<Operation>(`/api/v2/operations/${encodeURIComponent(operationId)}`, { signal })).data;
+  }, []);
+
   const handleError = useCallback(async (failure: unknown, fallback: string) => {
     const text = failure instanceof Error ? failure.message : fallback;
     setError(text);
@@ -127,13 +132,14 @@ export function useAssistWorkspace(props: WorkspacePageProps) {
     void loadRelated().catch(() => undefined);
   }, [selectedId, projectId, online, loadBundle, loadRelated]);
 
-  useEffect(() => {
-    if (!operation || !online || !ACTIVE_OPERATIONS.has(operation.status)) return;
-    const timer = setInterval(() => void apiV2<Operation>(`/api/v2/operations/${encodeURIComponent(operation.operation_id || operation.id || '')}`).then((result) => {
-      setOperation(result.data); if (!ACTIVE_OPERATIONS.has(result.data.status)) void refresh().catch(() => undefined);
-    }).catch(() => setStreamState('reconnecting')), 500);
-    return () => clearInterval(timer);
-  }, [operation, online, refresh]);
+  useOperationStatus(operation, {
+    enabled: Boolean(operation && online && ACTIVE_OPERATIONS.has(operation.status)),
+    intervalMs: 500,
+    fetchStatus: fetchOperation,
+    onUpdate: setOperation,
+    onTerminal: () => { void refresh().catch(() => undefined); },
+    onError: () => setStreamState('reconnecting')
+  });
 
   useEffect(() => {
     if (!selectedId || !online) return;

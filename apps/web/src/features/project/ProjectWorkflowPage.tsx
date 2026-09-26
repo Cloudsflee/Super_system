@@ -11,6 +11,8 @@ import { ExecutionLauncher, type RunnerProfile } from '../execution/ExecutionPag
 import type { WorkspacePageProps } from '../../workspace';
 import { commandLabel, errorCodeLabel, kindLabel, statusLabel } from '../../i18n';
 import { PreparationPanel } from '../projects/preparation';
+import { useProjectPreparationData } from '../projects/preparation/data';
+import { useOperationStatus } from '../../hooks/useOperationStatus';
 
 type Section = 'overview' | 'intake' | 'brief' | 'repository' | 'workflow';
 type LoadState = 'loading' | 'ready' | 'empty' | 'denied' | 'error';
@@ -472,10 +474,7 @@ export function useProjectWorkflowData(projectId: string, enabled = true, showAr
     const [intake, briefs] = await Promise.all([apiV2<{ intake: Intake }>(`${base}/intake`, { signal }), apiV2<{ briefs: Array<Brief & { content?: Record<string, unknown>; content_sha256?: string }> }>(`${base}/briefs`, { signal })]);
     return { intake: intake.data.intake || null, briefs: briefs.data.briefs || [] };
   } }, queryClient);
-  const repositoryQuery = useQuery({ queryKey: key('repository'), enabled: active, queryFn: async ({ signal }) => {
-    const [connections, lines, workspaces] = await Promise.all([apiV2<{ connections: RepositoryConnection[] }>(`${base}/repository-connections`, { signal }), apiV2<{ lines: RepositoryLine[] }>(`${base}/repository-lines`, { signal }), apiV2<{ workspaces: RepositoryWorkspace[] }>(`${base}/repository-workspaces`, { signal })]);
-    return { connections: connections.data.connections || [], lines: lines.data.lines || [], workspaces: workspaces.data.workspaces || [] };
-  } }, queryClient);
+  const preparationQuery = useProjectPreparationData(projectId, active);
   const workflowQuery = useQuery({ queryKey: key('workflow'), enabled: active, queryFn: ({ signal }) => apiV2<{ workflow: Workflow }>(`${base}/workflow-draft`, { signal }) }, queryClient);
   const generationQuery = useQuery({ queryKey: key('generation'), enabled: active, queryFn: async ({ signal }) => {
     const result = await apiV2<{ generations: Generation[] }>(`${base}/workflow-generations`, { signal });
@@ -485,9 +484,7 @@ export function useProjectWorkflowData(projectId: string, enabled = true, showAr
     }));
   }, refetchInterval: query => query.state.data?.some(row => ['queued', 'running', 'critic_pending'].includes(row.phase)) ? 1500 : false }, queryClient);
   const requirementQuery = useQuery({ queryKey: key('requirements'), enabled: active, queryFn: ({ signal }) => apiV2<{ requirements: Requirement[] }>(`${base}/outcome-requirements`, { signal }) }, queryClient);
-  const profileQuery = useQuery({ queryKey: key('provider'), enabled: active, queryFn: ({ signal }) => apiV2<{ profiles: ProviderProfile[] }>('/api/v2/profiles', { signal }) }, queryClient);
   const runnerQuery = useQuery({ queryKey: key('runner'), enabled: active, queryFn: ({ signal }) => apiV2<{ profiles: RunnerProfile[] }>('/api/v2/runners/profiles', { signal }) }, queryClient);
-  const contextQuery = useQuery({ queryKey: key('context'), enabled: active, queryFn: ({ signal }) => apiV2<{ packs: ContextPack[] }>(`${base}/context/packs`, { signal }) }, queryClient);
 
   const refresh = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['v2', scope.actorId, scope.teamId, scope.projectId] });
@@ -513,16 +510,16 @@ export function useProjectWorkflowData(projectId: string, enabled = true, showAr
     const current = row?.content ? { revision: row.revision || currentRevision, content: row.content, content_sha256: row.content_sha256 } : row?.current || head?.current;
     return { ...row, ...head, id: row?.id || head?.id || '', brief_id: row?.brief_id || head?.brief_id || row?.id || head?.id || '', project_id: projectId, current_revision: currentRevision, confirmed_revision: head?.confirmed_revision ?? project?.confirmed_brief_revision ?? row?.confirmed_revision, current } as Brief;
   }, [expanded, briefQuery.data, project, projectId]);
-  const required = [projectQuery, briefQuery, workflowQuery, repositoryQuery, generationQuery, requirementQuery];
-  const error = projectsQuery.error || required.find(query => query.error)?.error;
+  const required = [projectQuery, briefQuery, workflowQuery, generationQuery, requirementQuery];
+  const error = projectsQuery.error || required.find(query => query.error)?.error || preparationQuery.error;
   return {
     project, projects: projectsQuery.data?.data.projects || [], brief, intake: briefQuery.data?.intake || null,
     workflow: workflowQuery.data?.data.workflow || expanded?.workflow || expanded?.project?.workflow || null,
-    connections: repositoryQuery.data?.connections || [], lines: repositoryQuery.data?.lines || [], workspaces: repositoryQuery.data?.workspaces || [],
+    connections: preparationQuery.connections, lines: preparationQuery.lines, workspaces: preparationQuery.workspaces,
     generations: generationQuery.data || [], requirements: requirementQuery.data?.data.requirements || [],
-    profiles: profileQuery.data?.data.profiles || [], runnerProfiles: runnerQuery.data?.data.profiles || [], contextPacks: contextQuery.data?.data.packs || [],
-    prerequisiteError: profileQuery.error || runnerQuery.error || contextQuery.error,
-    loading: !error && (projectId ? required.some(query => query.isPending) : projectsQuery.isPending), error, refresh,
+    profiles: preparationQuery.profiles, runnerProfiles: runnerQuery.data?.data.profiles || [], contextPacks: preparationQuery.packs,
+    prerequisiteError: preparationQuery.error || runnerQuery.error,
+    loading: !error && (projectId ? required.some(query => query.isPending) || preparationQuery.loading : projectsQuery.isPending), error, refresh,
     loadProjects: async () => { await projectsQuery.refetch({ throwOnError: true }); },
     replaceWorkflow: (workflow: Workflow) => queryClient.setQueryData<ApiV2Envelope<{ workflow: Workflow }>>(key('workflow'), previous => previous ? { ...previous, data: { workflow } } : previous)
   };
@@ -609,12 +606,21 @@ export function GenerationTimeline({ generations, workflow, online, busy, dirty,
 
 export function OperationNotice({ id, projectId, onTerminal }: { id: string; projectId: string; onTerminal: () => void }) {
   const notified = useRef('');
-  const query = useQuery({ queryKey: workspaceQueryKey({ actorId: sessionStorage.getItem('aiws:v3:actor-id') || 'session-actor', teamId: '', projectId }, 'operations', { id }),
-    queryFn: ({ signal }) => apiV2<{ operation?: { status: string; error_code?: string }; status?: string; error_code?: string }>(`/api/v2/operations/${encodeURIComponent(id)}`, { signal }),
-    refetchInterval: query => { const data = query.state.data?.data; return ['queued', 'running', 'cancel_requested'].includes(data?.operation?.status || data?.status || '') ? 1500 : false; }
-  }, queryClient);
-  const operation = query.data?.data.operation || query.data?.data;
+  const [operation, setOperation] = useState<{ id: string; operation_id: string; status: string; error_code?: string } | null>(null);
+  const [operationError, setOperationError] = useState<unknown>(null);
+  useEffect(() => { setOperation(null); setOperationError(null); }, [id]);
+  const fetchOperation = useCallback(async (operationId: string, signal: AbortSignal) => {
+    const result = await apiV2<{ operation?: { status: string; error_code?: string; operation_id?: string; id?: string }; status?: string; error_code?: string }>(`/api/v2/operations/${encodeURIComponent(operationId)}`, { signal });
+    const value = (result.data.operation || result.data) as { status?: string; error_code?: string; operation_id?: string; id?: string };
+    return { id, operation_id: String(value.operation_id || value.id || id), status: String(value.status || ''), error_code: value.error_code };
+  }, [id]);
+  const watcher = useOperationStatus(operation || { id, operation_id: id, status: 'accepted' }, {
+    enabled: Boolean(id), operationId: id, intervalMs: 1500, fetchStatus: fetchOperation,
+    onUpdate: (next) => { setOperation(next); setOperationError(null); },
+    onError: setOperationError
+  });
   const status = operation?.status || '';
   useEffect(() => { if (['succeeded', 'failed', 'cancelled'].includes(status) && notified.current !== id) { notified.current = id; onTerminal(); } }, [id, onTerminal, status]);
-  return <span>操作 <code>{id}</code> · {status ? statusLabel(status) : query.error ? '状态查询失败，请刷新' : '查询状态中'} {operation?.error_code || ''}</span>;
+  const failure = operationError || watcher.error;
+  return <span>操作 <code>{id}</code> · {status ? statusLabel(status) : failure ? '状态查询失败，请刷新' : '查询状态中'} {operation?.error_code || ''}</span>;
 }

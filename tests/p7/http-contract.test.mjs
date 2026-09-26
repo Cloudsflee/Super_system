@@ -59,7 +59,7 @@ test('P7 HTTP exposes Evidence, Parser, Quality and Outcome through strict v2 re
     assert.equal(decision.response.status, 200, JSON.stringify(decision.body));
     assert.equal(decision.body.data.quality_review.human_review.weighted_score, 90);
 
-    await state.runtime.project.createOutcomeRequirement(fixture.project.id, { requirement_key: 'http-evidence', rubric: { evaluator: 'evidence_count', minimum: 1 }, workflow_revision: 1, idempotency_key: 'p7-http-requirement' }, state.principal);
+    await state.runtime.projectWorkflow.createOutcomeRequirement(fixture.project.id, { requirement_key: 'http-evidence', rubric: { evaluator: 'evidence_count', minimum: 1 }, workflow_revision: 1, idempotency_key: 'p7-http-requirement' }, state.principal);
     const execution = state.runtime.execution.get(fixture.execution.id, state.principal);
     const evaluation = await json(await fetch(`${network.base}/api/v2/executions/${fixture.execution.id}/outcome/evaluate`, {
       method: 'POST', headers: mutationHeaders(state.proof, 'p7-http-outcome', execution.revision), body: '{}'

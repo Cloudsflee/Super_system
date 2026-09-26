@@ -2,10 +2,13 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pnpmInvocation, runGateCommand } from './lib/gate-process.mjs';
+import { validateGateInventory } from './lib/gate-inventory.mjs';
 
 const root = process.cwd();
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const failures = [];
+const gateInventory = validateGateInventory();
+if (!gateInventory.valid) failures.push(...gateInventory.failures.map((failure) => `gate inventory: ${failure}`));
 
 if (manifest.version !== '3.0.0') failures.push('root package version must be 3.0.0');
 if (Object.keys(manifest.scripts || {}).length > 60) failures.push('package scripts exceed 60');

@@ -1224,3 +1224,30 @@ parallel verification groups, schema v9 and released Catalog statuses remain
 fixed. Maintenance verification retains literal failed and successful command
 outputs and a fresh isolated rollback; it does not replace P1-P10 Evidence.
 Acceptance follows the boundary maintenance inventory in docs/testing.md.
+
+### 21.6 Clean contract convergence and duplicate-owner removal
+
+Owner: Platform, Runtime and Frontend. Phase: post-P10 D-040 maintenance. The
+Receipt owner is the only active writer for `receipt_manifests`; it applies the
+shared redaction, canonical JSON, payload/CAS hash, and status/kind checks both
+inside caller transactions and through the compatibility facade. Event Service
+is the only aggregate revision/head/event projection writer. The architecture
+scan rejects direct receipt or aggregate-revision writers in other Clean
+modules.
+
+The active server fixes schema v9 and runtime phase 10 and rejects historical
+selector aliases. Web callers must provide complete `/api/v2/...` paths. P10
+is a read-only parity overview, and retired Web aliases fall back to the
+canonical project landing page instead of dispatching to another owner. These
+changes preserve the migration ledger, formal Evidence, Catalog status, and
+Historical fixtures. Acceptance is recorded in the ignored local change
+receipt with an isolated rollback dry-run and actual apply reporting
+`byte_exact_mismatches=[]`.
+
+Resource path identifiers are derived only from route parameters; closed
+schemas reject JSON `id` projections and the retired context/exchange/gateway/
+profile/repository aliases. Web operation waits use one abort-safe watcher with
+serialized requests. Dead Web wrappers are removed and represented in the
+retired parity inventory. GitHub deletion separates PAT creation from App
+installation discovery, HEAD validation, deletion and reconciliation, with
+Selected-repository binding and cleanup failures treated as blocking results.

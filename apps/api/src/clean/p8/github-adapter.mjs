@@ -28,6 +28,8 @@ export class GitHubAppAdapter {
     try {
       const pin = repositoryPin(input);
       return await this.#withRepositoryToken(auth, (token) => this.#inspectRepositoryWithToken(token, pin));
+    } catch (error) {
+      throw mapRepositoryAccessError(error);
     } finally {
       clearPrivateKey(auth);
     }
@@ -84,11 +86,15 @@ export class GitHubAppAdapter {
       const page = cursor == null ? 1 : Number(cursor);
       if (!Number.isInteger(page) || page < 1) throw new PlatformError('schema_invalid', 'GitHub repository cursor is invalid', {}, 422);
       const count = boundedPageSize(limit);
-      return await this.#withInstallationToken(auth, async (token) => {
-        const response = await this.#request(`/installation/repositories?per_page=${count}&page=${page}`, { token });
-        const repositories = Array.isArray(response.repositories) ? response.repositories.map(repositoryView) : [];
-        return { repositories, next_cursor: repositories.length === count ? String(page + 1) : null };
-      });
+      try {
+        return await this.#withInstallationToken(auth, async (token) => {
+          const response = await this.#request(`/installation/repositories?per_page=${count}&page=${page}`, { token });
+          const repositories = Array.isArray(response.repositories) ? response.repositories.map(repositoryView) : [];
+          return { repositories, next_cursor: repositories.length === count ? String(page + 1) : null };
+        });
+      } catch (error) {
+        throw mapInstallationAccessError(error);
+      }
     } finally {
       clearPrivateKey(auth);
     }
@@ -102,9 +108,13 @@ export class GitHubAppAdapter {
       let jwt = null;
       try {
         jwt = Buffer.from(appJwt(auth, this.clock), 'utf8');
-        const response = await this.#request(`/app/installations?per_page=${count}&page=${page}`, { jwt: jwt.toString('utf8') });
-        const installations = Array.isArray(response) ? response.map(installationView) : [];
-        return { installations, next_cursor: installations.length === count ? String(page + 1) : null };
+        try {
+          const response = await this.#request(`/app/installations?per_page=${count}&page=${page}`, { jwt: jwt.toString('utf8') });
+          const installations = Array.isArray(response) ? response.map(installationView) : [];
+          return { installations, next_cursor: installations.length === count ? String(page + 1) : null };
+        } catch (error) {
+          throw mapInstallationAccessError(error);
+        }
       } finally {
         jwt?.fill(0);
       }
@@ -208,10 +218,20 @@ export class GitHubAppAdapter {
   async deleteRepository(auth, input) {
     return this.#withInstallationToken(auth, async (token) => {
       const repository = repoPath(input.repository);
-      const snapshot = await this.#request(`/repos/${repository}`, { token });
+      let snapshot;
+      try {
+        snapshot = await this.#request(`/repos/${repository}`, { token });
+      } catch (error) {
+        throw mapRepositoryAccessError(error);
+      }
       if (input.repositoryId != null && String(input.repositoryId) !== String(snapshot.id || '')) throw new PlatformError('github_repository_identity_conflict', 'GitHub repository identity changed', {}, 409);
       const branch = bounded(input.branch || snapshot.default_branch || 'main', 256);
-      const ref = await this.#request(`/repos/${repository}/git/ref/heads/${encodeURIComponent(branch)}`, { token });
+      let ref;
+      try {
+        ref = await this.#request(`/repos/${repository}/git/ref/heads/${encodeURIComponent(branch)}`, { token });
+      } catch (error) {
+        throw mapRepositoryAccessError(error);
+      }
       const head = bounded(ref.object?.sha || '', 128);
       if (head !== bounded(input.expectedHeadSha, 128)) throw new PlatformError('repository_head_conflict', 'GitHub repository HEAD changed before deletion', {}, 409);
       await this.#request(`/repos/${repository}`, { method: 'DELETE', token, ambiguous: true });
@@ -225,7 +245,12 @@ export class GitHubAppAdapter {
         const snapshot = await this.#request(`/repos/${repoPath(input.repository)}`, { token });
         return { exists: true, repository_id: String(snapshot.id || ''), full_name: bounded(snapshot.full_name || input.repository, 256) };
       } catch (error) {
-        if (error?.code === 'github_request_failed' && error?.details?.status === 404) return { exists: false, repository_id: String(input.repositoryId || '') };
+        const status = Number(error?.details?.status || 0);
+        if (status === 404 && input.expectedPreviouslyBound === true) {
+          return { exists: false, repository_id: String(input.repositoryId || ''), resolution: 'repository_not_found_after_bound_delete' };
+        }
+        if (status === 404) throw new PlatformError('github_repository_visibility_unknown', 'GitHub returned not found before repository visibility was proven', { status }, 409);
+        if (status === 403) throw new PlatformError('github_installation_access_denied', 'GitHub App installation cannot access this repository', { status }, 403);
         throw error;
       }
     });
@@ -543,6 +568,20 @@ function responseHeader(response, name) {
     return key ? String(headers[key]) : null;
   }
   return null;
+}
+
+function mapRepositoryAccessError(error) {
+  const status = Number(error?.details?.status || 0);
+  if (status === 404) return new PlatformError('github_repository_not_found', 'GitHub repository was not found for the App installation', { status }, 404);
+  if (status === 403) return new PlatformError('github_installation_access_denied', 'GitHub App installation cannot access this repository', { status }, 403);
+  return error;
+}
+
+function mapInstallationAccessError(error) {
+  const status = Number(error?.details?.status || 0);
+  if (status === 404) return new PlatformError('github_installation_not_found', 'GitHub App installation was not found', { status }, 404);
+  if (status === 403) return new PlatformError('github_installation_access_denied', 'GitHub App installation management is not permitted', { status }, 403);
+  return error;
 }
 
 function repositoryPin(input = {}) {

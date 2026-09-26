@@ -13,16 +13,23 @@ describe('post-closure Web restoration', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it('maps historical deep links to reachable Clean views', () => {
-    const cases: Array<[string, string]> = [
-      ['#/assets', 'evidence'],
-      ['#/audit', 'operations'],
-      ['#/projects/project-1/workstreams/stream-1', 'workflow'],
-      ['#/projects/project-1/nodes/node-1', 'workflow'],
+  it('accepts canonical deep links and rejects retired aliases', () => {
+    const canonical: Array<[string, string]> = [
+      ['#/evidence', 'evidence'],
+      ['#/operations', 'operations'],
+      ['#/projects/project-1/workflow', 'workflow'],
       ['#/projects/project-1/repository', 'repository'],
-      ['#/github/install/callback', 'settings']
+      ['#/settings', 'settings']
     ];
-    for (const [path, expected] of cases) expect(routeFromPath(path.slice(1))).toBe(expected);
+    for (const [path, expected] of canonical) expect(routeFromPath(path.slice(1))).toBe(expected);
+
+    const retired = [
+      '#/assets', '#/asset', '#/audit', '#/workstream', '#/workstreams', '#/node', '#/nodes',
+      '#/terminal', '#/approval', '#/github/install/callback', '#/github/callback', '#/integrations/github/install/setup'
+    ];
+    for (const path of retired) expect(routeFromPath(path.slice(1))).toBe('projects');
+    expect(routeFromPath('/setup')).toBe('projects');
+    for (const path of ['/deployment', '/backup', '/importer']) expect(routeFromPath(path)).toBe('operations');
   });
 
   it('recovers an expired browser session once and retries the original request', async () => {

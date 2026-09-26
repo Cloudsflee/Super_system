@@ -390,7 +390,7 @@ test('development receipt failure classes are fixed and unknown operation owners
   const state = await openP10();
   let runtimeOpen = true;
   try {
-    const project = await state.runtime.project.createProject({ name: 'Owner missing', idempotency_key: 'owner-missing-project' }, state.principal);
+    const project = await state.runtime.projectWorkflow.createProject({ name: 'Owner missing', idempotency_key: 'owner-missing-project' }, state.principal);
     await state.runtime.operations.create({
       actorId: state.principal.actorId, commandId: 'execution.unknown.command', kind: 'execution.unknown.command',
       resourceType: 'fixture', resourceId: 'fixture', projectId: project.id,
@@ -419,12 +419,12 @@ test('generation attempts count rows once and time windows exclude later retries
   let closed = false;
   try {
     const flow = await prepare(state, 'generation-count');
-    const current = state.runtime.project.getProject(flow.project.id, state.principal);
-    const first = await state.runtime.project.startGeneration(flow.project.id, { expected_revision: current.revision, idempotency_key: 'receipt-generation-first' }, state.principal);
+    const current = state.runtime.projectWorkflow.getProject(flow.project.id, state.principal);
+    const first = await state.runtime.projectWorkflow.startGeneration(flow.project.id, { expected_revision: current.revision, idempotency_key: 'receipt-generation-first' }, state.principal);
     await waitOperation(state.runtime, first.operation.operation_id, state.principal.actorId);
-    const failed = state.runtime.project.getGeneration(first.generation.id, state.principal);
+    const failed = state.runtime.projectWorkflow.getGeneration(first.generation.id, state.principal);
     await new Promise((resolve) => setTimeout(resolve, 5));
-    const retry = await state.runtime.project.retryGeneration(failed.id, { expected_revision: failed.revision, idempotency_key: 'receipt-generation-retry' }, state.principal);
+    const retry = await state.runtime.projectWorkflow.retryGeneration(failed.id, { expected_revision: failed.revision, idempotency_key: 'receipt-generation-retry' }, state.principal);
     await waitOperation(state.runtime, retry.operation.operation_id, state.principal.actorId);
     await state.runtime.close(); closed = true;
     const full = generateDevelopmentReceipt({ home: state.root, projectId: flow.project.id });

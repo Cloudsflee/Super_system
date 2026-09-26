@@ -36,7 +36,7 @@ await emitProbe('aiws.v3-clean.p7-quality-outcome-probe.v1', async () => {
       ['tests', { evaluator: 'test_pass', check_id: 'missing-probe-check' }],
       ['digest', { evaluator: 'digest_match', expected_sha256: 'f'.repeat(64), digest_type: 'workspace' }],
       ['human', { evaluator: 'human_score', minimum: 80 }]
-    ]) requirements.push((await state.runtime.project.createOutcomeRequirement(fixture.project.id, { requirement_key: `probe-${key}`, rubric, workflow_revision: 1, idempotency_key: `p7-quality-outcome-probe-${key}` }, state.principal)).requirement);
+    ]) requirements.push((await state.runtime.projectWorkflow.createOutcomeRequirement(fixture.project.id, { requirement_key: `probe-${key}`, rubric, workflow_revision: 1, idempotency_key: `p7-quality-outcome-probe-${key}` }, state.principal)).requirement);
     const execution = state.runtime.execution.get(fixture.execution.id, state.principal);
     step = 'evaluate';
     const evaluated = await state.runtime.outcomeEvaluation.evaluate(execution.id, { expected_revision: execution.revision, idempotency_key: 'p7-quality-outcome-probe-evaluate' }, state.principal);

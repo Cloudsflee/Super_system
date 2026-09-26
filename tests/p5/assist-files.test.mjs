@@ -244,13 +244,13 @@ async function referenceFixture(state, suffix) {
   const project = await createProject(state, suffix);
   const { workspace, directory } = await createWorkspace(state, project, suffix);
   const { pack, profile } = await createAssistPrerequisites(state, project, suffix);
-  const brief = await state.runtime.project.createBrief(project.id, { objective: 'Reference fixture', acceptance: ['checked'], expected_revision: project.revision, idempotency_key: `${suffix}-brief-key` }, state.principal);
-  const workflow = await state.runtime.project.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'stream', kind: 'workstream', title: 'Stream' }, { id: 'task', kind: 'task', parent_id: 'stream', title: 'Task', contract: { acceptance: ['done'] } }] }, expected_revision: 1, idempotency_key: `${suffix}-workflow-key` }, state.principal);
+  const brief = await state.runtime.projectWorkflow.createBrief(project.id, { objective: 'Reference fixture', acceptance: ['checked'], expected_revision: project.revision, idempotency_key: `${suffix}-brief-key` }, state.principal);
+  const workflow = await state.runtime.projectWorkflow.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'stream', kind: 'workstream', title: 'Stream' }, { id: 'task', kind: 'task', parent_id: 'stream', title: 'Task', contract: { acceptance: ['done'] } }] }, expected_revision: 1, idempotency_key: `${suffix}-workflow-key` }, state.principal);
   const attachment = await state.runtime.files.createAttachment({ project_id: project.id, filename: 'note.txt', content_base64: Buffer.from('attached').toString('base64'), idempotency_key: `${suffix}-attachment-key` }, state.principal);
   fs.writeFileSync(path.join(directory, 'file.txt'), 'indexed');
   const file = (await state.runtime.files.listFiles(project.id, { workspace_id: workspace.id }, state.principal)).files[0];
   const session = (await state.runtime.assist.createSession({ project_id: project.id, scope: 'project', scope_id: project.id, context_pack_id: pack.id, profile_id: profile.id, repository_workspace_id: workspace.id, idempotency_key: `${suffix}-session-key` }, state.principal)).session;
-  const connection = state.runtime.project.listRepositoryConnections(project.id, state.principal)[0];
+  const connection = state.runtime.projectWorkflow.listRepositoryConnections(project.id, state.principal)[0];
   const operation = state.runtime.operations.get(attachment.operation.operation_id, { actorId: state.principal.actorId });
   const operationSummary = Object.fromEntries(['operation_id', 'command_id', 'status', 'revision', 'resource_type', 'resource_id', 'project_id', 'terminal', 'retryable', 'poll_uri', 'events_uri'].map(key => [key, operation[key]]));
   operationSummary.terminal = true;

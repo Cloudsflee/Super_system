@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, FileText, FolderGit2, Github, LoaderCircle, RefreshCw } from 'lucide-react';
 import { ApiError, apiV2, mutateV2 } from '../../../api';
+import { waitForOperation } from '../../../hooks/useOperationStatus';
+import { useProjectPreparationData } from './data';
+import type { PreparationConnection, PreparationLine, PreparationPack, PreparationProfile, PreparationWorkspace } from './data';
+export { useProjectPreparationData } from './data';
+export type { PreparationConnection, PreparationLine, PreparationPack, PreparationProfile, PreparationWorkspace } from './data';
 
 export type PreparationStep = 'source' | 'workspace' | 'context' | 'pack';
 type SourceKind = 'local' | 'github';
-type Connection = { id: string; provider: string; source_kind: string; source_revision?: string; source_hash?: string; status: string; revision: number; metadata?: Record<string, unknown> };
-type Line = { id: string; status: string; line_kind?: string; source_revision?: string; source_hash?: string; revision: number; updated_at?: string; fault_code?: string; fault?: Record<string, unknown> };
-type Workspace = { id: string; line_id: string; status: string; relative_path: string; revision: number; updated_at?: string; error_code?: string };
+type Connection = PreparationConnection;
+type Line = PreparationLine;
+type Workspace = PreparationWorkspace;
 type FileRef = { id: string; path: string; relative_path?: string; media_type: string; byte_length: number; content_sha256: string; status: string; revision: number };
-type Pack = { id: string; status: string; pack_hash: string; revision: number; memory_manifest?: { token_budget?: number; token_used?: number } };
-type Profile = { id: string; provider: string; status: string; lifecycle_status?: string };
+type Pack = PreparationPack;
+type Profile = PreparationProfile;
 
 const steps: Array<{ id: PreparationStep; label: string }> = [
   { id: 'source', label: '来源检查' }, { id: 'workspace', label: '托管工作区' },
@@ -52,52 +57,31 @@ type PreparationProps = { projectId: string; onReady?: (packId: string) => void;
 export function PreparationPanel(props: PreparationProps) { return <PreparationWorkspace key={props.projectId} {...props} />; }
 
 function PreparationWorkspace({ projectId, onReady, onOpenStep, sleep = defaultSleep }: PreparationProps) {
-  const [loaded, setLoaded] = useState(false);
   const [step, setStep] = useState<PreparationStep>('source');
   const [kind, setKind] = useState<SourceKind>('local');
   const [locator, setLocator] = useState('');
   const [branch, setBranch] = useState('main');
-  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [repositories, setRepositories] = useState<Array<{ id: number; full_name: string; default_branch?: string }>>([]);
   const [selectedRepository, setSelectedRepository] = useState('');
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [lines, setLines] = useState<Line[]>([]);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState(() => readSelection(projectId, 'connection'));
   const [selectedLineId, setSelectedLineId] = useState(() => readSelection(projectId, 'line'));
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(() => readSelection(projectId, 'workspace'));
   const [files, setFiles] = useState<FileRef[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [packs, setPacks] = useState<Pack[]>([]);
   const [budget, setBudget] = useState(4096);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const base = `/api/v2/projects/${encodeURIComponent(projectId)}`;
+  const preparation = useProjectPreparationData(projectId, Boolean(projectId));
+  const { connections, lines, workspaces, profiles, packs, loading: preparationLoading, error: preparationError, refresh: load, upsertWorkspace, replacePacks } = preparation;
+  const loaded = !preparationLoading;
   const selectedConnection = connections.find(item => item.id === selectedConnectionId) || null;
   const selectedLine = lines.find(item => item.id === selectedLineId) || null;
   const workspace = workspaces.find(item => item.id === selectedWorkspaceId) || null;
 
-  const load = useCallback(async () => {
-    if (!projectId) return;
-    try {
-      const [c, l, w, p, prof] = await Promise.all([
-        apiV2<{ connections: Connection[] }>(`${base}/repository-connections`),
-        apiV2<{ lines: Line[] }>(`${base}/repository-lines`),
-        apiV2<{ workspaces: Workspace[] }>(`${base}/repository-workspaces`),
-        apiV2<{ packs: Pack[] }>(`${base}/context/packs`),
-        apiV2<{ profiles: Profile[] }>('/api/v2/profiles')
-      ]);
-      setConnections(c.data.connections || []);
-      setLines(l.data.lines || []);
-      setWorkspaces(w.data.workspaces || []);
-      setPacks(p.data.packs || []);
-      setProfiles(prof.data.profiles || []);
-      setLoaded(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '准备状态加载失败');
-    }
-  }, [base, projectId]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (preparationError) setError(preparationError instanceof Error ? preparationError.message : '准备状态加载失败');
+  }, [preparationError]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -168,14 +152,13 @@ function PreparationWorkspace({ projectId, onReady, onOpenStep, sleep = defaultS
   const createConnection = () => void run('source', async () => {
     const githubProfile = profiles.find(item => item.provider === 'github' && item.status === 'available' && item.lifecycle_status !== 'disabled');
     const result = await mutateV2<{ connection: Connection }>(`${base}/repository-connections`, { provider: kind === 'github' ? 'git' : 'local', source_kind: kind === 'github' ? 'git' : 'local', source_locator: locator.trim(), branch: branch.trim() || 'main', read_only: true, ...(githubProfile ? { provider_profile_id: githubProfile.id } : {}) }, 'POST', 0);
-    setConnections(current => [...current.filter(item => item.id !== result.data.connection.id), result.data.connection]);
     setSelectedConnectionId(persistSelection(projectId, 'connection', result.data.connection.id));
     setSelectedLineId(persistSelection(projectId, 'line', ''));
     setSelectedWorkspaceId(persistSelection(projectId, 'workspace', ''));
     setFiles([]); setSelected(new Set()); setStep('workspace');
   });
   const showWorkspace = (current: Workspace) => {
-    setWorkspaces(rows => [...rows.filter(item => item.id !== current.id), current]);
+    upsertWorkspace(current);
     setSelectedWorkspaceId(persistSelection(projectId, 'workspace', current.id));
   };
   const pollWorkspace = (id: string, current: Workspace) => pollWorkspaceUntil(id, current, async (workspaceId) => {
@@ -221,10 +204,10 @@ function PreparationWorkspace({ projectId, onReady, onOpenStep, sleep = defaultS
     if (!refs.length) throw new Error('至少选择一个文本文件');
     for (const file of refs) await mutateV2(`${base}/context/sources`, { source_type: 'file', title: file.relative_path || file.path, canonical_uri: `file/${file.id}`, file_ref_id: file.id, expected_file_revision: file.revision, expected_file_hash: file.content_sha256 }, 'POST', 0);
     const rebuild = await mutateV2<{ operation?: { operation_id?: string } }>(`${base}/context/rebuild`, { mode: 'incremental' }, 'POST', 0);
-    const operationId = rebuild.data.operation?.operation_id; if (operationId) await waitOperation(operationId);
+    const operationId = rebuild.data.operation?.operation_id; if (operationId) await waitForContextRebuild(operationId);
     const selection = await mutateV2<{ selection: { id: string } }>(`${base}/context/selections`, { token_budget: budget }, 'POST', 0);
     const pack = await mutateV2<{ pack: Pack }>(`${base}/context/packs`, { selection_id: selection.data.selection.id, require_authoritative: false }, 'POST', 0);
-    setPacks([pack.data.pack]); setStep('pack'); onReady?.(pack.data.pack.id);
+    replacePacks([pack.data.pack]); setStep('pack'); onReady?.(pack.data.pack.id);
   });
   const latestPack = packs.slice().sort((a, b) => Number(b.revision || 0) - Number(a.revision || 0))[0];
   const excluded = useMemo(() => Object.fromEntries(files.flatMap(file => {
@@ -244,7 +227,13 @@ function readSelection(projectId: string, kind: string) { try { return sessionSt
 function persistSelection(projectId: string, kind: string, value: string) { try { if (value) sessionStorage.setItem(`aiws:preparation:${projectId}:${kind}`, value); else sessionStorage.removeItem(`aiws:preparation:${projectId}:${kind}`); } catch {} return value; }
 function safeRelative(value: string) { const text = String(value || '').replaceAll('\\', '/'); return Boolean(text && !text.startsWith('/') && !/^[A-Za-z]:\//.test(text) && !text.includes('\0') && !text.split('/').some(part => !part || ['.', '..', '.git', 'node_modules'].includes(part) || part.includes(':') || /[. ]$/.test(part))); }
 
-async function waitOperation(operationId: string) { for (let attempt = 0; attempt < 40; attempt += 1) { const result = await apiV2<{ status: string }>(`/api/v2/operations/${encodeURIComponent(operationId)}`); if (['succeeded', 'failed', 'cancelled', 'expired'].includes(result.data.status)) { if (result.data.status !== 'succeeded') throw new Error(`操作未完成：${result.data.status}`); return; } await new Promise(resolve => setTimeout(resolve, 250)); } throw new Error('操作等待超时，可从操作中心继续'); }
+async function waitForContextRebuild(operationId: string) {
+  const result = await waitForOperation({ operation_id: operationId, status: 'accepted' }, async (id, signal) => {
+    const response = await apiV2<{ status: string }>(`/api/v2/operations/${encodeURIComponent(id)}`, { signal });
+    return { operation_id: id, status: response.data.status };
+  });
+  if (result.status !== 'succeeded') throw new Error(`操作未完成：${result.status}`);
+}
 
 export async function pollWorkspaceUntil(id: string, initial: Workspace, fetchLatest: (workspaceId: string) => Promise<Workspace | null>, options: { sleep?: (milliseconds: number) => Promise<void> } = {}) {
   const pause = options.sleep || defaultSleep;

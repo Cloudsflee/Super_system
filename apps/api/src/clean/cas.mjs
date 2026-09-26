@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { canonicalJson, sha256Hex, sha256Ref, canonicalize } from './canonical.mjs';
 import { DEFAULT_REDACTION_POLICY } from './redaction.mjs';
+import { createManifest } from './receipts.mjs';
 
 const HASH = /^[a-f0-9]{64}$/;
 
@@ -117,6 +118,28 @@ export class CasStore {
     try { this.read(hash); return true; } catch { return false; }
   }
 
+  /**
+   * Tombstone an object only after the CAS owner has rechecked its known
+   * durable references. Callers must not inspect CAS files or issue status SQL
+   * themselves; this method is the single cleanup boundary for orphaned
+   * transient content.
+   */
+  tombstoneIfUnreferenced(hash, { now = this.clock() } = {}) {
+    if (!this.db) return false;
+    const clean = normalizeHash(hash);
+    const refs = this.db.get(`SELECT
+      (SELECT count(*) FROM assist_messages WHERE content_cas_hash=?) +
+      (SELECT count(*) FROM attachments WHERE content_cas_hash=?) +
+      (SELECT count(*) FROM asset_blobs WHERE cas_sha256=?) +
+      (SELECT count(*) FROM context_sources WHERE cas_hash=?) AS n`, [clean, clean, clean, clean]);
+    if (Number(refs?.n || 0) > 0) return false;
+    const target = this.fileFor(clean);
+    this.db.run("UPDATE cas_objects SET status='tombstoned',tombstoned_at=? WHERE sha256=? AND status='active'", [now, clean], 1);
+    try { fs.rmSync(target, { force: true }); } catch { /* a later physical GC can retry the tombstone */ }
+    this.createManifest({ createdAt: now });
+    return true;
+  }
+
   createManifest(options = {}) {
     const objects = [];
     for (const entry of walk(this.root)) {
@@ -190,9 +213,7 @@ export class CasStore {
     if (!this.db) return;
     try {
       const redacted = this.policy.redact(payload).value;
-      const json = canonicalJson({ status: 'redacted_failure', redactions, payload: redacted });
-      this.db.run(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
-        VALUES(?,?,?,?,?,?,?,?)`, [`receipt_redaction_${randomUUID().replaceAll('-', '')}`, 'cas.redaction', 'failed', json, sha256Hex(json), null, this.clock(), null]);
+      createManifest({ db: this.db, id: `receipt_redaction_${randomUUID().replaceAll('-', '')}`, kind: 'cas.redaction', status: 'failed', payload: { status: 'redacted_failure', redactions, payload: redacted }, createdAt: this.clock(), policy: this.policy });
     } catch { /* the primary redaction error remains authoritative */ }
   }
 }

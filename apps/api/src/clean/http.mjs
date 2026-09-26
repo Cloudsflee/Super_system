@@ -106,9 +106,10 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
       }
       if (entry.command_id === 'operations.get') {
         validateQuery(url, new Set());
-        const operation = runtime.operations.get(params.id, { actorId: actor.actorId, projectId: actor.projectId });
+        const operation = runtime.operations.get(params.operation_id, { actorId: actor.actorId, projectId: actor.projectId });
         assertOperationAuthorized(runtime, actor, operation, 'read');
-        return sendSuccess(res, requestId, operation, { resourceType: 'operation', outputSchema: entry.output_schema, revision: operation.revision, etag: etagFor(operation), policy: runtime.policy });
+        const publicOperation = publicOperationReceipt(operation);
+        return sendSuccess(res, requestId, publicOperation, { resourceType: 'operation', outputSchema: entry.output_schema, revision: publicOperation.revision, etag: etagFor(publicOperation), policy: runtime.policy });
       }
       if (entry.command_id === 'operations.events') {
         validateQuery(url, new Set(['format', 'cursor', 'limit']));
@@ -119,9 +120,9 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         const headerCursor = req.headers['last-event-id'] == null ? null : String(req.headers['last-event-id']);
         if (queryCursor != null && headerCursor != null && queryCursor !== headerCursor) throw new HttpError('invalid_request', 'cursor query and Last-Event-ID differ', {}, 400, false);
         const limit = replayLimit(url);
-        const operation = runtime.operations.get(params.id, { actorId: actor.actorId, projectId: actor.projectId });
+        const operation = runtime.operations.get(params.operation_id, { actorId: actor.actorId, projectId: actor.projectId });
         assertOperationAuthorized(runtime, actor, operation, 'read');
-        const replayInput = { actorId: actor.actorId, projectId: actor.projectId, operationId: params.id, cursor: queryCursor ?? headerCursor, limit };
+        const replayInput = { actorId: actor.actorId, projectId: actor.projectId, operationId: params.operation_id, cursor: queryCursor ?? headerCursor, limit };
         const wantsSse = format !== 'json' && String(req.headers.accept || '').toLowerCase().includes('text/event-stream');
         if (!wantsSse) {
           const replay = runtime.events.replay(replayInput);
@@ -140,7 +141,7 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
           res.write(runtime.events.sseFrames({ events: [event], terminal: false }, { heartbeat: false }));
           if (/operation\.(?:succeeded|failed|cancelled|expired)$/.test(event.type)) closeStream();
         };
-        const unsubscribe = runtime.events.subscribe({ operationId: params.id }, (event) => {
+        const unsubscribe = runtime.events.subscribe({ operationId: params.operation_id }, (event) => {
           if (!initialized) buffered.push(event);
           else writeEvent(event);
         });
@@ -176,10 +177,10 @@ export function createCleanHttpHandler({ runtime, registry, maxBodyBytes = runti
         validateCancelBody(body);
         const idempotencyKey = requireIdempotency(req, body);
         const expected = expectedRevision(req, body);
-        const requestHash = sha256Hex(canonicalJson({ operation_id: params.id, expected_revision: expected, reason: body.reason ?? null }));
-        const operation = runtime.operations.get(params.id, { actorId: actor.actorId, projectId: actor.projectId });
+        const requestHash = sha256Hex(canonicalJson({ operation_id: params.operation_id, expected_revision: expected, reason: body.reason ?? null }));
+        const operation = runtime.operations.get(params.operation_id, { actorId: actor.actorId, projectId: actor.projectId });
         assertOperationAuthorized(runtime, actor, operation, 'run');
-        const result = await runtime.operations.cancel(params.id, { actorId: actor.actorId, projectId: actor.projectId, expectedRevision: expected, idempotencyKey, requestHash, reason: body.reason });
+        const result = publicOperationReceipt(await runtime.operations.cancel(params.operation_id, { actorId: actor.actorId, projectId: actor.projectId, expectedRevision: expected, idempotencyKey, requestHash, reason: body.reason }));
         return sendSuccess(res, requestId, result, { status: 202, resourceType: 'operation', outputSchema: entry.output_schema, revision: result.revision, etag: etagFor(result), policy: runtime.policy });
       }
       throw new HttpError('not_found', 'route not found', {}, 404, false);
@@ -287,6 +288,7 @@ async function handleP5Route({ entry, params, url, req, res, requestId, runtime,
   const args = p5DispatchArguments(command, params, url, body, schema);
   const dispatched = await runtime.dispatcher.dispatch(command, args, actor, { transport: 'rest' });
   let data = dispatched.result;
+  if (command === 'provider.codex.discovery.import' && data?.probe) data = { ...data, probe: publicOperationReceipt(data.probe) };
   // Domain services keep ergonomic direct views for their in-process callers;
   // the public transport normalizes those views to the registered receipt
   // shape without changing the service contract.
@@ -294,7 +296,7 @@ async function handleP5Route({ entry, params, url, req, res, requestId, runtime,
   let status = p5Status(command, data);
   const operationId = data?.operation?.operation_id || data?.operation_id;
   if (entry.long_running && operationId) {
-    data = runtime.operations.get(operationId, { actorId: actor.actorId, projectId: data?.project_id || null });
+    data = publicOperationReceipt(runtime.operations.get(operationId, { actorId: actor.actorId, projectId: data?.project_id || null }));
     status = 202;
   }
   if (['attachment.content', 'attachment.preview'].includes(command)
@@ -339,31 +341,14 @@ function sendBinaryAsset(res, requestId, value) {
 
 function p5DispatchArguments(command, params, url, body, schema) {
   const args = { ...body, ...params };
-  if (args.id) {
-    if (command === 'assist.turn.create' || command.startsWith('assist.session') || command.startsWith('assist.goal') || command.startsWith('assist.reference')) args.session_id ||= args.id;
-    else if (command.startsWith('assist.turn') || command.startsWith('assist.review')) args.turn_id ||= args.id;
-    else if (command.startsWith('attachment.')) args.attachment_id ||= args.id;
-    else if (command.startsWith('change.batch')) args.batch_id ||= args.id;
-    else if (command.startsWith('approval.')) args.approval_id ||= args.id;
-    else if (command.startsWith('user.input')) args.input_id ||= args.id;
-    else if (command.startsWith('proposal.')) args.proposal_id ||= args.id;
-    else if (command.startsWith('terminal.')) args.terminal_id ||= args.id;
-    else if (command.startsWith('bridge.')) args.device_id ||= args.id;
-    else if (command.startsWith('runner.profile')) args.profile_id ||= args.id;
-    else if (command.startsWith('execution.')) args.execution_id ||= args.id;
-    else if (command === 'parser.run.start') args.asset_id ||= args.id;
-    else if (command.startsWith('parser.run')) args.parser_run_id ||= args.id;
-    else if (command.startsWith('asset.')) args.asset_id ||= args.id;
-    else if (command.startsWith('evidence.')) args.execution_id ||= args.id;
-    else if (command === 'quality.list' || command === 'quality.start') args.execution_id ||= args.id;
-    else if (command.startsWith('quality.')) args.quality_review_id ||= args.id;
-    else if (command.startsWith('outcome.waiver.revoke')) args.waiver_id ||= args.id;
-    else if (command.startsWith('outcome.')) args.execution_id ||= args.id;
-    else if (command === 'github.repository.list') args.profile_id ||= args.id;
-    else if (command.startsWith('delivery.')) args.delivery_id ||= args.id;
-    else if (command.startsWith('deployment.candidate') || command === 'deployment.verify') args.candidate_id ||= args.id;
-    else if (command.startsWith('import.')) args.import_id ||= args.id;
-    else if (command === 'operations.replay') args.operation_id ||= args.id;
+  // Only a route path parameter may be translated to the resource-specific
+  // field. A JSON/query `id` alias is rejected by the closed schema before it
+  // reaches this adapter.
+  const pathId = params.id;
+  if (pathId != null) {
+    const key = canonicalPathId(command, schema);
+    if (key) args[key] = pathId;
+    delete args.id;
   }
   const properties = schema.properties || {};
   if (reqIsGetSchema(schema)) {
@@ -386,6 +371,47 @@ function p5DispatchArguments(command, params, url, body, schema) {
   // command schema before the dispatcher performs its strict validation.
   for (const key of Object.keys(args)) if (!Object.hasOwn(properties, key)) delete args[key];
   return args;
+}
+
+function canonicalPathId(command, schema) {
+  const properties = schema?.properties || {};
+  if (Object.hasOwn(properties, 'id')) return 'id';
+  if (command === 'assist.turn.create' || command.startsWith('assist.session') || command.startsWith('assist.goal') || command.startsWith('assist.reference') || command.startsWith('assist.configuration')) return 'session_id';
+  if (command.startsWith('assist.turn') || command.startsWith('assist.review')) return 'turn_id';
+  if (command.startsWith('attachment.')) return 'attachment_id';
+  if (command.startsWith('change.batch')) return 'batch_id';
+  if (command.startsWith('approval.')) return 'approval_id';
+  if (command.startsWith('user.input')) return 'input_id';
+  if (command.startsWith('proposal.')) return 'proposal_id';
+  if (command.startsWith('terminal.')) return 'terminal_id';
+  if (command.startsWith('bridge.')) return 'device_id';
+  if (['context.projection.job', 'context.projection.events', 'context.projection.cancel', 'context.projection.retry'].includes(command)) return 'job_id';
+  if (command.startsWith('runner.profile')) return 'profile_id';
+  if (command.startsWith('execution.')) return 'execution_id';
+  if (command === 'parser.run.start') return 'asset_id';
+  if (command.startsWith('parser.run')) return 'parser_run_id';
+  if (command.startsWith('asset.')) return 'asset_id';
+  if (command.startsWith('evidence.')) return 'execution_id';
+  if (command === 'quality.list' || command === 'quality.start') return 'execution_id';
+  if (command === 'quality.policy.get' || command === 'quality.policy.update') return 'workflow_id';
+  if (command === 'quality.prepare') return 'execution_id';
+  if (command === 'quality.advice.get') return 'quality_review_id';
+  if (command.startsWith('quality.')) return 'quality_review_id';
+  if (command.startsWith('outcome.waiver.revoke')) return 'waiver_id';
+  if (command.startsWith('outcome.')) return 'execution_id';
+  if (command === 'github.repository.list') return 'profile_id';
+  if (command.startsWith('delivery.')) return 'delivery_id';
+  if (command.startsWith('deployment.candidate') || command === 'deployment.verify') return 'candidate_id';
+  if (command.startsWith('import.')) return 'import_id';
+  if (command === 'operations.replay') return 'operation_id';
+  if (command.startsWith('provider.codex.device_login')) return 'login_id';
+  if (command === 'profile.update' || command.startsWith('profile.')) return 'profile_id';
+  if (command === 'brief.template.update' || command === 'brief.template.archive') return 'template_id';
+  if (command === 'project.deletion.prepare') return 'project_id';
+  if (command.startsWith('project.deletion.')) return 'deletion_intent_id';
+  if (command === 'repository.deletion.prepare') return 'repository_target_id';
+  if (command.startsWith('repository.deletion.')) return 'deletion_intent_id';
+  return null;
 }
 
 function reqIsGetSchema(schema) { return schema && !Object.hasOwn(schema.properties || {}, 'idempotency_key'); }
@@ -413,6 +439,13 @@ function p5Status(command, value) {
 }
 
 function p5Revision(value) { return value?.revision ?? value?.session?.revision ?? value?.turn?.revision ?? value?.goal?.revision ?? value?.attachment?.revision ?? value?.batch?.revision ?? value?.approval?.revision ?? value?.input?.revision ?? value?.proposal?.revision ?? value?.terminal?.revision ?? value?.device?.revision ?? value?.transfer?.revision ?? value?.profile?.revision ?? value?.template?.revision ?? value?.comment?.revision ?? value?.execution?.revision ?? value?.asset?.revision ?? value?.parser_run?.revision ?? value?.quality_review?.revision ?? value?.evaluation?.revision ?? value?.waiver?.revision ?? value?.policy?.revision ?? value?.delivery?.revision ?? value?.intent?.revision ?? value?.intent?.generation ?? value?.candidate?.revision ?? value?.operation?.revision ?? null; }
+function publicOperationReceipt(value) {
+  if (!value || typeof value !== 'object') return value;
+  const result = { ...value, operation_id: value.operation_id || value.id };
+  delete result.id;
+  delete result.operation;
+  return result;
+}
 function p5ResourceType(command) { if (command.startsWith('provider.codex.discovery')) return 'provider_discovery'; if (command.startsWith('provider.codex.device_login')) return 'provider_device_login'; if (command.startsWith('provider.github.')) return 'provider_github_setup'; if (command.startsWith('assist.review')) return 'assist_review_comment'; if (command.startsWith('assist.')) return command.startsWith('assist.turn') ? 'assist_turn' : 'assist_session'; if (command.startsWith('profile.')) return 'profile'; if (command.startsWith('brief.template')) return 'brief_template'; if (command.startsWith('project.deletion')) return 'project_deletion_intent'; if (command.startsWith('repository.deletion')) return 'repository_deletion_intent'; if (command.startsWith('attachment.')) return 'attachment'; if (command.startsWith('file.')) return 'file_ref'; if (command.startsWith('change.batch')) return 'file_change_batch'; if (command.startsWith('approval.')) return 'runtime_approval'; if (command.startsWith('user.input')) return 'runtime_user_input'; if (command.startsWith('proposal.')) return 'semantic_proposal'; if (command.startsWith('terminal.')) return 'terminal_session'; if (command.startsWith('bridge.transfer')) return 'bridge_transfer'; if (command.startsWith('bridge.')) return 'bridge_device'; if (command.startsWith('runner.profile')) return 'runner_profile'; if (command.startsWith('execution.')) return 'execution'; if (command.startsWith('asset.') || command.startsWith('evidence.')) return 'asset'; if (command.startsWith('parser.')) return 'parser_run'; if (command.startsWith('quality.')) return 'quality_review'; if (command.startsWith('outcome.')) return 'outcome_evaluation'; if (command.startsWith('delivery.')) return 'delivery'; if (command.startsWith('github.')) return 'github_repository'; if (command.startsWith('deployment.')) return 'deployment_candidate'; if (command.startsWith('backup.') || command.startsWith('restore.') || command.startsWith('system.reset')) return 'backup'; if (command.startsWith('import.')) return 'import_batch'; if (command.startsWith('cas.gc')) return 'cas_gc'; return 'resource'; }
 
 async function handleP4Route({ entry, params, url, req, res, requestId, runtime, actor, mcpBoundary, bodyReader }) {
@@ -456,7 +489,7 @@ async function handleP4Route({ entry, params, url, req, res, requestId, runtime,
   // domain job remains available through the project-scoped job endpoint.
   if (entry.long_running && operationId) {
     const operation = runtime.operations.get(operationId, { actorId: principal.actorId, projectId: params.project_id || data?.project_id || null });
-    data = operation;
+    data = publicOperationReceipt(operation);
     status = 202;
   }
   return sendSuccess(res, requestId, data, { status, resourceType: p4ResourceType(command), outputSchema: entry.output_schema, revision: revision ?? p4Revision(data), etag: etagFor(data, revision), policy: runtime.policy, preserveKeys: command === 'mcp.client.create' && !data.replayed ? ['token'] : [] });
@@ -464,7 +497,7 @@ async function handleP4Route({ entry, params, url, req, res, requestId, runtime,
 
 function p4DispatchArguments(command, params, url, body) {
   const args = { ...body, ...params };
-  for (const key of ['q', 'query', 'node_id', 'version_id', 'project_id', 'status']) {
+  for (const key of ['query', 'node_id', 'version_id', 'project_id', 'status']) {
     const value = queryValue(url, key);
     if (value != null && args[key] == null) args[key] = value;
   }
@@ -475,9 +508,8 @@ function p4DispatchArguments(command, params, url, body) {
     const format = queryValue(url, 'format');
     if (format != null) args.format = format;
   }
-  if (command === 'mcp.client.revoke') args.client_id = params.id;
-  if (command.startsWith('exchange.request.') && params.id) args.request_id = params.id;
-  if (command.startsWith('exchange.grant.') && params.id) args.grant_id = params.id;
+  // Resource identity is carried by the canonical path parameter names in
+  // the registry.  Generic `{id}` fallbacks are intentionally rejected.
   if (command === 'exchange.request.create') args.source_project_id ||= params.project_id;
   return args;
 }
@@ -641,19 +673,19 @@ function mcpPrincipal(auth, projectId) {
 async function handleGatewayForward({ entry, body, req, res, requestId, runtime }) {
   const destination = body && typeof body === 'object' ? body : {};
   assertCleanV2(entry.input_schema, destination);
-  const commandName = destination.name || destination.command || destination.tool || destination.command_id;
-  const args = destination.arguments && typeof destination.arguments === 'object' ? destination.arguments : (destination.args && typeof destination.args === 'object' ? destination.args : {});
+  const commandName = destination.command_id;
+  const args = destination.arguments;
   const token = destination.mcp_token || mcpTokenFromRequest(req);
   const dispatch = async (payload) => {
-    const name = payload.name || payload.command || payload.tool || payload.command_id;
-    const callArgs = payload.arguments && typeof payload.arguments === 'object' ? payload.arguments : (payload.args && typeof payload.args === 'object' ? payload.args : {});
+    const name = payload.command_id;
+    const callArgs = payload.arguments;
     const auth = runtime.mcp.authenticate(token, { projectId: callArgs.project_id || null, tool: name });
     const principal = { actorId: auth.actor_id, effectiveActorId: auth.actor_id, subjectActorId: auth.actor_id, scopes: ['*'], projectId: callArgs.project_id || null, mcpClientId: auth.client.id };
     return runtime.mcp.dispatch(name, callArgs, principal, { events: runtime.events, projectWorkflow: runtime.projectWorkflow, transport: 'gateway' });
   };
   // The signature covers the complete forwarding body, including the command
   // and arguments, but the token is only used in memory by the dispatcher.
-  const forwarded = { ...destination, ...(commandName ? { name: commandName } : {}), arguments: args };
+  const forwarded = { ...destination, command_id: commandName, arguments: args };
   const result = await runtime.gateway.forward({ headers: req.headers, method: req.method, path: new URL(req.url, 'http://v3-clean.local').pathname, body: destination, dispatch: () => dispatch(forwarded) });
   return sendSuccess(res, requestId, result, { resourceType: 'gateway_forward', outputSchema: entry.output_schema, policy: runtime.policy });
 }
@@ -695,8 +727,8 @@ function mcpErrorNumber(code) {
 
 function p4QueryFields(command) {
   const common = new Set();
-  if (command === 'context.source.list') return new Set(['q', 'query']);
-  if (command === 'context.search') return new Set(['q', 'query', 'limit']);
+  if (command === 'context.source.list') return new Set(['query']);
+  if (command === 'context.search') return new Set(['query', 'limit']);
   if (command === 'context.read' || command === 'context.node.get') return new Set(['node_id', 'version_id']);
   if (command === 'context.projection.events') return new Set(['cursor', 'limit', 'format']);
   if (command === 'mcp.client.list') return new Set(['project_id']);
@@ -830,7 +862,7 @@ async function handleP3Route({ entry, params, url, req, res, requestId, runtime,
   if (entry.long_running) {
     const operationId = data?.operation?.operation_id || data?.operation_id;
     if (!operationId) throw new HttpError('internal_error', 'long-running command did not return an operation', {}, 500, false);
-    data = runtime.operations.get(operationId, { actorId: actor.actorId });
+    data = publicOperationReceipt(runtime.operations.get(operationId, { actorId: actor.actorId }));
   }
   const revision = p3Revision(data);
   return sendSuccess(res, requestId, data, { status, resourceType: p3ResourceType(command), outputSchema: entry.output_schema, revision, etag: etagFor(data, revision), policy: runtime.policy });
@@ -973,6 +1005,7 @@ async function handleIdentityRoute({ entry, params, url, req, res, requestId, ru
     case 'profile.probe': data = await runtime.identity.probeProfile(params.id, body, actor); status = 202; break;
     default: throw new HttpError('not_found', 'route not found', {}, 404, false);
   }
+  if (entry.output_schema === 'operation.receipt.v2') data = publicOperationReceipt(data);
   revision = data?.revision || data?.account?.revision || data?.actor?.revision || data?.team?.revision || data?.membership?.revision || data?.session?.revision || data?.invitation?.revision || data?.entry?.revision || data?.credential?.revision || data?.profile?.revision || null;
   const operation = data?.operation || (data?.operation_id ? data : null);
   if (operation && status === 200 && entry.long_running) status = 202;
@@ -1003,7 +1036,7 @@ function identityFields(command) {
     'credential.rebind': ['proof'],
     'credential.rotate': ['proof'],
     'credential.revoke': ['reason'],
-    'profile.create': ['provider', 'label', 'credential_ref_id', 'credential_id', 'config'],
+    'profile.create': ['provider', 'label', 'credential_ref_id', 'config'],
     'profile.probe': []
   };
   const key = fields[command] || fields[command.replace(/\.(activate|suspend|revoke)$/, '.lifecycle')] || [];

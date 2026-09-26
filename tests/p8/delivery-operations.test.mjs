@@ -103,7 +103,7 @@ async function deliveryFixture(state, suffix) {
   const base = await prepare(state, suffix);
   const profile = await githubProfile(state, suffix);
   const connection = state.runtime.db.get('SELECT * FROM repository_connections WHERE project_id=?', [base.project.id]);
-  const metadata = { github_profile_id: profile.id, repository_full_name: 'fixture/delivery-target' };
+  const metadata = { provider_profile_id: profile.id, repository_full_name: 'fixture/delivery-target' };
   const metadataJson = canonicalJson(metadata);
   state.runtime.db.run("UPDATE repository_connections SET provider='git',credential_ref_id=?,source_locator='fixture/delivery-target',metadata_json=?,metadata_sha256=? WHERE id=?", [profile.credential_ref_id, metadataJson, sha256Hex(metadataJson), connection.id]);
   const target = state.runtime.db.get('SELECT * FROM repository_targets WHERE connection_id=?', [connection.id]);

@@ -6,6 +6,7 @@ import {
 import { ApiError, apiV2, formatBytes, formatTime, mutateV2, shortHash } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
 import { errorCodeLabel, kindLabel, statusLabel } from '../../i18n';
+import { waitForOperation } from '../../hooks/useOperationStatus';
 
 type AssetVersion = { id: string; asset_id: string; version_no: number; parser_run_id: string | null; source_sha256: string; content_sha256: string; metadata: Record<string, unknown>; metadata_sha256: string; created_at: string };
 type Asset = { id: string; project_id: string; execution_id: string | null; logical_name: string; asset_kind: string; source_type: string; source_ref: string; current_version_id: string; current_version: number; current: AssetVersion | null; status: string; revision: number; updated_at: string };
@@ -84,7 +85,7 @@ export function EvidencePage({ projectId, notify }: WorkspacePageProps) {
     if (!asset?.current_version_id || !formatKey) return; setBusy('parse');
     try {
       const response = await mutateV2<Operation>(`/api/v2/assets/${encodeURIComponent(asset.id)}/versions/${encodeURIComponent(asset.current_version_id)}/parse`, { format_key: formatKey }, 'POST', asset.revision);
-      const operation = await waitOperation(response.data);
+      const operation = await waitForParserOperation(response.data);
        if (operation.status !== 'succeeded') throw new Error(operation.error_code || 'Parser 运行失败');
       const run = await apiV2<{ parser_run: ParserRun }>(`/api/v2/parser-runs/${encodeURIComponent(operation.resource_id)}`);
        setParserRun(run.data.parser_run); await loadList(); notify('Parser 运行已完成');
@@ -95,7 +96,7 @@ export function EvidencePage({ projectId, notify }: WorkspacePageProps) {
     try {
       const response = await mutateV2<ParserRun | Operation>(`/api/v2/parser-runs/${encodeURIComponent(parserRun.id)}/${action}`, {}, 'POST', parserRun.revision);
       if (action === 'retry') {
-        const operation = await waitOperation(response.data as Operation);
+        const operation = await waitForParserOperation(response.data as Operation);
         const run = await apiV2<{ parser_run: ParserRun }>(`/api/v2/parser-runs/${encodeURIComponent(operation.resource_id)}`); setParserRun(run.data.parser_run);
       } else setParserRun((response.data as { parser_run?: ParserRun }).parser_run || parserRun);
        notify(`Parser ${action === 'cancel' ? '取消' : '重试'}已接受`);
@@ -141,7 +142,9 @@ async function loadPreview(asset: Asset, versionId: string, setPreview: (value: 
   if (bytes.byteLength <= 240_000 && (mediaType.startsWith('text/') || ['application/json', 'application/xml', 'image/svg+xml'].includes(mediaType))) setPreview({ kind: 'text', value: new TextDecoder().decode(bytes), mediaType });
   else setPreview({ kind: 'restricted', value: `${formatBytes(bytes.byteLength)} 二进制内容`, mediaType });
 }
-async function waitOperation(initial: Operation) { let value = initial; for (let attempt = 0; attempt < 200 && ['accepted', 'queued', 'running', 'paused'].includes(value.status); attempt += 1) { await new Promise((resolve) => setTimeout(resolve, 25)); value = (await apiV2<Operation>(`/api/v2/operations/${encodeURIComponent(value.operation_id)}`)).data; } return value; }
+async function waitForParserOperation(initial: Operation) {
+  return waitForOperation(initial, async (operationId, signal) => (await apiV2<Operation>(`/api/v2/operations/${encodeURIComponent(operationId)}`, { signal })).data, { intervalMs: 25 });
+}
 function bytesToBase64(bytes: Uint8Array) { let binary = ''; for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000)); return btoa(binary); }
 function Status({ value }: { value: string }) { const tone = ['active', 'parsed', 'valid', 'succeeded'].includes(value) ? 'positive' : ['queued', 'running'].includes(value) ? 'working' : ['failed', 'invalid', 'resource_exceeded', 'tombstoned', 'cancelled'].includes(value) ? 'negative' : 'neutral'; return <span className={`status ${tone}`}><span />{statusLabel(value)}</span>; }
 function report(error: unknown, setFault: (value: string) => void, notify: WorkspacePageProps['notify']) { const code = error instanceof ApiError ? error.code : error instanceof Error ? error.message : 'evidence_request_failed'; setFault(code); notify(error instanceof Error ? error.message : '证据请求失败', 'error'); }

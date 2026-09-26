@@ -664,14 +664,23 @@ export class CleanP10Service {
     if (!this.github?.reconcileRepositoryDeletion) throw new PlatformError('repository_adapter_unavailable', 'remote repository reconciliation adapter is unavailable', {}, 503);
     const target = this.repositoryTargetRow(intent.repository_target_id, principal, 'approve');
     const profile = this.githubProfile(target, principal);
-    return this.withGithubLease(profile, (auth) => this.github.reconcileRepositoryDeletion(auth, { repository: intent.target_full_name, branch: target.branch }));
+    // A 404 can mean either a repository deleted after an ambiguous request
+    // or an App installation that never had access.  Only an operation that
+    // actually returned `external_result_unknown` has proven prior App
+    // visibility; failed preflight/permission requests remain unresolved.
+    return this.withGithubLease(profile, (auth) => this.github.reconcileRepositoryDeletion(auth, {
+      repository: intent.target_full_name,
+      repositoryId: intent.external_repository_id || null,
+      branch: target.branch,
+      expectedPreviouslyBound: intent.error_code === 'external_result_unknown'
+    }));
   }
 
   githubProfile(target, principal) {
     const metadata = parseJson(target.connection_metadata_json, {});
-    const profileId = metadata.github_profile_id || metadata.provider_profile_id || metadata.profile_id;
-    let profile = profileId ? this.db.get("SELECT * FROM provider_profiles WHERE id=? AND provider='github'", [String(profileId)]) : null;
-    if (!profile && target.credential_ref_id) profile = this.db.get("SELECT * FROM provider_profiles WHERE credential_ref_id=? AND provider='github' ORDER BY updated_at DESC,id LIMIT 1", [target.credential_ref_id]);
+    const profileId = String(metadata.provider_profile_id || '').trim();
+    if (!profileId) throw new PlatformError('provider_profile_required', 'repository deletion requires provider_profile_id', {}, 422);
+    const profile = this.db.get("SELECT * FROM provider_profiles WHERE id=? AND provider='github'", [profileId]);
     if (!profile || profile.owner_actor_id !== principal.actorId || profile.status !== 'available' || profile.lifecycle_status === 'disabled') throw new PlatformError('github_profile_required', 'an enabled GitHub profile is required', {}, 409);
     return profile;
   }

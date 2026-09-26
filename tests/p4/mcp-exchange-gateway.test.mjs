@@ -92,7 +92,7 @@ test('Gateway verifies canonical signatures, blocks replay and stores only hashe
   const state = await open();
   try {
     const current = await project(state, 'gateway');
-    const body = { name: 'context_map', arguments: { project_id: current.id } };
+    const body = { command_id: 'context_map', arguments: { project_id: current.id } };
     const timestamp = String(Math.floor(Date.now() / 1000));
     const nonce = 'p4-gateway-nonce-first';
     const headers = {

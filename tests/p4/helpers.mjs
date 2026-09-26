@@ -31,7 +31,7 @@ export async function open(overrides = {}) {
 }
 
 export async function project(state, suffix = 'fixture') {
-  return state.runtime.project.createProject({ name: `P4 ${suffix}`, idempotency_key: `p4-${suffix}-project-key` }, state.principal);
+  return state.runtime.projectWorkflow.createProject({ name: `P4 ${suffix}`, idempotency_key: `p4-${suffix}-project-key` }, state.principal);
 }
 
 export async function listen(runtime) {

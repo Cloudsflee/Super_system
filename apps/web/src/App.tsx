@@ -20,7 +20,7 @@ import { OperationsPage } from './features/operations';
 import { OutcomePage } from './features/outcome';
 import { ProjectOnboardingPage, ProjectWorkflowPage } from './features/project';
 import {
-  CleanSetupPage, SystemOnboarding, hasSystemOnboardingCompletion,
+  SystemOnboarding, hasSystemOnboardingCompletion,
   type OnboardingAccount, type OnboardingCredential, type OnboardingProfile,
   type SetupState, type SystemOnboardingSnapshot
 } from './features/setup';
@@ -48,14 +48,13 @@ const PRIMARY_NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentTy
 ];
 
 const PAGE_LABELS: Record<WorkspaceRoute, string> = {
-  setup: '系统配置', identity: '身份', projects: '项目', onboarding: '项目引导', brief: 'Brief', repository: '代码仓库', workflow: '工作区', context: '上下文',
+  identity: '身份', projects: '项目', onboarding: '项目引导', brief: 'Brief', repository: '代码仓库', workflow: '工作区', context: '上下文',
   assist: 'Assist', execution: '执行', evidence: '资产', outcome: '结果', delivery: '交付', operations: '审计', files: '文件',
   terminals: '终端', approvals: '审批', connections: '连接', exchange: '交换', gateway: '网关', runner: '执行器', parser: '解析器',
-  deployment: '部署', backup: '备份与恢复', importer: '导入器', settings: '设置', governance: '项目控制'
+  settings: '设置', governance: '项目控制'
 };
 
 const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
-  setup: CleanSetupPage,
   identity: IdentityAccessPage,
   projects: (props) => <ProjectWorkflowPage {...props} initialSection="overview" />,
   onboarding: ProjectOnboardingPage,
@@ -77,9 +76,6 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
   gateway: McpSettingsPage,
   runner: ConnectionsPage,
   parser: EvidencePage,
-  deployment: OperationsPage,
-  backup: OperationsPage,
-  importer: OperationsPage,
   settings: SettingsPage,
   governance: FinalBusinessParityPage
 };
@@ -92,12 +88,11 @@ export function routeFromPath(pathname: string): WorkspaceRoute {
   const clean = String(pathname || '').split(/[?#]/, 1)[0].replace(/^\/+|\/+$/g, '');
   const projectTail = clean.match(/^projects\/[^/]+\/(.+)$/)?.[1] || '';
   const projectView = projectTail ? projectTail.split('/', 1)[0] : '';
-  const aliases: Record<string, WorkspaceRoute> = {
-    assets: 'evidence', asset: 'evidence', audit: 'operations', workstream: 'workflow', workstreams: 'workflow',
-    node: 'workflow', nodes: 'workflow', repository: 'repository', terminal: 'terminals', approval: 'approvals',
-    github: 'settings', 'github/install': 'settings', 'github/callback': 'settings', 'integrations/github/install/setup': 'settings', 'integrations/github/install/callback': 'settings'
-  };
-  const route = (aliases[projectView] || aliases[clean] || aliases[clean.split('/', 1)[0]] || projectView || clean) as WorkspaceRoute;
+  // Clean Web has one canonical route for each owner. Historical aliases are
+  // retired; Operations aliases have one explicit canonical fallback while
+  // unrelated aliases return to the project landing page.
+  const retiredFallbacks: Record<string, WorkspaceRoute> = { setup: 'projects', deployment: 'operations', backup: 'operations', importer: 'operations' };
+  const route = (projectView || retiredFallbacks[clean] || clean) as WorkspaceRoute;
   return ROUTES.has(route) ? route : 'projects';
 }
 
@@ -105,7 +100,7 @@ function navIsActive(nav: WorkspaceRoute, page: WorkspaceRoute) {
   if (nav === 'projects') return ['projects', 'onboarding', 'brief', 'repository'].includes(page);
   if (nav === 'workflow') return ['workflow', 'assist', 'execution', 'outcome', 'delivery'].includes(page);
   if (nav === 'evidence') return ['evidence', 'files', 'parser'].includes(page);
-  if (nav === 'operations') return ['operations', 'deployment', 'backup', 'importer'].includes(page);
+  if (nav === 'operations') return page === 'operations';
   if (nav === 'settings') return SETTINGS_ROUTES.has(page);
   return nav === page;
 }
@@ -315,7 +310,7 @@ function WorkspaceLayout() {
   }, [closeNavigation, projects, routerNavigate]);
 
   const navigate = useCallback((next: WorkspaceRoute) => {
-    if (!setupReady && next !== 'setup') { setNotice({ tone: 'error', text: '请先完成系统配置' }); closeNavigation(); return; }
+    if (!setupReady) { setNotice({ tone: 'error', text: '请先完成系统配置' }); closeNavigation(); return; }
     if (PROJECT_ROUTES.has(next)) {
       if (!projectId) { routerNavigate('/projects'); setNotice({ tone: 'error', text: '请先创建项目' }); closeNavigation(); return; }
       navigateProject(projectId, next);

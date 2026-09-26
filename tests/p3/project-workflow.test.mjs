@@ -60,11 +60,11 @@ async function waitForOperation(runtime, operationId, actorId, timeout = 2_000) 
 
 async function prepareWorkflow(state, suffix = 'flow') {
   const { runtime, principal } = state;
-  const project = await runtime.project.createProject(
+  const project = await runtime.projectWorkflow.createProject(
     { name: `P3 ${suffix}`, idempotency_key: `p3-${suffix}-project-key` },
     principal
   );
-  const intake = await runtime.project.submitIntake(
+  const intake = await runtime.projectWorkflow.submitIntake(
     project.id,
     {
       mode: 'brainstorm',
@@ -75,17 +75,17 @@ async function prepareWorkflow(state, suffix = 'flow') {
     principal
   );
   await waitForOperation(runtime, intake.operation.operation_id, principal.actorId);
-  await runtime.project.createBrief(
+  await runtime.projectWorkflow.createBrief(
     project.id,
     { objective: 'exercise', acceptance: ['head'], expected_revision: 1, idempotency_key: `p3-${suffix}-brief-key` },
     principal
   );
-  await runtime.project.confirmBrief(
+  await runtime.projectWorkflow.confirmBrief(
     project.id,
     { brief_revision: 1, expected_revision: 2, idempotency_key: `p3-${suffix}-confirm-key` },
     principal
   );
-  const connection = await runtime.project.createRepositoryConnection(
+  const connection = await runtime.projectWorkflow.createRepositoryConnection(
     project.id,
     {
       provider: 'fixture',
@@ -95,8 +95,8 @@ async function prepareWorkflow(state, suffix = 'flow') {
     },
     principal
   );
-  const line = runtime.project.listRepositoryLines(project.id, principal)[0];
-  await runtime.project.reconcileRepositoryLine(
+  const line = runtime.projectWorkflow.listRepositoryLines(project.id, principal)[0];
+  await runtime.projectWorkflow.reconcileRepositoryLine(
     line.id,
     {
       source_revision: 'fixture-r1',
@@ -106,22 +106,22 @@ async function prepareWorkflow(state, suffix = 'flow') {
     },
     principal
   );
-  const workspace = await runtime.project.createRepositoryWorkspace(
+  const workspace = await runtime.projectWorkflow.createRepositoryWorkspace(
     project.id,
     { line_id: line.id, expected_revision: 0, idempotency_key: `p3-${suffix}-workspace-key` },
     principal
   );
-  await runtime.project.lockRepositoryWorkspace(
+  await runtime.projectWorkflow.lockRepositoryWorkspace(
     workspace.workspace.id,
     { expected_revision: 1, idempotency_key: `p3-${suffix}-lock-key` },
     principal
   );
-  await runtime.project.releaseRepositoryWorkspace(
+  await runtime.projectWorkflow.releaseRepositoryWorkspace(
     workspace.workspace.id,
     { expected_revision: 2, idempotency_key: `p3-${suffix}-release-key` },
     principal
   );
-  const workflow = await runtime.project.reviseWorkflow(
+  const workflow = await runtime.projectWorkflow.reviseWorkflow(
     project.id,
     {
       graph: {
@@ -145,7 +145,7 @@ test('P3 complete project workflow keeps every aggregate head and audit aligned'
     const prepared = await prepareWorkflow(state, 'complete');
     const projectId = prepared.project.id;
     const projectRow = runtime.db.get('SELECT revision FROM projects WHERE id=?', [projectId]);
-    const generation = await runtime.project.startGeneration(
+    const generation = await runtime.projectWorkflow.startGeneration(
       projectId,
       {
         mode: 'initial',
@@ -156,9 +156,9 @@ test('P3 complete project workflow keeps every aggregate head and audit aligned'
       principal
     );
     await waitForOperation(runtime, generation.operation.operation_id, principal.actorId);
-    const pending = runtime.project.listGenerations(projectId, principal)[0];
+    const pending = runtime.projectWorkflow.listGenerations(projectId, principal)[0];
     assert.equal(pending.phase, 'critic_pending');
-    const evaluated = await runtime.project.evaluateCritic(
+    const evaluated = await runtime.projectWorkflow.evaluateCritic(
       pending.id,
       { status: 'passed', issues: [], expected_revision: pending.revision, idempotency_key: 'p3-complete-critic-key' },
       principal
@@ -167,13 +167,13 @@ test('P3 complete project workflow keeps every aggregate head and audit aligned'
       evaluated.generation.revision,
       runtime.db.get('SELECT revision FROM workflow_generations WHERE id=?', [pending.id]).revision
     );
-    const applied = await runtime.project.applyProposal(
+    const applied = await runtime.projectWorkflow.applyProposal(
       evaluated.proposal.id,
       { expected_revision: prepared.workflow.workflow.revision, idempotency_key: 'p3-complete-apply-key' },
       principal
     );
     assert.equal(applied.proposal.status, 'applied');
-    await runtime.project.createOutcomeRequirement(
+    await runtime.projectWorkflow.createOutcomeRequirement(
       projectId,
       { requirement_key: 'verification', rubric: { minimum: 1 }, idempotency_key: 'p3-complete-outcome-key' },
       principal
@@ -237,24 +237,24 @@ test('P3 stale proposal is committed before conflict and retry paths honor suppl
     const prepared = await prepareWorkflow(state, 'stale');
     const projectId = prepared.project.id;
     const projectRevision = runtime.db.get('SELECT revision FROM projects WHERE id=?', [projectId]).revision;
-    const started = await runtime.project.startGeneration(
+    const started = await runtime.projectWorkflow.startGeneration(
       projectId,
       { mode: 'initial', expected_revision: projectRevision, idempotency_key: 'p3-stale-generation-key' },
       principal
     );
     await waitForOperation(runtime, started.operation.operation_id, principal.actorId);
-    const pending = runtime.project.listGenerations(projectId, principal)[0];
-    const rejected = await runtime.project.evaluateCritic(
+    const pending = runtime.projectWorkflow.listGenerations(projectId, principal)[0];
+    const rejected = await runtime.projectWorkflow.evaluateCritic(
       pending.id,
       { status: 'rejected', issues: [{ code: 'fixture_reject' }], expected_revision: pending.revision, idempotency_key: 'p3-stale-critic-key' },
       principal
     );
     assert.throws(
-      () => runtime.project.retryGeneration(pending.id, { expected_revision: pending.revision - 1, idempotency_key: 'p3-stale-retry-old-key' }, principal),
+      () => runtime.projectWorkflow.retryGeneration(pending.id, { expected_revision: pending.revision - 1, idempotency_key: 'p3-stale-retry-old-key' }, principal),
       (error) => error.code === 'revision_conflict'
     );
     const rejectedRevision = runtime.db.get('SELECT revision FROM workflow_generations WHERE id=?', [pending.id]).revision;
-    const retried = await runtime.project.retryGeneration(
+    const retried = await runtime.projectWorkflow.retryGeneration(
       pending.id,
       { expected_revision: rejectedRevision, idempotency_key: 'p3-stale-retry-good-key' },
       principal
@@ -264,27 +264,27 @@ test('P3 stale proposal is committed before conflict and retry paths honor suppl
     const staleState = await prepareWorkflow(state, 'stale-proposal');
     const staleProjectId = staleState.project.id;
     const staleProjectRevision = runtime.db.get('SELECT revision FROM projects WHERE id=?', [staleProjectId]).revision;
-    const staleGeneration = await runtime.project.startGeneration(
+    const staleGeneration = await runtime.projectWorkflow.startGeneration(
       staleProjectId,
       { mode: 'initial', expected_revision: staleProjectRevision, idempotency_key: 'p3-stale-proposal-generation-key' },
       principal
     );
     await waitForOperation(runtime, staleGeneration.operation.operation_id, principal.actorId);
-    const stalePending = runtime.project.listGenerations(staleProjectId, principal)[0];
-    const proposalReceipt = await runtime.project.evaluateCritic(
+    const stalePending = runtime.projectWorkflow.listGenerations(staleProjectId, principal)[0];
+    const proposalReceipt = await runtime.projectWorkflow.evaluateCritic(
       stalePending.id,
       { status: 'passed', issues: [], expected_revision: stalePending.revision, idempotency_key: 'p3-stale-proposal-critic-key' },
       principal
     );
     const beforeWorkflowRevision = runtime.db.get('SELECT revision FROM workflows WHERE project_id=?', [staleProjectId]).revision;
     const currentProjectRevision = runtime.db.get('SELECT revision FROM projects WHERE id=?', [staleProjectId]).revision;
-    await runtime.project.reviseWorkflow(
+    await runtime.projectWorkflow.reviseWorkflow(
       staleProjectId,
       { graph: { nodes: [{ id: 'new', title: 'New' }] }, expected_revision: beforeWorkflowRevision, idempotency_key: 'p3-stale-proposal-revise-key' },
       principal
     );
     await assert.rejects(
-      () => runtime.project.applyProposal(
+      () => runtime.projectWorkflow.applyProposal(
         proposalReceipt.proposal.id,
         { expected_revision: beforeWorkflowRevision + 1, idempotency_key: 'p3-stale-proposal-apply-key' },
         principal
@@ -320,14 +320,14 @@ test('P3 domain cancellation propagates to a delayed generator operation', async
     const { runtime, principal } = state;
     const prepared = await prepareWorkflow(state, 'cancel');
     const projectId = prepared.project.id;
-    const generation = await runtime.project.startGeneration(
+    const generation = await runtime.projectWorkflow.startGeneration(
       projectId,
       { mode: 'initial', expected_revision: runtime.db.get('SELECT revision FROM projects WHERE id=?', [projectId]).revision, idempotency_key: 'p3-cancel-generation-key' },
       principal
     );
     await enteredPromise;
-    const current = runtime.project.listGenerations(projectId, principal)[0];
-    const cancelled = await runtime.project.cancelGeneration(
+    const current = runtime.projectWorkflow.listGenerations(projectId, principal)[0];
+    const cancelled = await runtime.projectWorkflow.cancelGeneration(
       current.id,
       { expected_revision: current.revision, idempotency_key: 'p3-cancel-domain-key' },
       principal
@@ -347,20 +347,20 @@ test('P3 project archive and restore replay exactly one mutation per idempotency
   const state = await open();
   try {
     const { runtime, principal } = state;
-    const project = await runtime.project.createProject(
+    const project = await runtime.projectWorkflow.createProject(
       { name: 'Lifecycle project', idempotency_key: 'p3-project-lifecycle-create-key' },
       principal
     );
     const archiveInput = { expected_revision: 1, idempotency_key: 'p3-project-archive-key' };
-    const archived = await runtime.project.archiveProject(project.id, archiveInput, principal);
-    const archiveReplay = await runtime.project.archiveProject(project.id, archiveInput, principal);
+    const archived = await runtime.projectWorkflow.archiveProject(project.id, archiveInput, principal);
+    const archiveReplay = await runtime.projectWorkflow.archiveProject(project.id, archiveInput, principal);
     assert.equal(archived.project.status, 'archived');
     assert.equal(archiveReplay.replayed, true);
     assert.equal(archiveReplay.operation.operation_id, archived.operation.operation_id);
 
     const restoreInput = { expected_revision: 2, idempotency_key: 'p3-project-restore-key' };
-    const restored = await runtime.project.restoreProject(project.id, restoreInput, principal);
-    const restoreReplay = await runtime.project.restoreProject(project.id, restoreInput, principal);
+    const restored = await runtime.projectWorkflow.restoreProject(project.id, restoreInput, principal);
+    const restoreReplay = await runtime.projectWorkflow.restoreProject(project.id, restoreInput, principal);
     assert.equal(restored.project.status, 'active');
     assert.equal(restored.project.revision, 3);
     assert.equal(restoreReplay.replayed, true);
@@ -391,11 +391,11 @@ test('P3 intake drift is retryable with CAS and cancellation reaches the operati
   });
   try {
     const { runtime, principal } = state;
-    const project = await runtime.project.createProject(
+    const project = await runtime.projectWorkflow.createProject(
       { name: 'Drift project', idempotency_key: 'p3-intake-drift-project-key' },
       principal
     );
-    const submitted = await runtime.project.submitIntake(
+    const submitted = await runtime.projectWorkflow.submitIntake(
       project.id,
       {
         mode: 'existing',
@@ -407,21 +407,21 @@ test('P3 intake drift is retryable with CAS and cancellation reaches the operati
     );
     const failedOperation = await waitForOperation(runtime, submitted.operation.operation_id, principal.actorId);
     assert.equal(failedOperation.status, 'failed');
-    const failed = runtime.project.getIntake(project.id, principal);
+    const failed = runtime.projectWorkflow.getIntake(project.id, principal);
     assert.equal(failed.status, 'failed');
     assert.equal(failed.error_code, 'source_drift');
     assert.throws(
-      () => runtime.project.retryIntake(project.id, { expected_revision: failed.revision - 1, idempotency_key: 'p3-intake-drift-stale-key' }, principal),
+      () => runtime.projectWorkflow.retryIntake(project.id, { expected_revision: failed.revision - 1, idempotency_key: 'p3-intake-drift-stale-key' }, principal),
       (error) => error.code === 'revision_conflict'
     );
-    const retried = await runtime.project.retryIntake(
+    const retried = await runtime.projectWorkflow.retryIntake(
       project.id,
       { expected_revision: failed.revision, idempotency_key: 'p3-intake-drift-retry-key' },
       principal
     );
     const succeeded = await waitForOperation(runtime, retried.operation.operation_id, principal.actorId);
     assert.equal(succeeded.status, 'succeeded');
-    assert.equal(runtime.project.getIntake(project.id, principal).status, 'ready');
+    assert.equal(runtime.projectWorkflow.getIntake(project.id, principal).status, 'ready');
     assert.equal(
       runtime.db.get('SELECT command_id FROM operations WHERE id=?', [retried.operation.operation_id]).command_id,
       'intake.retry'
@@ -437,18 +437,18 @@ test('P3 intake drift is retryable with CAS and cancellation reaches the operati
   const cancelState = await open({ repositoryAdapter: { probe: async () => { entered(); await releasePromise; return expectedSource; } } });
   try {
     const { runtime, principal } = cancelState;
-    const project = await runtime.project.createProject(
+    const project = await runtime.projectWorkflow.createProject(
       { name: 'Cancel intake project', idempotency_key: 'p3-intake-cancel-project-key' },
       principal
     );
-    const submitted = await runtime.project.submitIntake(
+    const submitted = await runtime.projectWorkflow.submitIntake(
       project.id,
       { mode: 'brainstorm', expected_revision: 1, idempotency_key: 'p3-intake-cancel-submit-key' },
       principal
     );
     await enteredPromise;
-    const current = runtime.project.getIntake(project.id, principal);
-    const cancelled = await runtime.project.cancelIntake(
+    const current = runtime.projectWorkflow.getIntake(project.id, principal);
+    const cancelled = await runtime.projectWorkflow.cancelIntake(
       project.id,
       { expected_revision: current.revision, idempotency_key: 'p3-intake-cancel-domain-key' },
       principal
@@ -457,7 +457,7 @@ test('P3 intake drift is retryable with CAS and cancellation reaches the operati
     release();
     const operation = await waitForOperation(runtime, submitted.operation.operation_id, principal.actorId);
     assert.equal(operation.status, 'cancelled');
-    assert.equal(runtime.project.getIntake(project.id, principal).status, 'cancelled');
+    assert.equal(runtime.projectWorkflow.getIntake(project.id, principal).status, 'cancelled');
   } finally {
     release();
     await close(cancelState);
@@ -468,11 +468,11 @@ test('P3 repository source, target, line recovery and repeated workspace leases 
   const state = await open();
   try {
     const { runtime, principal } = state;
-    const project = await runtime.project.createProject(
+    const project = await runtime.projectWorkflow.createProject(
       { name: 'Repository lifecycle', idempotency_key: 'p3-repository-project-key' },
       principal
     );
-    const connection = await runtime.project.createRepositoryConnection(
+    const connection = await runtime.projectWorkflow.createRepositoryConnection(
       project.id,
       {
         provider: 'fixture',
@@ -484,7 +484,7 @@ test('P3 repository source, target, line recovery and repeated workspace leases 
       },
       principal
     );
-    const updated = await runtime.project.updateRepositoryConnection(
+    const updated = await runtime.projectWorkflow.updateRepositoryConnection(
       connection.connection.id,
       {
         source_revision: 'source-r2',
@@ -495,14 +495,14 @@ test('P3 repository source, target, line recovery and repeated workspace leases 
       principal
     );
     assert.equal(updated.connection.revision, 2);
-    const target = await runtime.project.createRepositoryTarget(
+    const target = await runtime.projectWorkflow.createRepositoryTarget(
       connection.connection.id,
       { name: 'secondary', branch: 'staging', expected_revision: 2, idempotency_key: 'p3-repository-target-key' },
       principal
     );
     assert.equal(target.target.revision, 1);
     await assert.rejects(
-      () => runtime.project.createRepositoryTarget(
+      () => runtime.projectWorkflow.createRepositoryTarget(
         connection.connection.id,
         { name: 'stale', expected_revision: 2, idempotency_key: 'p3-repository-target-stale-key' },
         principal
@@ -514,15 +514,15 @@ test('P3 repository source, target, line recovery and repeated workspace leases 
       3
     );
 
-    const line = runtime.project.listRepositoryLines(project.id, principal)[0];
-    const drifted = await runtime.project.reconcileRepositoryLine(
+    const line = runtime.projectWorkflow.listRepositoryLines(project.id, principal)[0];
+    const drifted = await runtime.projectWorkflow.reconcileRepositoryLine(
       line.id,
       { source_revision: 'source-r2', source_hash: 'b'.repeat(64), expected_revision: 1, idempotency_key: 'p3-repository-line-drift-key' },
       principal
     );
     assert.equal(drifted.source_drift, true);
     assert.equal(drifted.line.status, 'faulted');
-    const recovered = await runtime.project.reconcileRepositoryLine(
+    const recovered = await runtime.projectWorkflow.reconcileRepositoryLine(
       line.id,
       { source_revision: 'source-r2', source_hash: 'b'.repeat(64), expected_revision: 2, idempotency_key: 'p3-repository-line-recover-key' },
       principal
@@ -530,41 +530,41 @@ test('P3 repository source, target, line recovery and repeated workspace leases 
     assert.equal(recovered.source_drift, false);
     assert.equal(recovered.line.status, 'ready');
 
-    const createdWorkspace = await runtime.project.createRepositoryWorkspace(
+    const createdWorkspace = await runtime.projectWorkflow.createRepositoryWorkspace(
       project.id,
       { line_id: line.id, expected_revision: 0, idempotency_key: 'p3-repository-workspace-key' },
       principal
     );
     const workspaceId = createdWorkspace.workspace.id;
-    const refreshed = await runtime.project.refreshRepositoryWorkspace(
+    const refreshed = await runtime.projectWorkflow.refreshRepositoryWorkspace(
       workspaceId,
       { expected_revision: 1, idempotency_key: 'p3-repository-refresh-key' },
       principal
     );
-    const firstLock = await runtime.project.lockRepositoryWorkspace(
+    const firstLock = await runtime.projectWorkflow.lockRepositoryWorkspace(
       workspaceId,
       { expected_revision: refreshed.workspace.revision, idempotency_key: 'p3-repository-first-lock-key' },
       principal
     );
     await assert.rejects(
-      () => runtime.project.refreshRepositoryWorkspace(
+      () => runtime.projectWorkflow.refreshRepositoryWorkspace(
         workspaceId,
         { expected_revision: firstLock.workspace.revision, idempotency_key: 'p3-repository-locked-refresh-key' },
         principal
       ),
       (error) => error.code === 'state_conflict'
     );
-    const firstRelease = await runtime.project.releaseRepositoryWorkspace(
+    const firstRelease = await runtime.projectWorkflow.releaseRepositoryWorkspace(
       workspaceId,
       { expected_revision: firstLock.workspace.revision, idempotency_key: 'p3-repository-first-release-key' },
       principal
     );
-    const secondLock = await runtime.project.lockRepositoryWorkspace(
+    const secondLock = await runtime.projectWorkflow.lockRepositoryWorkspace(
       workspaceId,
       { expected_revision: firstRelease.workspace.revision, idempotency_key: 'p3-repository-second-lock-key' },
       principal
     );
-    const secondRelease = await runtime.project.releaseRepositoryWorkspace(
+    const secondRelease = await runtime.projectWorkflow.releaseRepositoryWorkspace(
       workspaceId,
       { expected_revision: secondLock.workspace.revision, idempotency_key: 'p3-repository-second-release-key' },
       principal
@@ -595,7 +595,7 @@ test('P3 generator failures become retryable domain state with explicit lineage'
     const { runtime, principal } = state;
     const prepared = await prepareWorkflow(state, 'generation-failure');
     const projectRevision = runtime.db.get('SELECT revision FROM projects WHERE id=?', [prepared.project.id]).revision;
-    const started = await runtime.project.startGeneration(
+    const started = await runtime.projectWorkflow.startGeneration(
       prepared.project.id,
       { mode: 'initial', expected_revision: projectRevision, idempotency_key: 'p3-generation-failure-key' },
       principal
@@ -603,17 +603,17 @@ test('P3 generator failures become retryable domain state with explicit lineage'
     const failedOperation = await waitForOperation(runtime, started.operation.operation_id, principal.actorId);
     assert.equal(failedOperation.status, 'failed');
     await runtime.db.transactionTail;
-    const failed = runtime.project.getGeneration(started.generation.id, principal);
+    const failed = runtime.projectWorkflow.getGeneration(started.generation.id, principal);
     assert.equal(failed.phase, 'failed');
     assert.equal(failed.error_code, 'generation_fixture_failed');
-    const retried = await runtime.project.retryGeneration(
+    const retried = await runtime.projectWorkflow.retryGeneration(
       failed.id,
       { expected_revision: failed.revision, idempotency_key: 'p3-generation-retry-lineage-key' },
       principal
     );
     const succeeded = await waitForOperation(runtime, retried.operation.operation_id, principal.actorId);
     assert.equal(succeeded.status, 'succeeded');
-    const retryRow = runtime.project.getGeneration(retried.generation.id, principal);
+    const retryRow = runtime.projectWorkflow.getGeneration(retried.generation.id, principal);
     assert.equal(retryRow.phase, 'critic_pending');
     assert.equal(retryRow.attempt, 2);
     assert.equal(retryRow.retry_of_generation_id, failed.id);
@@ -645,7 +645,7 @@ test('P3 restart resumes a running generation only after recovery settles', asyn
     const state = { ...f, runtime: first, principal };
     const prepared = await prepareWorkflow(state, 'restart');
     const projectRevision = first.db.get('SELECT revision FROM projects WHERE id=?', [prepared.project.id]).revision;
-    const started = await first.project.startGeneration(
+    const started = await first.projectWorkflow.startGeneration(
       prepared.project.id,
       { mode: 'initial', expected_revision: projectRevision, idempotency_key: 'p3-restart-generation-key' },
       principal
@@ -662,7 +662,7 @@ test('P3 restart resumes a running generation only after recovery settles', asyn
     const recovered = await second.recovery;
     assert.equal(recovered[1], 1);
     const principalAfterRestart = second.identity.authenticateProof(setup.session.proof);
-    const generation = second.project.getGeneration(started.generation.id, principalAfterRestart);
+    const generation = second.projectWorkflow.getGeneration(started.generation.id, principalAfterRestart);
     assert.equal(generation.phase, 'critic_pending');
     assert.equal(second.operations.get(started.operation.operation_id, { actorId: principalAfterRestart.actorId }).status, 'succeeded');
     assert.equal(second.db.integrity().semantic.valid, true);

@@ -7,6 +7,17 @@ import { SessionService } from './session-service.mjs';
 import { TeamAccessService } from './team-access-service.mjs';
 import { CredentialProfileService } from './credential-profile-service.mjs';
 import { IDENTITY_OWNER_TABLES } from './identity-helpers.mjs';
+import {
+  appendAggregateInTransaction as appendAggregate,
+  createInlineOperation,
+  getIdempotency,
+  linkOperation,
+  saveIdempotency,
+  operationEnvelope as operationView,
+  assertRevision,
+  requirePrincipal,
+  requireIdempotency as requireKey
+} from './p5-domain-helpers.mjs';
 
 const ACTOR_KINDS = new Set(['user', 'service', 'agent']);
 const ACTOR_STATES = new Set(['active', 'suspended', 'revoked']);
@@ -765,7 +776,7 @@ class IdentityCoreService {
     const label = requiredName(input.label || `${provider} profile`);
     const config = input.config && typeof input.config === 'object' ? input.config : {};
     this.#assertSafe({ provider, label, config });
-    const credentialRef = input.credential_ref_id || input.credential_id || null;
+    const credentialRef = input.credential_ref_id || null;
     const credential = credentialRef ? this.db.get('SELECT id,status FROM credential_refs WHERE id=? AND owner_actor_id=?', [credentialRef, principal.actorId]) : null;
     if (credentialRef && !credential) throw notFound('credential');
     const key = requireKey(input.idempotency_key);
@@ -797,7 +808,7 @@ class IdentityCoreService {
     const label = input.label == null ? row.label : requiredName(input.label);
     const config = input.config == null ? parseCanonicalJson(row.config_json, {}) : input.config;
     if (!config || typeof config !== 'object' || Array.isArray(config)) throw new PlatformError('schema_invalid', 'profile config is invalid', {}, 422);
-    const credentialRef = input.credential_ref_id ?? input.credential_id ?? row.credential_ref_id ?? null;
+    const credentialRef = input.credential_ref_id ?? row.credential_ref_id ?? null;
     const credential = credentialRef ? this.db.get('SELECT id,status FROM credential_refs WHERE id=? AND owner_actor_id=?', [credentialRef, principal.actorId]) : null;
     if (credentialRef && !credential) throw notFound('credential');
     this.#assertSafe({ provider: row.provider, label, config });
@@ -1249,48 +1260,6 @@ export class IdentityService {
 
 export const IdentityDomainService = IdentityService;
 
-function appendAggregate(tx, events, { aggregateType, aggregateId, revision, operationId, actorId, projectId = null, type, data, payload, now }) {
-  if (!events || typeof events.appendAggregateInTransaction !== 'function') throw new TypeError('clean_event_service_required');
-  return events.appendAggregateInTransaction(tx, { aggregateType, aggregateId, revision, operationId: operationId || null, actorId, projectId, type, data, payload, now });
-}
-
-function createInlineOperation(tx, { events, actorId, commandId, resourceType, resourceId, projectId = null, requestHash, now }) {
-  const operations = events?.operations;
-  if (!operations || typeof operations.createInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
-  tx.__cleanOperations = operations;
-  return operations.createInTransaction(tx, {
-    actorId,
-    commandId,
-    kind: commandId,
-    resourceType,
-    resourceId,
-    projectId,
-    requestHash,
-    request: { resource_type: resourceType, resource_id: resourceId, project_id: projectId },
-    idempotencyKey: `inline-${opaqueId('key')}`,
-    status: 'succeeded'
-  }, now);
-}
-
-function linkOperation(tx, operationId, aggregateType, aggregateId, now) {
-  const operations = tx?.__cleanOperations;
-  if (!operations || typeof operations.linkInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
-  return operations.linkInTransaction(tx, operationId, [[aggregateType, aggregateId]], now);
-}
-
-function getIdempotency(tx, actorId, commandId, key, requestHash, now) {
-  const operations = tx?.__cleanOperations;
-  if (!operations || typeof operations.getIdempotencyInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
-  return operations.getIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey: key, requestHash, now });
-}
-
-function saveIdempotency(tx, actorId, commandId, key, requestHash, response, operationId, now) {
-  const operations = tx?.__cleanOperations;
-  if (!operations || typeof operations.saveIdempotencyInTransaction !== 'function') throw new TypeError('clean_operation_service_required');
-  return operations.saveIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey: key, requestHash, response, operationId, now });
-}
-
-function operationView(value) { return { operation_id: value.id, status: 'succeeded', revision: Number(value.revision || 1), resource_type: value.resourceType || null, resource_id: value.resourceId || null, audit_reference: value.audit_reference || null, terminal: true }; }
 function actorPayload(value) { return { id: value.id, kind: value.kind, display_name: value.display_name, status: value.status, revision: Number(value.revision) }; }
 function actorView(row) { return { id: row.id, kind: row.kind, display_name: row.display_name, status: row.status, metadata: parseCanonicalJson(row.metadata_json, {}), revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at }; }
 function teamView(row) { return row ? { id: row.id, name: row.name, status: row.status, metadata: parseCanonicalJson(row.metadata_json, {}), revision: Number(row.revision), created_at: row.created_at, updated_at: row.updated_at } : null; }
@@ -1308,7 +1277,6 @@ function sessionView(row, now = new Date().toISOString()) { return { id: row.id,
 function requiredName(value) { const text = String(value || '').trim(); if (!text || text.length > 160) throw new PlatformError('schema_invalid', 'name is required', {}, 422); return text; }
 function positiveRevision(value) { const number = Number(value); if (!Number.isInteger(number) || number < 1) throw new PlatformError('expected_revision_required', 'expected revision is required', {}, 400); return number; }
 function nonNegativeRevision(value) { const number = Number(value); if (!Number.isInteger(number) || number < 0) throw new PlatformError('expected_revision_required', 'expected revision is required', {}, 400); return number; }
-function requireKey(value) { const key = String(value || ''); if (!/^[A-Za-z0-9][A-Za-z0-9._~-]{7,127}$/.test(key)) throw new PlatformError('idempotency_required', 'Idempotency-Key is required', {}, 400); return key; }
 function hashRequest(value) { return sha256Hex(canonicalJson(value)); }
 function operationErrorCode(error, fallback) {
   const value = String(error?.code || '');
@@ -1318,7 +1286,6 @@ function expiry(now, seconds) { return new Date(Date.parse(now) + Number(seconds
 function revisionConflict(expected, actual) { return new PlatformError('revision_conflict', 'resource revision has changed', { expected_revision: Number(expected), actual_revision: Number(actual) }, 409); }
 function notFound(resource) { return new PlatformError('not_found', `${resource} not found`, {}, 404); }
 function forbidden(message) { return new PlatformError('permission_denied', message, {}, 403); }
-function requirePrincipal(principal) { if (!principal?.actorId) throw new PlatformError('authentication_required', 'active session proof is required', {}, 401); }
 function extractProof(request) {
   const cookie = String(request?.headers?.cookie || '').split(';').map((part) => part.trim()).find((part) => part.startsWith('aiws_session='));
   if (cookie) {

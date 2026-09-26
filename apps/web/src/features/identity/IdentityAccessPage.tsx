@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   Activity, AlertTriangle, Check, KeyRound, LoaderCircle, LockKeyhole, Plus, RefreshCw,
   RotateCw, Save, ShieldCheck, Users, UserRound, X, TimerReset, Ban
@@ -6,6 +6,7 @@ import {
 import { ApiError, apiV2, mutateV2 } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
 import { actionLabel, actorKindLabel, authTypeLabel, roleLabel, statusLabel } from '../../i18n';
+import { useOperationStatus } from '../../hooks/useOperationStatus';
 
 type Actor = { id: string; kind: 'system' | 'user' | 'service' | 'agent'; display_name: string; status: string; revision: number };
 type Team = { id: string; name: string; status: string; revision: number };
@@ -484,6 +485,7 @@ function ProviderRecoveryPanel({ notify }: { notify: (text: string, tone?: 'ok' 
   const [operationRevision, setOperationRevision] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState('');
+  const latestOperationRevision = useRef<number | null>(null);
   const discover = useCallback(async () => {
     setLoading(true); setFailure('');
     try { const result = await apiV2<{ sources?: DiscoverySource[] }>('/api/v2/provider-discovery/codex'); setSources(result.data.sources || []); }
@@ -491,19 +493,22 @@ function ProviderRecoveryPanel({ notify }: { notify: (text: string, tone?: 'ok' 
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void discover(); }, [discover]);
-  useEffect(() => {
-    if (!login || ['completed', 'failed', 'cancelled', 'expired', 'interrupted'].includes(login.status)) return undefined;
-    let active = true;
-    const poll = async () => {
-      try {
-        const result = await apiV2<{ login: LoginState; operation?: { revision: number } }>(`/api/v2/provider-auth/codex/device-logins/${encodeURIComponent(login.id)}`);
-        if (!active) return;
-        setLogin(result.data.login); if (result.data.operation) setOperationRevision(result.data.operation.revision);
-      } catch (error) { if (active) setFailure(error instanceof Error ? error.message : '设备登录状态不可用'); }
-    };
-    void poll(); const timer = setInterval(() => void poll(), 1000);
-    return () => { active = false; clearInterval(timer); };
-  }, [login?.id, login?.status]);
+  const fetchLoginStatus = useCallback(async (loginId: string, signal: AbortSignal) => {
+    const result = await apiV2<{ login: LoginState; operation?: { revision: number } }>(`/api/v2/provider-auth/codex/device-logins/${encodeURIComponent(loginId)}`, { signal });
+    latestOperationRevision.current = result.data.operation?.revision ?? null;
+    return result.data.login;
+  }, []);
+  useOperationStatus(login, {
+    enabled: Boolean(login && !['completed', 'failed', 'cancelled', 'expired', 'interrupted'].includes(login.status)),
+    operationId: login?.id,
+    intervalMs: 1000,
+    fetchStatus: fetchLoginStatus,
+    onUpdate: (next) => {
+      setLogin(next);
+      if (latestOperationRevision.current != null) setOperationRevision(latestOperationRevision.current);
+    },
+    onError: (error) => setFailure(error instanceof Error ? error.message : '设备登录状态不可用')
+  });
   const importRecord = async (source: DiscoverySource, record: DiscoveryRecord) => {
     if (!record.credential_available || record.auth_type === 'keyring_only') { await startLogin(); return; }
     setLoading(true); setFailure('');

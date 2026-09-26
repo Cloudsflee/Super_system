@@ -199,14 +199,14 @@ test('remote Workspace create/refresh publishes atomically, preserves failed byt
   const state = await openRuntime({ config: { providerMode: 'process' }, githubAdapter: transport });
   try {
     const { runtime, principal } = state;
-    const project = await runtime.project.createProject({ name: 'Remote workspace lifecycle', idempotency_key: 'remote-project-key' }, principal);
+    const project = await runtime.projectWorkflow.createProject({ name: 'Remote workspace lifecycle', idempotency_key: 'remote-project-key' }, principal);
     const credential = await runtime.identity.createCredential({ provider: 'github', external_ref: 'remote-profile-credential', idempotency_key: 'remote-credential-key' }, principal);
     const proof = JSON.stringify({ app_id: '1', installation_id: '1', private_key: 'PRIVATE_KEY' });
     await runtime.identity.rebindCredential(credential.credential.id, { proof, expected_revision: credential.credential.revision, idempotency_key: 'remote-credential-bind' }, principal);
     const profile = await runtime.identity.createProfile({ provider: 'github', label: 'Remote App', credential_ref_id: credential.credential.id, config: { app_id: '1', installation_id: '1' }, idempotency_key: 'remote-profile-key' }, principal);
     runtime.db.run("UPDATE provider_profiles SET status='available' WHERE id=?", [profile.profile.id]);
 
-    const connection = await runtime.project.createRepositoryConnection(project.id, {
+    const connection = await runtime.projectWorkflow.createRepositoryConnection(project.id, {
       provider: 'git', source_kind: 'git', source_locator: 'ORG/REPO', full_name: 'ORG/REPO', repository_id: 42,
       branch: 'main', provider_profile_id: profile.profile.id, idempotency_key: 'remote-connection-key'
     }, principal);
@@ -220,15 +220,15 @@ test('remote Workspace create/refresh publishes atomically, preserves failed byt
     assert.equal(Object.keys(metadata).some((key) => /token|private|secret|credential_bundle/i.test(key)), false);
     assert.equal(transport.inspectCalls, 1);
 
-    const replayedConnection = await runtime.project.createRepositoryConnection(project.id, {
+    const replayedConnection = await runtime.projectWorkflow.createRepositoryConnection(project.id, {
       provider: 'git', source_kind: 'git', source_locator: 'ORG/REPO', full_name: 'ORG/REPO', repository_id: 42,
       branch: 'main', provider_profile_id: profile.profile.id, idempotency_key: 'remote-connection-key'
     }, principal);
     assert.equal(replayedConnection.replayed, true);
     assert.equal(transport.inspectCalls, 1);
 
-    const line = runtime.project.listRepositoryLines(project.id, principal)[0];
-    const created = await runtime.project.createRepositoryWorkspace(project.id, { line_id: line.id, relative_path: 'projects/remote-workspace', expected_revision: 0, idempotency_key: 'remote-workspace-key' }, principal);
+    const line = runtime.projectWorkflow.listRepositoryLines(project.id, principal)[0];
+    const created = await runtime.projectWorkflow.createRepositoryWorkspace(project.id, { line_id: line.id, relative_path: 'projects/remote-workspace', expected_revision: 0, idempotency_key: 'remote-workspace-key' }, principal);
     assert.equal(created.workspace.status, 'ready');
     assert.equal(created.workspace.revision, 3);
     const workspaceDirectory = path.join(runtime.config.workspaceRoot, created.workspace.relative_path);
@@ -238,29 +238,29 @@ test('remote Workspace create/refresh publishes atomically, preserves failed byt
 
     fs.writeFileSync(path.join(workspaceDirectory, 'README.md'), 'old-successful-copy\n');
     transport.failMaterialize = true;
-    await assert.rejects(() => runtime.project.refreshRepositoryWorkspace(created.workspace.id, { expected_revision: 3, idempotency_key: 'remote-refresh-failing' }, principal), (error) => error?.code === 'repository_materialization_failed');
+    await assert.rejects(() => runtime.projectWorkflow.refreshRepositoryWorkspace(created.workspace.id, { expected_revision: 3, idempotency_key: 'remote-refresh-failing' }, principal), (error) => error?.code === 'repository_materialization_failed');
     assert.equal(fs.readFileSync(path.join(workspaceDirectory, 'README.md'), 'utf8'), 'old-successful-copy\n');
     const failedOperation = runtime.db.get("SELECT * FROM operations WHERE command_id='repository.workspace.refresh' AND resource_id=? ORDER BY created_at DESC,id DESC LIMIT 1", [created.workspace.id]);
     assert.equal(failedOperation.status, 'failed');
     assert.equal(runtime.db.get('SELECT revision,status FROM repository_workspaces WHERE id=?', [created.workspace.id]).revision, 3);
 
     transport.failMaterialize = false;
-    const refreshed = await runtime.project.refreshRepositoryWorkspace(created.workspace.id, { expected_revision: 3, idempotency_key: 'remote-refresh-retry' }, principal);
+    const refreshed = await runtime.projectWorkflow.refreshRepositoryWorkspace(created.workspace.id, { expected_revision: 3, idempotency_key: 'remote-refresh-retry' }, principal);
     assert.equal(refreshed.workspace.status, 'ready');
     assert.equal(refreshed.workspace.revision, 4);
     assert.equal(runtime.db.get('SELECT relation FROM operation_links WHERE operation_id=? AND aggregate_id=? AND relation=\'retry_of\'', [refreshed.operation.operation_id, failedOperation.id]).relation, 'retry_of');
 
-    const locked = await runtime.project.lockRepositoryWorkspace(created.workspace.id, { expected_revision: 4, idempotency_key: 'remote-lock-key' }, principal);
-    await assert.rejects(() => runtime.project.refreshRepositoryWorkspace(created.workspace.id, { expected_revision: locked.workspace.revision, idempotency_key: 'remote-locked-refresh' }, principal), (error) => error?.code === 'state_conflict');
+    const locked = await runtime.projectWorkflow.lockRepositoryWorkspace(created.workspace.id, { expected_revision: 4, idempotency_key: 'remote-lock-key' }, principal);
+    await assert.rejects(() => runtime.projectWorkflow.refreshRepositoryWorkspace(created.workspace.id, { expected_revision: locked.workspace.revision, idempotency_key: 'remote-locked-refresh' }, principal), (error) => error?.code === 'state_conflict');
 
-    const failedProject = await runtime.project.createProject({ name: 'Remote workspace failed create', idempotency_key: 'remote-failed-project-key' }, principal);
-    const failedConnection = await runtime.project.createRepositoryConnection(failedProject.id, {
+    const failedProject = await runtime.projectWorkflow.createProject({ name: 'Remote workspace failed create', idempotency_key: 'remote-failed-project-key' }, principal);
+    const failedConnection = await runtime.projectWorkflow.createRepositoryConnection(failedProject.id, {
       provider: 'git', source_kind: 'git', source_locator: 'ORG/REPO', full_name: 'ORG/REPO', repository_id: 42,
       branch: 'main', provider_profile_id: profile.profile.id, idempotency_key: 'remote-failed-connection-key'
     }, principal);
-    const failedLine = runtime.project.listRepositoryLines(failedProject.id, principal)[0];
+    const failedLine = runtime.projectWorkflow.listRepositoryLines(failedProject.id, principal)[0];
     transport.failMaterialize = true;
-    await assert.rejects(() => runtime.project.createRepositoryWorkspace(failedProject.id, { line_id: failedLine.id, relative_path: 'projects/remote-failed-workspace', expected_revision: 0, idempotency_key: 'remote-failed-workspace-key' }, principal), (error) => error?.code === 'repository_materialization_failed');
+    await assert.rejects(() => runtime.projectWorkflow.createRepositoryWorkspace(failedProject.id, { line_id: failedLine.id, relative_path: 'projects/remote-failed-workspace', expected_revision: 0, idempotency_key: 'remote-failed-workspace-key' }, principal), (error) => error?.code === 'repository_materialization_failed');
     const failedWorkspace = runtime.db.get('SELECT * FROM repository_workspaces WHERE project_id=?', [failedProject.id]);
     assert.equal(failedWorkspace.status, 'orphaned');
     assert.equal(runtime.db.get('SELECT status FROM operations WHERE id=?', [failedWorkspace.owner_operation_id]).status, 'failed');

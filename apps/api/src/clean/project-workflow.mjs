@@ -5,10 +5,23 @@ import { treeManifest } from './runner-input-provider.mjs';
 import { canonicalJson, opaqueId, parseCanonicalJson, sha256Hex, utcNow } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
 import { projectCommandOwner } from './project-domain-helpers.mjs';
+import {
+  appendAggregateInTransaction as appendAggregate,
+  createInlineOperation,
+  getIdempotency,
+  linkOperation,
+  saveIdempotency,
+  operationEnvelope as operationView,
+  requestHash,
+  assertRevision,
+  requirePrincipal,
+  requireIdempotency as requireKey
+} from './p5-domain-helpers.mjs';
 import { ProjectService } from './project-service.mjs';
 import { RepositoryService } from './repository-service.mjs';
 import { WorkflowService } from './workflow-service.mjs';
 import { OutcomeService } from './outcome-service.mjs';
+import { createManifestInTransaction } from './receipts.mjs';
 
 const PROJECT_STATUSES = new Set(['draft', 'confirming', 'active', 'archived']);
 const GENERATION_TERMINAL = new Set(['applied', 'rejected', 'failed', 'cancelled']);
@@ -1288,7 +1301,7 @@ class ProjectWorkflowCore {
         const readyRevision = 3;
         tx.run('UPDATE repository_workspaces SET status=\'ready\',revision=?,updated_at=?,updated_by_actor_id=? WHERE id=? AND revision=?', [readyRevision, this.#time(), principal.actorId, pending.id, current.revision], 1);
         const payload = canonicalJson({ workspace_id: pending.id, commit_sha: observed.commit_sha || observed.revision || '', tree_sha: observed.tree_sha || '', workspace_hash: observed.workspace_hash || '', manifest_hash: observed.manifest_hash || observed.hash || '', file_count: Number(observed.file_count || observed.workspace_manifest?.length || observed.entries?.length || 0), total_bytes: Number(observed.total_bytes || observed.workspace_manifest?.reduce((sum, item) => sum + Number(item.byte_length || 0), 0) || 0) });
-        tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,created_at) VALUES(?,'repository.materialization','verified',?,?,?)", [opaqueId('receipt'), payload, sha256Hex(payload), this.#time()]);
+        createManifestInTransaction(tx, { kind: 'repository.materialization', status: 'verified', payload: JSON.parse(payload), createdAt: this.#time(), policy: this.policy });
         appendAggregate(tx, this.events, { aggregateType: 'repository_workspace', aggregateId: pending.id, revision: readyRevision, operationId: pending.operation.operation_id, actorId: principal.actorId, projectId: project.id, type: 'workspace.ready', data: { workspace_id: pending.id, status: 'ready' }, payload: { id: pending.id, project_id: project.id, status: 'ready', revision: readyRevision }, now: this.#time() });
         const operation = this.operations.transitionInTransaction(tx,pending.operation.operation_id,'succeeded',{actorId:principal.actorId,expectedRevision:pending.operation.revision,result:{workspace_id:pending.id,workspace_hash:observed.workspace_hash}},this.#time());
         const response = {workspace:this.#workspaceView(tx.get('SELECT * FROM repository_workspaces WHERE id=?',[pending.id])),operation};
@@ -1453,7 +1466,7 @@ class ProjectWorkflowCore {
         }
         if (observed) {
           const payload = canonicalJson({ workspace_id: row.id, commit_sha: observed.commit_sha || observed.revision || '', tree_sha: observed.tree_sha || '', workspace_hash: observed.workspace_hash || '', manifest_hash: observed.manifest_hash || observed.hash || '', file_count: Number(observed.file_count || observed.workspace_manifest?.length || observed.entries?.length || 0), total_bytes: Number(observed.total_bytes || observed.workspace_manifest?.reduce((sum, item) => sum + Number(item.byte_length || 0), 0) || 0) });
-          tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,created_at) VALUES(?,'repository.materialization','verified',?,?,?)", [opaqueId('receipt'), payload, sha256Hex(payload), now]);
+          createManifestInTransaction(tx, { kind: 'repository.materialization', status: 'verified', payload: JSON.parse(payload), createdAt: now, policy: this.policy });
         }
         const operation = this.operations.transitionInTransaction(tx, pendingOperation.operation_id, 'succeeded', { actorId: principal.actorId, expectedRevision: pendingOperation.revision, result: { workspace_id: row.id, workspace_hash: observed?.workspace_hash || null }, projectId: row.project_id }, now);
         const response = { workspace: this.#workspaceView(tx.get('SELECT * FROM repository_workspaces WHERE id=?', [row.id])), lock: null, operation: operationView(operation) };
@@ -1947,7 +1960,7 @@ class ProjectWorkflowCore {
       if (assessed.coverage && this.cas) {
         const payload = { critic_id: criticId, candidate_sha256: sha256Hex(candidateJson), input_sha256: row.input_sha256, coverage: assessed.coverage, coverage_sha256: sha256Hex(canonicalJson(assessed.coverage)), provider_receipt: assessed.provider_receipt || null };
         const object = this.cas.putCanonical(payload);
-        tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'workflow.critic','verified',?,?,?,?)", [criticId,canonicalJson(payload),sha256Hex(canonicalJson(payload)),object.hash,now]);
+        createManifestInTransaction(tx, { id: criticId, kind: 'workflow.critic', status: 'verified', payload, casSha256: object.hash, createdAt: now, policy: this.policy });
       }
       tx.run(
         `INSERT INTO workflow_critic_receipts(id,generation_id,project_id,status,candidate_sha256,input_sha256,issues_json,issues_sha256,policy_revision,provider,created_at,created_by_actor_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -2664,7 +2677,7 @@ class ProjectWorkflowCore {
       this.#safe(candidate);
       if (candidateResult?.provider_receipt && this.cas) {
         const payload = canonicalJson({ generation_id: generationId, ...candidateResult.provider_receipt }); const object = this.cas.put(payload);
-        await this.db.withTransaction((tx) => tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'workflow.provider','verified',?,?,?,?)", [opaqueId('receipt'),payload,sha256Hex(payload),object.hash,this.#time()]));
+        await this.db.withTransaction((tx) => createManifestInTransaction(tx, { kind: 'workflow.provider', status: 'verified', payload: JSON.parse(payload), casSha256: object.hash, createdAt: this.#time(), policy: this.policy }));
       }
       ctx.ensureActive();
       const candidateJson = canonicalJson(candidate);
@@ -3434,61 +3447,6 @@ export class ProjectWorkflowService {
 
 export const ProjectDomainService = ProjectWorkflowService;
 
-function createInlineOperation(
-  tx,
-  events,
-  { actorId, commandId, resourceType, resourceId, projectId = null, requestHash, parentOperationId = null, now }
-) {
-  const operations = operationLedger(tx, events);
-  return operations.createInTransaction(tx, {
-    actorId,
-    commandId,
-    kind: commandId,
-    resourceType,
-    resourceId,
-    projectId,
-    requestHash,
-    request: { resource_type: resourceType, resource_id: resourceId, project_id: projectId },
-    idempotencyKey: `inline-${opaqueId('key')}`,
-    parentOperationId,
-    status: 'succeeded'
-  }, now);
-}
-
-function appendAggregate(
-  tx,
-  events,
-  { aggregateType, aggregateId, revision, operationId, actorId, projectId, type, data, payload, now }
-) {
-  if (!events || typeof events.appendAggregateInTransaction !== 'function') throw new TypeError('clean_event_service_required');
-  return events.appendAggregateInTransaction(tx, {
-    aggregateType,
-    aggregateId,
-    revision,
-    operationId: operationId || null,
-    actorId,
-    projectId,
-    type,
-    data,
-    payload,
-    now
-  });
-}
-function linkOperation(tx, operationId, links, now) {
-  const operations = operationLedger(tx);
-  return operations.linkInTransaction(tx, operationId, links, now);
-}
-function operationView(op) {
-  return {
-    operation_id: op.operation_id || op.id,
-    status: op.status || 'succeeded',
-    revision: Number(op.revision || 1),
-    resource_type: op.resourceType || op.resource_type || null,
-    resource_id: op.resourceId || op.resource_id || null,
-    audit_reference: op.audit_reference || null,
-    terminal: ['succeeded', 'failed', 'cancelled', 'expired'].includes(op.status || 'succeeded')
-  };
-}
 function operationReceipt(op) {
   return {
     ...operationView(op),
@@ -3505,45 +3463,6 @@ function operationReceipt(op) {
     }
   };
 }
-function getIdempotency(tx, actorId, commandId, key, hash, now) {
-  return operationLedger(tx).getIdempotencyInTransaction(tx, {
-    actorId,
-    commandId,
-    idempotencyKey: key,
-    requestHash: hash,
-    now
-  });
-}
-function saveIdempotency(tx, actorId, commandId, key, hash, response, operationId, now) {
-  return operationLedger(tx).saveIdempotencyInTransaction(tx, {
-    actorId,
-    commandId,
-    idempotencyKey: key,
-    requestHash: hash,
-    response,
-    operationId,
-    responseStatus: 200,
-    now
-  });
-}
-
-function operationLedger(tx, events = null) {
-  const operations = tx?.__cleanOperations || events?.operations;
-  if (!operations
-    || typeof operations.createInTransaction !== 'function'
-    || typeof operations.linkInTransaction !== 'function'
-    || typeof operations.getIdempotencyInTransaction !== 'function'
-    || typeof operations.saveIdempotencyInTransaction !== 'function') {
-    throw new TypeError('clean_operation_service_required');
-  }
-  // CleanDatabase passes the same transaction object to every domain call;
-  // cache the one shared ledger instance for helpers invoked before creation.
-  tx.__cleanOperations = operations;
-  return operations;
-}
-function requestHash(value) {
-  return sha256Hex(canonicalJson(value));
-}
 function requiredName(value) {
   const text = String(value ?? '').trim();
   if (!text || text.length > 200) throw new PlatformError('schema_invalid', 'name is required', {}, 422);
@@ -3554,31 +3473,11 @@ function boundedString(value, max) {
   if (text.length > max) throw new PlatformError('schema_invalid', 'value exceeds the allowed length', {}, 422);
   return text;
 }
-function requireKey(value) {
-  const key = String(value || '');
-  if (!/^[A-Za-z0-9][A-Za-z0-9._~-]{7,127}$/.test(key))
-    throw new PlatformError('idempotency_required', 'Idempotency-Key is required', {}, 400);
-  return key;
-}
 function positiveRevision(value) {
   const number = Number(value);
   if (!Number.isInteger(number) || number < 1)
     throw new PlatformError('expected_revision_required', 'expected revision is required', {}, 400);
   return number;
-}
-function assertRevision(row, expected) {
-  if (!row) throw notFound('resource');
-  if (Number(row.revision) !== Number(expected))
-    throw new PlatformError(
-      'revision_conflict',
-      'resource revision has changed',
-      { expected_revision: Number(expected), actual_revision: Number(row.revision) },
-      409
-    );
-}
-function requirePrincipal(principal) {
-  if (!principal?.actorId)
-    throw new PlatformError('authentication_required', 'active session proof is required', {}, 401);
 }
 function notFound(resource) {
   return new PlatformError('not_found', `${resource} not found`, {}, 404);

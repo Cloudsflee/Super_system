@@ -1,6 +1,7 @@
 import { canonicalJson, opaqueId, sha256Hex, utcNow, parseCanonicalJson } from './canonical.mjs';
 import { encodeCursor, decodeCursor, CursorError } from './cursor.mjs';
 import { DEFAULT_REDACTION_POLICY } from './redaction.mjs';
+import { createManifestInTransaction } from './receipts.mjs';
 
 const TERMINAL_EVENT = /(?:succeeded|completed|failed|cancelled|expired|terminal)$/;
 
@@ -28,9 +29,13 @@ export class EventService {
     const occurredAt = input.occurredAt || this.clock();
     const redacted = this.policy.redact(input.data || {});
     if (redacted.redactions.length) {
-      const failureJson = canonicalJson({ status: 'redacted_failure', redactions: redacted.redactions });
-      tx.run(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
-        VALUES(?,?,?,?,?,?,?,?)`, [opaqueId('receipt'), 'event.redaction', 'failed', failureJson, sha256Hex(failureJson), null, occurredAt || this.clock(), null]);
+      createManifestInTransaction(tx, {
+        kind: 'event.redaction',
+        status: 'failed',
+        payload: { status: 'redacted_failure', redactions: redacted.redactions },
+        createdAt: occurredAt || this.clock(),
+        policy: this.policy
+      });
     }
     const dataJson = canonicalJson(redacted.value);
     const dataSha = sha256Hex(dataJson);

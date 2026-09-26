@@ -128,10 +128,11 @@ export async function mutateOfflineV2<T>(
 export function normalizeV2Path(path: string): string {
   const value = String(path || '');
   if (value.includes('/api/v1') || value.includes('/api/v0')) throw new Error('retired_api_route');
+  // Clean Web callers must name the complete public contract.  Silently
+  // prefixing a legacy or relative path makes route ownership ambiguous and
+  // can accidentally revive retired endpoints.
   if (value.startsWith('/api/v2/')) return value;
-  if (value === '/api/v2') return value;
-  if (value.startsWith('/')) return `/api/v2${value}`;
-  return `/api/v2/${value}`;
+  throw new Error('canonical_api_path_required');
 }
 
 function randomId(): string {

@@ -50,6 +50,13 @@ if (packageJson.scripts?.['dev:broker'] !== 'node apps/runner-broker/clean-serve
 if (packageJson.scripts?.['fixture:legacy:dev-broker'] !== 'node apps/runner-broker/server.mjs') findings.push({ label: 'historical Broker fixture script mismatch' });
 
 const tableText = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+for (const file of files) {
+  const content = fs.readFileSync(file, 'utf8');
+  const relativeFile = relative(file);
+  if (relativeFile === 'apps/api/src/clean/receipts.mjs') continue;
+  if (/INSERT\s+INTO\s+receipt_manifests/i.test(content)) findings.push({ label: 'receipt ledger direct writer', file: relativeFile });
+  if (/INSERT\s+INTO\s+aggregate_revisions/i.test(content) && relativeFile !== 'apps/api/src/clean/events.mjs') findings.push({ label: 'aggregate revision direct writer', file: relativeFile });
+}
 if (/CREATE\s+TABLE[^;]*\b(?:assist|project|workflow|execution|domain)_heads\b/i.test(tableText)) findings.push({ label: 'shadow head model', file: 'clean schema' });
 if (/CREATE\s+TABLE[^;]*\bassist_operations\b/i.test(tableText)) findings.push({ label: 'second operation ledger', file: 'clean schema' });
 

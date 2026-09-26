@@ -110,7 +110,7 @@ git diff --check
 ## Post-P10 development reliability gate
 
 Decision D-040 adds two verification channels without changing the P10 release
-or its immutable Evidence. The root package surface has 58 classified scripts.
+or its immutable Evidence. The root package surface has 57 classified scripts.
 
 The daily channel is:
 
@@ -980,10 +980,12 @@ Profile Probe, and repository discovery through
 `POST /api/v2/provider-auth/github/installations`. App and Installation ids are
 not default user inputs; BYO key entry remains an explicit advanced fallback.
 
-The shell restores parameterized asset/audit/workstream/node/repository and
-GitHub-install deep links, a six-entry hidden navigation drawer, focus trapping
-and focus restoration for tool drawers, and an offline overlay that keeps the
-loaded page and permitted Outbox work available. Project/Identity/Assist,
+The shell keeps parameterized canonical repository/project deep links and
+explicitly retires asset/audit/workstream/node/terminal/approval/GitHub alias
+paths instead of dispatching them to another owner. It retains a six-entry
+hidden navigation drawer, focus trapping and focus restoration for tool
+drawers, and an offline overlay that keeps the loaded page and permitted
+Outbox work available. Project/Identity/Assist,
 Workflow, Quality, Outcome, Delivery, and Operations surfaces reuse the existing
 Clean owners and generic ledger. `tests/p10/post-closure-restoration.test.mjs`
 is the API/security regression for session, discovery, Device Login, redaction,
@@ -1022,8 +1024,7 @@ The development reliability surface is exercised with:
 pnpm test:development
 node --test tests/p10/real-development-loop.test.mjs
 node scripts/v3-clean-real-development-loop.mjs --source <SOURCE_PATH> --project-name <PROJECT_NAME>
-pnpm probe:development -- --scenario minimal
-pnpm probe:development -- --scenario designsignal
+pnpm test:runner-real
 ```
 
 The focused checks cover Evidence cursor compensation and receipt joins,
@@ -1089,3 +1090,43 @@ independent P10 release probe. It overlaps cold Docker/image work with the
 dynamic E2E journey and reaps the redacted receipt at its declared plan
 position. The command, failure semantics and fixed 360000 ms total budget remain
 unchanged; an earlier blocking gate still reaps the probe before returning.
+
+### Clean contract convergence maintenance
+
+The active Clean runtime keeps receipt-manifest writes behind
+`createManifest`/`createManifestInTransaction` in the Receipt owner. Event
+Service owns aggregate revisions, heads, and event projections in the same
+transaction; direct writers are rejected by `pnpm scan:clean` and the P1
+static regression. The active server accepts only schema v9/runtime phase 10
+options, and Web API helpers require a complete `/api/v2/...` path. Historical
+runtime selectors remain fixture inputs and are not accepted by the active
+server. P10 governance is a read-only parity overview; domain mutations remain
+on their canonical owner pages. Resource-specific path identifiers are injected
+only from route parameters; JSON `id` fallbacks and the removed context,
+exchange, gateway, profile, and repository aliases are rejected by closed
+schemas. Web operation polling uses the shared abort-safe watcher with one
+in-flight request. Deleted wrappers are retained only as retired parity paths.
+Public operation receipts expose only `operation_id` and the canonical status
+projection; internal owner rows may retain database identifiers and links.
+The GitHub deletion probe separates PAT creation, App discovery/HEAD/delete,
+Selected-repository binding, cleanup failure, and 404/403 reconciliation.
+
+The convergence acceptance subset is:
+
+```text
+pnpm check
+pnpm scan:clean
+pnpm test:p1
+pnpm test:p3
+pnpm test:p4
+pnpm test:p8
+pnpm test:p10
+pnpm --filter @aiws/web typecheck
+pnpm --filter @aiws/web test
+pnpm verify:dev
+git diff --check
+```
+
+Local maintenance receipts and rollback artifacts remain under the ignored
+`.ai-workspace/change-receipts/` directory. They do not alter Catalog status or
+formal P1-P10 Evidence.

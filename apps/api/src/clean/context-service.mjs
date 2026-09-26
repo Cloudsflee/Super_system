@@ -58,9 +58,9 @@ export class CleanContextService {
   async createSource(projectId, input = {}, principal, options = {}) {
     const id = this.assertProject(projectId, principal, 'write', 'context');
     const sourceType = normalizeSourceType(input.source_type || input.kind || 'note');
-    const title = bounded(input.title || input.name || sourceType, 240);
-    const canonicalUri = canonicalUriFor(id, input.canonical_uri || input.uri || input.path || `${sourceType}/${title}`);
-    let content = String(input.content ?? input.body ?? '');
+    const title = bounded(input.title || sourceType, 240);
+    const canonicalUri = canonicalUriFor(id, input.canonical_uri || `${sourceType}/${title}`);
+    let content = String(input.content ?? '');
     let fileRef = null;
     if (input.file_ref_id) {
       if (!this.files?.readIndexedFile) throw new PlatformError('files_owner_unavailable', 'Files owner is unavailable for file-backed context', {}, 503);

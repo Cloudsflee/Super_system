@@ -17,8 +17,8 @@ test('Quality report, complete human scoring and Outcome replay share pinned has
     assert.equal(decided.quality_review.human_review.weighted_score, 88);
     assert.equal(state.runtime.db.get('SELECT count(*) AS count FROM quality_review_events').count, state.runtime.db.get("SELECT count(*) AS count FROM events WHERE aggregate_type='quality_review'").count);
 
-    await state.runtime.project.createOutcomeRequirement(base.project.id, { requirement_key: 'evidence-present', rubric: { evaluator: 'evidence_count', minimum: 1 }, workflow_revision: 1, idempotency_key: 'p7-outcome-requirement-key' }, state.principal);
-    await state.runtime.project.createOutcomeRequirement(base.project.id, { requirement_key: 'human-score', rubric: { evaluator: 'human_score', minimum: 80 }, workflow_revision: 1, idempotency_key: 'p7-outcome-human-key' }, state.principal);
+    await state.runtime.projectWorkflow.createOutcomeRequirement(base.project.id, { requirement_key: 'evidence-present', rubric: { evaluator: 'evidence_count', minimum: 1 }, workflow_revision: 1, idempotency_key: 'p7-outcome-requirement-key' }, state.principal);
+    await state.runtime.projectWorkflow.createOutcomeRequirement(base.project.id, { requirement_key: 'human-score', rubric: { evaluator: 'human_score', minimum: 80 }, workflow_revision: 1, idempotency_key: 'p7-outcome-human-key' }, state.principal);
     const execution = state.runtime.execution.get(base.execution.id, state.principal);
     const evaluating = await state.runtime.outcomeEvaluation.evaluate(execution.id, { expected_revision: execution.revision, idempotency_key: 'p7-outcome-evaluate-key' }, state.principal);
     assert.equal((await waitOperation(state.runtime, evaluating.operation.operation_id, state.principal.actorId)).status, 'succeeded');
@@ -26,7 +26,7 @@ test('Quality report, complete human scoring and Outcome replay share pinned has
     assert.equal(outcome.evaluation.status, 'passed');
     assert.equal(outcome.evaluation.requirement_count, 2);
     assert.equal(outcome.evaluation.passed_count, 2);
-    await state.runtime.project.createOutcomeRequirement(base.project.id, { requirement_key: 'automatic-generation', rubric: { evaluator: 'evidence_count', minimum: 1 }, workflow_revision: 1, idempotency_key: 'p7-outcome-auto-generation-key' }, state.principal);
+    await state.runtime.projectWorkflow.createOutcomeRequirement(base.project.id, { requirement_key: 'automatic-generation', rubric: { evaluator: 'evidence_count', minimum: 1 }, workflow_revision: 1, idempotency_key: 'p7-outcome-auto-generation-key' }, state.principal);
     await waitFor(() => state.runtime.outcomeEvaluation.get(execution.id, state.principal).evaluation.generation > outcome.evaluation.generation);
     const regenerated = state.runtime.outcomeEvaluation.get(execution.id, state.principal).evaluation;
     assert.equal(regenerated.requirement_count, 3);
@@ -41,7 +41,7 @@ test('Outcome waiver and revocation are immutable generations bound to approval 
   const state = await open();
   try {
     const base = await prepare(state, 'outcome-waiver');
-    const requirement = await state.runtime.project.createOutcomeRequirement(base.project.id, { requirement_key: 'missing-test', rubric: { evaluator: 'test_pass', check_id: 'missing' }, workflow_revision: 1, idempotency_key: 'p7-waiver-requirement-key' }, state.principal);
+    const requirement = await state.runtime.projectWorkflow.createOutcomeRequirement(base.project.id, { requirement_key: 'missing-test', rubric: { evaluator: 'test_pass', check_id: 'missing' }, workflow_revision: 1, idempotency_key: 'p7-waiver-requirement-key' }, state.principal);
     const execution = state.runtime.execution.get(base.execution.id, state.principal);
     const grant = await state.runtime.outcomeEvaluation.createWaiver(execution.id, { requirement_id: requirement.requirement.id, reason: 'accepted gap for this fixture', expected_revision: execution.revision, idempotency_key: 'p7-waiver-grant-key' }, state.principal);
     assert.equal(grant.waiver.action, 'grant');

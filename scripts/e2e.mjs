@@ -182,7 +182,7 @@ try {
 
   const source = await pageApi(`/api/v2/projects/${project.id}/context/sources`, {
     method: 'POST', headers: { 'Idempotency-Key': 'p7-e2e-context-source-01', 'X-Expected-Revision': '0' },
-    body: { kind: 'note', title: 'P7 verification note', uri: 'notes/p7-verification', content: 'runner execution checkpoint replay evidence', source_revision: 'r1', expected_revision: 0 }
+    body: { source_type: 'note', title: 'P7 verification note', canonical_uri: 'notes/p7-verification', content: 'runner execution checkpoint replay evidence', source_revision: 'r1', expected_revision: 0 }
   });
   assert(source.status === 201, `context-source:${source.status}`);
   const rebuilt = await pageApi(`/api/v2/projects/${project.id}/context/rebuild`, {
@@ -453,10 +453,10 @@ try {
     for (const scenario of ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer']) {
       const route = scenario.startsWith('execution-') ? 'execution' : scenario;
       await page.goto(route === 'governance' ? `${base}/#/projects/${encodeURIComponent(project.id)}/governance` : `${base}/#/${route}`, { waitUntil: 'domcontentloaded' });
-      const heading = { governance: '项目控制', context: '上下文', settings: '设置', execution: '执行', evidence: '证据', connections: '连接', outcome: '结果', delivery: '交付', operations: '运维', identity: '身份与团队', exchange: 'MCP 与交换', runner: '连接', parser: '证据', deployment: '运维', backup: '运维', importer: '运维' }[route];
+      const heading = { governance: '业务对等总览', context: '上下文', settings: '设置', execution: '执行', evidence: '证据', connections: '连接', outcome: '结果', delivery: '交付', operations: '运维', identity: '身份与团队', exchange: 'MCP 与交换', runner: '连接', parser: '证据', deployment: '运维', backup: '运维', importer: '运维' }[route];
       await page.getByRole('heading', { name: heading, exact: true }).waitFor();
       if (route === 'governance') {
-        await page.getByText('P10 E2E Reviewer', { exact: true }).first().waitFor();
+        await page.getByText('27/0/27', { exact: true }).waitFor();
         const drawer = page.locator('#workspace-navigation');
         assert(await drawer.getAttribute('aria-hidden') === 'true', `${name} drawer default closed`);
         const opener = page.getByRole('button', { name: '打开导航', exact: true });

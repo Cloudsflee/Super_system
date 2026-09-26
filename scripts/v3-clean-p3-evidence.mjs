@@ -230,23 +230,23 @@ async function lifecycleProbe() {
     await runtime.recovery;
     const setup = await runtime.identity.setupComplete({ display_name: 'P3 evidence owner', team_name: 'P3 evidence team', idempotency_key: 'evidence-p3-setup' });
     const principal = runtime.identity.authenticateProof(setup.session.proof);
-    const project = await runtime.project.createProject({ name: 'P3 evidence project', idempotency_key: 'evidence-p3-project' }, principal);
-    const intake = await runtime.project.submitIntake(project.id, { mode: 'brainstorm', content: { objective: 'fixture' }, expected_revision: 1, idempotency_key: 'evidence-p3-intake' }, principal);
+    const project = await runtime.projectWorkflow.createProject({ name: 'P3 evidence project', idempotency_key: 'evidence-p3-project' }, principal);
+    const intake = await runtime.projectWorkflow.submitIntake(project.id, { mode: 'brainstorm', content: { objective: 'fixture' }, expected_revision: 1, idempotency_key: 'evidence-p3-intake' }, principal);
     await waitOperation(runtime, intake.operation.operation_id, principal.actorId);
-    await runtime.project.createBrief(project.id, { objective: 'fixture', acceptance: ['ready'], expected_revision: 1, idempotency_key: 'evidence-p3-brief' }, principal);
-    await runtime.project.confirmBrief(project.id, { brief_revision: 1, expected_revision: 2, idempotency_key: 'evidence-p3-confirm' }, principal);
-    const connection = await runtime.project.createRepositoryConnection(project.id, { provider: 'fixture', source_kind: 'git', source_locator: 'fixture/repository', idempotency_key: 'evidence-p3-connection' }, principal);
-    const line = runtime.project.listRepositoryLines(project.id, principal)[0];
-    const reconciled = await runtime.project.reconcileRepositoryLine(line.id, { source_revision: 'fixture-r1', source_hash: 'a'.repeat(64), expected_revision: 1, idempotency_key: 'evidence-p3-line' }, principal);
-    const workflow = await runtime.project.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'fixture', kind: 'workstream', title: 'Fixture' }] }, expected_revision: 1, idempotency_key: 'evidence-p3-workflow' }, principal);
+    await runtime.projectWorkflow.createBrief(project.id, { objective: 'fixture', acceptance: ['ready'], expected_revision: 1, idempotency_key: 'evidence-p3-brief' }, principal);
+    await runtime.projectWorkflow.confirmBrief(project.id, { brief_revision: 1, expected_revision: 2, idempotency_key: 'evidence-p3-confirm' }, principal);
+    const connection = await runtime.projectWorkflow.createRepositoryConnection(project.id, { provider: 'fixture', source_kind: 'git', source_locator: 'fixture/repository', idempotency_key: 'evidence-p3-connection' }, principal);
+    const line = runtime.projectWorkflow.listRepositoryLines(project.id, principal)[0];
+    const reconciled = await runtime.projectWorkflow.reconcileRepositoryLine(line.id, { source_revision: 'fixture-r1', source_hash: 'a'.repeat(64), expected_revision: 1, idempotency_key: 'evidence-p3-line' }, principal);
+    const workflow = await runtime.projectWorkflow.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'fixture', kind: 'workstream', title: 'Fixture' }] }, expected_revision: 1, idempotency_key: 'evidence-p3-workflow' }, principal);
     const projectRow = runtime.db.get('SELECT revision FROM projects WHERE id=?', [project.id]);
-    const generation = await runtime.project.startGeneration(project.id, { mode: 'initial', candidate: { nodes: [] }, expected_revision: projectRow.revision, idempotency_key: 'evidence-p3-generation' }, principal);
+    const generation = await runtime.projectWorkflow.startGeneration(project.id, { mode: 'initial', candidate: { nodes: [] }, expected_revision: projectRow.revision, idempotency_key: 'evidence-p3-generation' }, principal);
     const operation = await waitOperation(runtime, generation.operation.operation_id, principal.actorId);
-    const current = runtime.project.listGenerations(project.id, principal)[0];
-    const critic = await runtime.project.evaluateCritic(current.id, { status: 'passed', issues: [], expected_revision: current.revision, idempotency_key: 'evidence-p3-critic' }, principal);
-    const proposal = await runtime.project.applyProposal(critic.proposal.id, { expected_revision: workflow.workflow.revision, idempotency_key: 'evidence-p3-apply' }, principal);
-    await runtime.project.createOutcomeRequirement(project.id, { requirement_key: 'fixture.acceptance', rubric: { minimum: 1 }, idempotency_key: 'evidence-p3-requirement' }, principal);
-    return { schema_version: 'aiws.v3-clean.p3-lifecycle-receipt.v1', status: operation.status === 'succeeded' && reconciled.line.status === 'ready' && proposal.proposal.status === 'applied' ? 'passed' : 'failed', project_revision: runtime.db.get('SELECT revision FROM projects WHERE id=?', [project.id]).revision, intake_status: runtime.project.getIntake(project.id, principal).status, connection_status: connection.connection.status, line_status: reconciled.line.status, workflow_revision: workflow.workflow.revision, generation_phase: current.phase, critic_status: critic.critic.status, proposal_status: proposal.proposal.status, requirement_count: runtime.db.get('SELECT count(*) AS count FROM outcome_requirements WHERE project_id=?', [project.id]).count, redactions: ['session_proof', 'absolute_paths', 'provider_secrets'] };
+    const current = runtime.projectWorkflow.listGenerations(project.id, principal)[0];
+    const critic = await runtime.projectWorkflow.evaluateCritic(current.id, { status: 'passed', issues: [], expected_revision: current.revision, idempotency_key: 'evidence-p3-critic' }, principal);
+    const proposal = await runtime.projectWorkflow.applyProposal(critic.proposal.id, { expected_revision: workflow.workflow.revision, idempotency_key: 'evidence-p3-apply' }, principal);
+    await runtime.projectWorkflow.createOutcomeRequirement(project.id, { requirement_key: 'fixture.acceptance', rubric: { minimum: 1 }, idempotency_key: 'evidence-p3-requirement' }, principal);
+    return { schema_version: 'aiws.v3-clean.p3-lifecycle-receipt.v1', status: operation.status === 'succeeded' && reconciled.line.status === 'ready' && proposal.proposal.status === 'applied' ? 'passed' : 'failed', project_revision: runtime.db.get('SELECT revision FROM projects WHERE id=?', [project.id]).revision, intake_status: runtime.projectWorkflow.getIntake(project.id, principal).status, connection_status: connection.connection.status, line_status: reconciled.line.status, workflow_revision: workflow.workflow.revision, generation_phase: current.phase, critic_status: critic.critic.status, proposal_status: proposal.proposal.status, requirement_count: runtime.db.get('SELECT count(*) AS count FROM outcome_requirements WHERE project_id=?', [project.id]).count, redactions: ['session_proof', 'absolute_paths', 'provider_secrets'] };
   } finally { runtime.close(); }
 }
 
@@ -258,14 +258,14 @@ async function restartProbe() {
     await first.recovery;
     const setup = await first.identity.setupComplete({ display_name: 'P3 restart owner', team_name: 'P3 restart team', idempotency_key: 'evidence-restart-setup' });
     const principal = first.identity.authenticateProof(setup.session.proof);
-    const project = await first.project.createProject({ name: 'P3 restart project', idempotency_key: 'evidence-restart-project' }, principal);
+    const project = await first.projectWorkflow.createProject({ name: 'P3 restart project', idempotency_key: 'evidence-restart-project' }, principal);
     projectId = project.id;
     first.close();
     const second = createRuntime(rootPath);
     try {
       await second.recovery;
       const restoredPrincipal = second.identity.authenticateProof(setup.session.proof);
-      const restored = second.project.getProject(projectId, restoredPrincipal);
+      const restored = second.projectWorkflow.getProject(projectId, restoredPrincipal);
       return { schema_version: 'aiws.v3-clean.p3-restart-receipt.v1', status: restored.id === projectId && restored.revision === 1 ? 'passed' : 'failed', project_revision_after_restart: restored.revision, session_reauthenticated: true, migration_version: second.db.integrity().user_version, pending_operations_settled: true, unknown_external_result: 'not inferred', redactions: ['session_proof', 'absolute_paths'] };
     } finally { second.close(); }
   } finally { try { first.close(); } catch { /* already closed */ } }
@@ -279,7 +279,7 @@ async function isolationProbe() {
     await runtime.recovery;
     const setup = await runtime.identity.setupComplete({ display_name: 'P3 isolation owner', team_name: 'P3 isolation team', idempotency_key: 'evidence-isolation-setup' });
     const principal = runtime.identity.authenticateProof(setup.session.proof);
-    const project = await runtime.project.createProject({ name: 'P3 isolation project', idempotency_key: 'evidence-isolation-project' }, principal);
+    const project = await runtime.projectWorkflow.createProject({ name: 'P3 isolation project', idempotency_key: 'evidence-isolation-project' }, principal);
     scopedProjectId = project.id;
     const allow = runtime.authorization.authorize(principal, 'read', project.id, {});
     await runtime.identity.grantProjectMembership(project.id, { actor_id: principal.actorId, role: 'owner', idempotency_key: 'evidence-isolation-membership' }, principal).catch(() => null);

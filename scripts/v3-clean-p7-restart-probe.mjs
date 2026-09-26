@@ -29,7 +29,7 @@ await emitProbe('aiws.v3-clean.p7-restart-probe.v1', async () => {
     const setup = await first.identity.setupComplete({ display_name: 'P7 Restart Owner', team_name: 'P7 Restart Team', idempotency_key: 'p7-restart-setup' });
     const proof = setup.session.proof;
     const principal = first.identity.authenticateProof(proof);
-    const project = await first.project.createProject({ name: 'P7 restart probe', idempotency_key: 'p7-restart-project' }, principal);
+    const project = await first.projectWorkflow.createProject({ name: 'P7 restart probe', idempotency_key: 'p7-restart-project' }, principal);
     const captured = await first.evidence.capture({
       project_id: project.id, logical_name: 'restart.txt', source_type: 'manual', source_ref: 'probe:restart',
       media_type: 'text/plain', content_base64: Buffer.from('restart checkpoint input').toString('base64'),

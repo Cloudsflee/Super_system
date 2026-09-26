@@ -906,7 +906,7 @@ export class CleanAssistService {
   }
   turnView(row) { return turnView(row, this.db, this.cas); }
   bundle(row) { return { ...sessionView(row), turns: this.db.query('SELECT * FROM assist_turns WHERE session_id=? ORDER BY turn_no,id', [row.id]).map((turn) => this.turnView(turn)), goal: this.getGoal(row.id, { actorId: row.created_by_actor_id, scopes: ['*'] }).goal, references: this.listReferences(row.id, { actorId: row.created_by_actor_id, scopes: ['*'] }).references }; }
-  removeCasIfUnreferenced(hash) { const count = this.db.get('SELECT (SELECT count(*) FROM assist_messages WHERE content_cas_hash=?) + (SELECT count(*) FROM attachments WHERE content_cas_hash=?) AS n', [hash, hash]); if (!Number(count?.n)) { try { this.cas.fileFor(hash); } catch {} } }
+  removeCasIfUnreferenced(hash) { this.cas?.tombstoneIfUnreferenced?.(hash); }
 }
 
 function sessionView(row) {

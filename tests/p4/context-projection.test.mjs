@@ -130,15 +130,15 @@ test('Clean domain adapters project Project, Brief, Repository, Workflow and Nod
   const state = await open();
   try {
     const current = await project(state, 'adapters');
-    await state.runtime.project.createBrief(current.id, {
+    await state.runtime.projectWorkflow.createBrief(current.id, {
       objective: 'adapter projection', acceptance: ['stable graph'], expected_revision: 1,
       idempotency_key: 'p4-adapter-brief-key'
     }, state.principal);
-    await state.runtime.project.createRepositoryConnection(current.id, {
+    await state.runtime.projectWorkflow.createRepositoryConnection(current.id, {
       provider: 'fixture', source_kind: 'git', source_locator: 'fixtures/private-repository',
       idempotency_key: 'p4-adapter-repository-key'
     }, state.principal);
-    await state.runtime.project.reviseWorkflow(current.id, {
+    await state.runtime.projectWorkflow.reviseWorkflow(current.id, {
       graph: { nodes: [{ id: 'stream', kind: 'workstream', title: 'Stream' }, { id: 'task', parent_id: 'stream', kind: 'task', title: 'Task', contract: { acceptance: ['done'] } }] },
       expected_revision: 1, idempotency_key: 'p4-adapter-workflow-key'
     }, state.principal);
@@ -182,6 +182,5 @@ test('Projection cancellation HTTP returns the canonical operation receipt', asy
     assert.equal(response.status, 202);
     assert.equal(payload.data.operation_id, queued.operation.operation_id);
     assert.equal(payload.data.status, 'cancelled');
-    assert.equal(payload.data.operation.status, 'cancelled');
   } finally { await closeServer(network.server); await close(state); }
 });

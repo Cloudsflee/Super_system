@@ -11,6 +11,7 @@ import {
 import {
   RUNNER_RESOURCE_PROFILES, signRunnerJobSpec, verifyRunnerReceipt
 } from './runner-protocol.mjs';
+import { createManifestInTransaction } from './receipts.mjs';
 
 const TYPES = new Set(['docker', 'host', 'windows_bridge']);
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'expired', 'external_result_unknown']);
@@ -21,10 +22,10 @@ const DEFAULT_CAPABILITIES = Object.freeze({
 });
 
 export class CleanRunnerService {
-  constructor({ db, events, operations, authorization, vault, cas = null, adapters = {}, clock, pollIntervalMs = 10, config = {} } = {}) {
+  constructor({ db, events, operations, authorization, vault, cas = null, adapters = {}, clock, pollIntervalMs = 10, config = {}, policy = null } = {}) {
     if (!db || !events || !operations || !authorization || !vault) throw new TypeError('runner_service_dependencies_required');
     this.db = db; this.events = events; this.operations = operations; this.authorization = authorization; this.vault = vault;
-    this.cas = cas; this.inputs = cas ? new RunnerInputProvider({ db, cas }) : null;
+    this.cas = cas; this.policy = policy || cas?.policy; this.inputs = cas ? new RunnerInputProvider({ db, cas }) : null;
     this.adapters = { ...adapters }; this.clock = clock; this.pollIntervalMs = Math.max(1, Number(pollIntervalMs || 10)); this.config = config;
     const identity = serviceIdentity(vault);
     this.servicePrivateKey = identity.privateKey; this.servicePublicKey = identity.publicKey; this.serviceKeyId = identity.keyId;
@@ -152,7 +153,7 @@ export class CleanRunnerService {
       if (task.task_contract_sha256 && task.task_contract_sha256 !== sha256Hex(canonicalJson(contract))) throw new PlatformError('runner_input_mismatch', 'task contract hash changed', {}, 409);
       const object = this.cas.putCanonical(contract);
       const payload = canonicalJson({ contract_sha256: object.hash });
-      tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'runner.task-contract','verified',?,?,?,?)", [opaqueId('receipt'), payload, sha256Hex(payload), object.hash, now]);
+      createManifestInTransaction(tx, { kind: 'runner.task-contract', status: 'verified', payload: JSON.parse(payload), casSha256: object.hash, createdAt: now, policy: this.policy });
       contractRefs.push({ type: 'task_contract', ref: `task-contract:${execution.id}:${task.id}:${Number(attempt.attempt_no)}`, revision: Number(attempt.revision), hash: object.hash });
     }
     const id = opaqueId('job_spec'); const deadlineAt = new Date(Math.min(Date.parse(now) + 15 * 60 * 1000, Date.parse(now) + Math.max(1, Number(task.deadline_seconds || 900)) * 1000)).toISOString();
@@ -217,7 +218,7 @@ export class CleanRunnerService {
     const id = result.receipt.receipt_id;
     if (result.receipt.output_sha256 && this.cas?.has(result.receipt.output_sha256)) {
       const payload = canonicalJson({ execution_id: attempt.execution_id, generation: attempt.generation, task_id: attempt.task_id, task_attempt_id: attempt.id, output_sha256: result.receipt.output_sha256 });
-      tx.run("INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at) VALUES(?,'runner.output-manifest','verified',?,?,?,?)", [opaqueId('receipt'), payload, sha256Hex(payload), result.receipt.output_sha256, now]);
+      createManifestInTransaction(tx, { kind: 'runner.output-manifest', status: 'verified', payload: JSON.parse(payload), casSha256: result.receipt.output_sha256, createdAt: now, policy: this.policy });
     }
     tx.run(`INSERT INTO runner_receipts(id,job_spec_id,task_attempt_id,runner_profile_id,schema_version,receipt_json,receipt_sha256,signer_public_key,signature,status,exit_code,stdout_sha256,stderr_sha256,output_sha256,stdout_bytes,stderr_bytes,output_bytes,started_at,finished_at,created_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [id, result.receipt.job_spec_id, attempt.id, profile.id, result.receipt.schema_version, result.receipt_json, result.receipt_sha256, result.signer_public_key, result.signature, result.receipt.status, result.receipt.exit_code, result.receipt.stdout_sha256, result.receipt.stderr_sha256, result.receipt.output_sha256, result.receipt.stdout_bytes, result.receipt.stderr_bytes, result.receipt.output_bytes, result.receipt.started_at, result.receipt.finished_at, now]);

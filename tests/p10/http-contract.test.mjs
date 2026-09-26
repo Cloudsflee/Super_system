@@ -10,7 +10,7 @@ test('P10 HTTP routes expose strict v2 envelopes and reject offline/destructive 
   try {
     server = await listen(state.runtime);
     const cookie = `aiws_session=${encodeURIComponent(state.proof)}`;
-    const project = await state.runtime.project.createProject({ name: 'HTTP P10', idempotency_key: 'p10-http-project' }, state.principal);
+    const project = await state.runtime.projectWorkflow.createProject({ name: 'HTTP P10', idempotency_key: 'p10-http-project' }, state.principal);
     const credentials = await state.runtime.identity.createCredential({ provider: 'codex', external_ref: 'p10-http-credential', idempotency_key: 'p10-http-credential' }, state.principal);
     await state.runtime.identity.rebindCredential(credentials.credential.id, { proof: 'p10-http-proof-123456789', expected_revision: 1, idempotency_key: 'p10-http-rebind' }, state.principal);
     const profile = await state.runtime.identity.createProfile({ provider: 'codex', label: 'HTTP profile', credential_ref_id: credentials.credential.id, idempotency_key: 'p10-http-profile' }, state.principal);
@@ -20,6 +20,8 @@ test('P10 HTTP routes expose strict v2 envelopes and reject offline/destructive 
     const updateBody = await update.json();
     assert.equal(updateBody.meta.api_version, '2');
     assert.equal(updateBody.data.profile.lifecycle_status, 'enabled');
+    const genericProfileId = await fetch(`${server.base}/api/v2/profiles/${profile.profile.id}`, { method: 'PATCH', headers: { ...headers, 'idempotency-key': 'p10-http-profile-generic-id', 'x-expected-revision': String(updateBody.data.profile.revision) }, body: JSON.stringify({ id: profile.profile.id, label: 'must reject generic id' }) });
+    assert.ok(genericProfileId.status >= 400 && genericProfileId.status < 500);
     const template = await fetch(`${server.base}/api/v2/brief-templates`, { method: 'POST', headers: { ...headers, 'idempotency-key': 'p10-http-template', 'x-expected-revision': '0' }, body: JSON.stringify({ team_id: project.team_id, name: 'HTTP template', content: { fields: ['objective'] } }) });
     assert.equal(template.status, 201);
     const templateBody = await template.json();
@@ -34,6 +36,8 @@ test('P10 HTTP routes expose strict v2 envelopes and reject offline/destructive 
     assert.equal(archived.status, 200);
     const archivedSession = (await archived.json()).data.session;
     assert.ok(archivedSession.archived_at);
+    const genericSessionId = await fetch(`${server.base}/api/v2/assist/sessions/${assist.session.id}?id=${encodeURIComponent(assist.session.id)}`, { headers: { cookie } });
+    assert.ok(genericSessionId.status >= 400 && genericSessionId.status < 500);
     const restored = await fetch(`${server.base}/api/v2/assist/sessions/${assist.session.id}/restore`, { method: 'POST', headers: { ...headers, 'idempotency-key': 'p10-http-assist-restore', 'x-expected-revision': String(archivedSession.revision) }, body: '{}' });
     assert.equal(restored.status, 200);
     assert.equal((await restored.json()).data.session.archived_at, null);

@@ -110,8 +110,8 @@ export class CleanMcpExchangeService {
 
   createExchangeRequest(input = {}, principal) {
     const actorId = actorOf(principal, this.bootstrapActorId);
-    const source = String(input.source_project_id || input.source_project || '');
-    const target = String(input.target_project_id || input.target_project || '');
+    const source = String(input.source_project_id || '');
+    const target = String(input.target_project_id || '');
     if (!source || !target || source === target) throw new PlatformError('schema_invalid', 'source and target projects are required', {}, 400);
     this.assertProjectAccess(source, principal, 'read');
     const scope = normalizeScope(input.scope || input);

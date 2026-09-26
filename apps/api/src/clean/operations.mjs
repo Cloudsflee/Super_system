@@ -71,10 +71,7 @@ export class OperationService {
       tx.run(`INSERT INTO operation_links(id,operation_id,aggregate_type,aggregate_id,relation,created_at) VALUES(?,?,?,?,?,?)`, [opaqueId('link'), operationId, 'operation', String(input.parentOperationId), 'retry_of', now]);
     }
     const payload = operationPayload({ id: operationId, commandId, commandVersion, kind: String(input.kind || commandId), status, resourceType, resourceId, projectId, actorId, requestHash, revision: 1, result: {}, errorCode: '', createdAt: now, updatedAt: now });
-    const payloadJson = canonicalJson(payload);
-    tx.run(`INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at)
-      VALUES(?,?,?,?,?,?,?,?,?)`, [opaqueId('rev'), 'operation', operationId, 1, payloadJson, sha256Hex(payloadJson), operationId, actorId, now]);
-    const event = this.events.appendInTransaction(tx, { aggregateType: 'operation', aggregateId: operationId, aggregateRevision: 1, aggregateHash: sha256Hex(payloadJson), operationId, actorId, projectId, type: `operation.${status}`, data: { status, operation_id: operationId, resource_id: resourceId || null }, occurredAt: now });
+    const event = this.events.appendAggregateInTransaction(tx, { aggregateType: 'operation', aggregateId: operationId, revision: 1, payload, operationId, actorId, projectId, type: `operation.${status}`, data: { status, operation_id: operationId, resource_id: resourceId || null }, occurredAt: now });
     tx.run(`INSERT INTO idempotency_keys(actor_id,command_id,idempotency_key,request_hash,response_status,response_json,operation_id,expires_at,created_at)
       VALUES(?,?,?,?,?,?,?,?,?)`, [actorId, commandId, idempotencyKey, requestHash, 202, null, operationId, input.expiresAt || new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString(), now]);
     const receipt = this.receiptFromRow(tx.get('SELECT * FROM operations WHERE id=?', [operationId]), event.sequence);
@@ -222,9 +219,7 @@ export class OperationService {
       const nextRevision = expected + 1;
       const nextRow = tx.get('SELECT * FROM operations WHERE id=?', [String(operationId)]);
       const payload = operationPayload({ ...nextRow, commandId: nextRow.command_id, commandVersion: nextRow.command_version, resourceType: nextRow.resource_type, resourceId: nextRow.resource_id, projectId: nextRow.project_id, actorId: nextRow.actor_id, requestHash: nextRow.request_hash, revision: nextRevision, result, errorCode: input.errorCode || '', createdAt: nextRow.created_at, updatedAt: now });
-      const payloadJson = canonicalJson(payload);
-      tx.run(`INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, [opaqueId('rev'), 'operation', operationId, nextRevision, payloadJson, sha256Hex(payloadJson), operationId, actorId, now]);
-      const event = this.events.appendInTransaction(tx, { aggregateType: 'operation', aggregateId: operationId, aggregateRevision: nextRevision, aggregateHash: sha256Hex(payloadJson), operationId, actorId: nextRow.actor_id, projectId: nextRow.project_id, type: `operation.${target}`, data: { status: target, operation_id: operationId, error_code: input.errorCode || undefined, result: completed ? result : undefined }, occurredAt: now });
+      const event = this.events.appendAggregateInTransaction(tx, { aggregateType: 'operation', aggregateId: operationId, revision: nextRevision, payload, operationId, actorId: nextRow.actor_id, projectId: nextRow.project_id, type: `operation.${target}`, data: { status: target, operation_id: operationId, error_code: input.errorCode || undefined, result: completed ? result : undefined }, occurredAt: now });
       const response = { ...this.receiptFromRow(nextRow), cursor: event.sequence };
       if (idempotencyKey) {
         const expiresAt = input.expiresAt || new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString();
@@ -266,11 +261,9 @@ export class OperationService {
       tx.run(`UPDATE operations SET cancel_requested_at=?,cancel_requested_by_actor_id=?,revision=revision+1,updated_at=?
         WHERE id=? AND revision=? AND cancel_requested_at IS NULL`, [now, actorId, now, String(operationId), expected], 1);
       const nextRow = tx.get('SELECT * FROM operations WHERE id=?', [String(operationId)]);
-      const payloadJson = canonicalJson(operationPayload(nextRow));
       const nextRevision = expected + 1;
-      tx.run(`INSERT INTO aggregate_revisions(id,aggregate_type,aggregate_id,revision,payload_json,payload_sha256,operation_id,actor_id,created_at)
-        VALUES(?,?,?,?,?,?,?,?,?)`, [opaqueId('rev'), 'operation', String(operationId), nextRevision, payloadJson, sha256Hex(payloadJson), String(operationId), actorId, now]);
-      const event = this.events.appendInTransaction(tx, { aggregateType: 'operation', aggregateId: String(operationId), aggregateRevision: nextRevision, aggregateHash: sha256Hex(payloadJson), operationId: String(operationId), actorId, projectId: nextRow.project_id, type: 'operation.cancel_requested', data: { status: nextRow.status, operation_id: String(operationId), cancellation_requested: true, reason: input.reason || undefined }, occurredAt: now });
+      const payload = operationPayload(nextRow);
+      const event = this.events.appendAggregateInTransaction(tx, { aggregateType: 'operation', aggregateId: String(operationId), revision: nextRevision, payload, operationId: String(operationId), actorId, projectId: nextRow.project_id, type: 'operation.cancel_requested', data: { status: nextRow.status, operation_id: String(operationId), cancellation_requested: true, reason: input.reason || undefined }, occurredAt: now });
       const response = { ...this.receiptFromRow(nextRow, event.sequence), cancellation_requested: true };
       const expiresAt = input.expiresAt || new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString();
       const existingKey = tx.get('SELECT actor_id FROM idempotency_keys WHERE actor_id=? AND command_id=? AND idempotency_key=?', [actorId, commandId, idempotencyKey]);

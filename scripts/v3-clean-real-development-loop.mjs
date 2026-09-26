@@ -247,37 +247,37 @@ async function run(input) {
     if (profile.provider !== 'codex' || profile.config?.model !== 'gpt-5.6-sol' || profile.config?.model_reasoning_effort !== 'high' || profile.status !== 'available') throw Object.assign(new Error('provider_profile_invalid'), { code: 'provider_profile_invalid' });
     const providerPin = runtime.identity.providerProfileSnapshot(profile.id, principal);
 
-    const project = await runtime.project.createProject({ name: String(input.project_name), idempotency_key: `${runId}-project` }, principal);
-    const intake = await runtime.project.submitIntake(project.id, { mode: 'brainstorm', content: { objective }, expected_revision: 1, idempotency_key: `${runId}-intake` }, principal);
+    const project = await runtime.projectWorkflow.createProject({ name: String(input.project_name), idempotency_key: `${runId}-project` }, principal);
+    const intake = await runtime.projectWorkflow.submitIntake(project.id, { mode: 'brainstorm', content: { objective }, expected_revision: 1, idempotency_key: `${runId}-intake` }, principal);
     await waitOperation(runtime, intake.operation.operation_id, principal.actorId);
-    await runtime.project.createBrief(project.id, { objective, acceptance: ['node_test', 'git_diff_check'], expected_revision: 1, idempotency_key: `${runId}-brief` }, principal);
-    await runtime.project.confirmBrief(project.id, { brief_revision: 1, expected_revision: 2, idempotency_key: `${runId}-brief-confirm` }, principal);
-    await runtime.project.createRepositoryConnection(project.id, { provider: 'local', source_kind: 'local', source_locator: source, read_only: true, idempotency_key: `${runId}-repository` }, principal);
-    const line = runtime.project.listRepositoryLines(project.id, principal)[0];
-    const workspaceResult = await runtime.project.createRepositoryWorkspace(project.id, { line_id: line.id, expected_revision: 0, idempotency_key: `${runId}-workspace` }, principal);
+    await runtime.projectWorkflow.createBrief(project.id, { objective, acceptance: ['node_test', 'git_diff_check'], expected_revision: 1, idempotency_key: `${runId}-brief` }, principal);
+    await runtime.projectWorkflow.confirmBrief(project.id, { brief_revision: 1, expected_revision: 2, idempotency_key: `${runId}-brief-confirm` }, principal);
+    await runtime.projectWorkflow.createRepositoryConnection(project.id, { provider: 'local', source_kind: 'local', source_locator: source, read_only: true, idempotency_key: `${runId}-repository` }, principal);
+    const line = runtime.projectWorkflow.listRepositoryLines(project.id, principal)[0];
+    const workspaceResult = await runtime.projectWorkflow.createRepositoryWorkspace(project.id, { line_id: line.id, expected_revision: 0, idempotency_key: `${runId}-workspace` }, principal);
     const workspace = workspaceResult.workspace;
     await runtime.context.createSource(project.id, { kind: 'note', title: 'Local repository context', uri: `notes/${runId}`, content: `${objective} Use the pinned repository snapshot. Keep changes in the candidate workspace and satisfy every acceptance check.`, idempotency_key: `${runId}-context-source` }, principal);
     await runtime.context.rebuild(project.id, { idempotency_key: `${runId}-context-rebuild` }, principal);
     const selection = await runtime.context.createSelection(project.id, { query: 'repository implementation acceptance', token_budget: 512, idempotency_key: `${runId}-context-selection` }, principal);
     const pack = await runtime.context.createPack(project.id, { selection_id: selection.selection.id, require_authoritative: false, idempotency_key: `${runId}-context-pack` }, principal);
     const seed = { nodes: [{ id: 'implementation', kind: 'task', title: 'Implement change', config: { execution: { mode: 'write', argv: ['node', '-e', "process.exit(0)"], cwd_role: 'task', input_paths: [], output_paths: [], runner_profile_ref: '', resource_profile: 'light', deadline_seconds: 900, check_ids: ['node_test', 'git_diff_check'], capabilities: ['network:none'] } }, contract: { acceptance: ['node_test', 'git_diff_check'] } }] };
-    await runtime.project.reviseWorkflow(project.id, { graph: seed, expected_revision: 1, idempotency_key: `${runId}-workflow-seed` }, principal);
+    await runtime.projectWorkflow.reviseWorkflow(project.id, { graph: seed, expected_revision: 1, idempotency_key: `${runId}-workflow-seed` }, principal);
     let generated = null;
     let critic = null;
     let generation = null;
     for (let generationAttempt = 0; generationAttempt < 3; generationAttempt += 1) {
-      const currentProject = runtime.project.getProject(project.id, principal);
+      const currentProject = runtime.projectWorkflow.getProject(project.id, principal);
       generation = generationAttempt === 0
-        ? await runtime.project.startGeneration(project.id, { provider_profile_id: profile.id, expected_revision: currentProject.revision, idempotency_key: `${runId}-generation-${generationAttempt}` }, principal)
-        : await runtime.project.retryGeneration(generation.generation.id, { provider_profile_id: profile.id, expected_revision: runtime.project.getGeneration(generation.generation.id, principal).revision, idempotency_key: `${runId}-generation-retry-${generationAttempt}` }, principal);
+        ? await runtime.projectWorkflow.startGeneration(project.id, { provider_profile_id: profile.id, expected_revision: currentProject.revision, idempotency_key: `${runId}-generation-${generationAttempt}` }, principal)
+        : await runtime.projectWorkflow.retryGeneration(generation.generation.id, { provider_profile_id: profile.id, expected_revision: runtime.projectWorkflow.getGeneration(generation.generation.id, principal).revision, idempotency_key: `${runId}-generation-retry-${generationAttempt}` }, principal);
       const generationOperation = await waitOperation(runtime, generation.operation.operation_id, principal.actorId);
       if (generationOperation.status !== 'succeeded') {
         if (generationAttempt < 2) continue;
         throw operationFailure(generationOperation, 'provider_turn_incomplete', 'generation');
       }
-      generated = runtime.project.getGeneration(generation.generation.id, principal);
+      generated = runtime.projectWorkflow.getGeneration(generation.generation.id, principal);
       try {
-        critic = await runtime.project.evaluateCritic(generated.id, { status: 'passed', expected_revision: generated.revision, idempotency_key: `${runId}-critic-${generationAttempt}` }, principal);
+        critic = await runtime.projectWorkflow.evaluateCritic(generated.id, { status: 'passed', expected_revision: generated.revision, idempotency_key: `${runId}-critic-${generationAttempt}` }, principal);
       } catch (error) {
         if (generationAttempt < 2) continue;
         throw error;
@@ -292,12 +292,12 @@ async function run(input) {
     const criticManifest = runtime.db.get('SELECT payload_json FROM receipt_manifests WHERE id=?', [critic.critic.id]);
     const criticCoverageHash = criticManifest ? JSON.parse(criticManifest.payload_json).coverage_sha256 : null;
     const workflow = runtime.db.get('SELECT * FROM workflows WHERE project_id=?', [project.id]);
-    await runtime.project.applyProposal(critic.proposal.id, { expected_revision: workflow.revision, idempotency_key: `${runId}-proposal-apply` }, principal);
+    await runtime.projectWorkflow.applyProposal(critic.proposal.id, { expected_revision: workflow.revision, idempotency_key: `${runId}-proposal-apply` }, principal);
     const runnerProfile = await runtime.runner.createProfile({ runner_type: 'host', label: 'Real local Host', expected_revision: 0, idempotency_key: `${runId}-runner-profile` }, principal);
     const runnerProbe = await runtime.runner.probeProfile(runnerProfile.profile.id, { expected_revision: runnerProfile.profile.revision, idempotency_key: `${runId}-runner-probe` }, principal);
     const runnerProbeResult = await waitOperation(runtime, runnerProbe.operation.operation_id, principal.actorId);
     if (runnerProbeResult.status !== 'succeeded') throw operationFailure(runnerProbeResult, 'runner_unavailable', 'runner_probe');
-    const execution = await runtime.execution.create(project.id, { repository_workspace_id: workspace.id, context_pack_id: pack.pack.id, runner_profile_id: runnerProfile.profile.id, expected_revision: runtime.project.getProject(project.id, principal).revision, idempotency_key: `${runId}-execution` }, principal);
+    const execution = await runtime.execution.create(project.id, { repository_workspace_id: workspace.id, context_pack_id: pack.pack.id, runner_profile_id: runnerProfile.profile.id, expected_revision: runtime.projectWorkflow.getProject(project.id, principal).revision, idempotency_key: `${runId}-execution` }, principal);
     const started = await runtime.execution.start(execution.execution.id, { expected_revision: execution.execution.revision, idempotency_key: `${runId}-execution-start` }, principal);
     const executionResult = await waitOperation(runtime, started.operation.operation_id, principal.actorId);
     if (executionResult.status !== 'succeeded') throw operationFailure(executionResult, 'execution_failed', 'execution');

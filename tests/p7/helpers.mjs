@@ -32,7 +32,7 @@ export async function open(options = {}) {
 }
 
 export async function createProject(state, suffix = 'fixture') {
-  return state.runtime.project.createProject({ name: `P7 ${suffix}`, idempotency_key: `p7-${suffix}-project-key` }, state.principal);
+  return state.runtime.projectWorkflow.createProject({ name: `P7 ${suffix}`, idempotency_key: `p7-${suffix}-project-key` }, state.principal);
 }
 
 export async function prepare(state, suffix = 'flow', tasks = null) {

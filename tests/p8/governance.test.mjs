@@ -7,6 +7,7 @@ import { CLEAN_P7_MIGRATION_REGISTRY, CLEAN_P8_MIGRATION_REGISTRY } from '../../
 import { CLEAN_P7_TABLE_OWNERS, CLEAN_P8_TABLE_OWNERS, validateCleanOwnership } from '../../apps/api/src/clean/ownership.mjs';
 import { createCleanCommandRegistry, registryParity } from '../../apps/api/src/clean/registry.mjs';
 import { loadCatalogIndex, loadCatalogLayers, validateCatalogLayers, validateP8EvidenceManifest } from '../../scripts/catalog-loader.mjs';
+import { P1_PACKAGE_SCRIPT_DEFINITIONS } from '../../scripts/lib/v3-clean-p1-scope.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const evidence = path.join(root, 'docs', 'evidence', 'v3-clean-p8-delivery-deployment-importer-20260825');
@@ -60,7 +61,7 @@ test('P8 Evidence is hash-complete and synchronized with the layered Catalog pro
 
 test('P8 package, testing policy, plan, matrix and Evidence references stay synchronized', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  assert.equal(Object.keys(manifest.scripts).length, 60);
+  assert.equal(Object.keys(manifest.scripts).length, Object.keys(P1_PACKAGE_SCRIPT_DEFINITIONS).length);
   assert.equal(manifest.scripts['test:p8'], 'node --test tests/p8/*.test.mjs');
   assert.equal(manifest.scripts['evidence:p8'], 'node scripts/v3-clean-p8-evidence.mjs');
   for (const file of ['AGENTS.md', 'docs/testing.md', 'docs/architecture/v3-clean-development-plan.md', 'docs/architecture/v23-capability-matrix.md']) {

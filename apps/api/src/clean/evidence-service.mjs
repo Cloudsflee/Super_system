@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { canonicalJson, opaqueId, sha256Hex } from './canonical.mjs';
 import { PlatformError } from './platform-error.mjs';
+import { DEFAULT_REDACTION_POLICY } from './redaction.mjs';
+import { createManifest } from './receipts.mjs';
 import {
   appendAggregate, assertRevision, createOperation, priorResponse, requestHash,
   requireIdempotency, requirePrincipal, requireRevision, saveResponse, time
@@ -12,7 +14,7 @@ const ASSET_KINDS = new Set(['execution_output', 'attachment', 'file', 'parser_o
 const RELATION_TYPES = new Set(['derived_from', 'generated_by', 'contains', 'references', 'attests', 'supersedes', 'tests', 'changes']);
 
 export class CleanEvidenceService {
-  constructor({ db, cas, events, operations, authorization, files = null, clock, config = {}, bootstrapActorId = 'actor_system_bootstrap' } = {}) {
+  constructor({ db, cas, events, operations, authorization, files = null, clock, config = {}, bootstrapActorId = 'actor_system_bootstrap', policy = DEFAULT_REDACTION_POLICY } = {}) {
     if (!db || !cas || !events || !operations || !authorization) throw new TypeError('evidence_service_dependencies_required');
     this.db = db;
     this.cas = cas;
@@ -21,6 +23,7 @@ export class CleanEvidenceService {
     this.authorization = authorization;
     this.files = files;
     this.clock = clock;
+    this.policy = policy || DEFAULT_REDACTION_POLICY;
     this.bootstrapActorId = bootstrapActorId;
     this.workspaceRoot = path.resolve(config.workspaceRoot || path.join(process.cwd(), '.ai-workspace', 'v3-clean', 'workspaces'));
     this.unsubscribe = null;
@@ -301,14 +304,13 @@ export class CleanEvidenceService {
       this.captureTimer = setTimeout(() => { this.captureTimer = null; if (!this.closing) this.captureQueue = this.captureQueue.then(() => this.recoverPending()).catch(() => undefined); }, 1000 * this.captureRetries);
       this.captureTimer.unref?.();
     }
-    const payload = canonicalJson({
+    const payload = {
       execution_id: String(executionId || ''),
       status: 'pending',
       error_code: String(error?.code || 'evidence_capture_failed').slice(0, 120)
-    });
+    };
     try {
-      this.db.run(`INSERT INTO receipt_manifests(id,kind,status,payload_json,payload_sha256,cas_sha256,created_at,expires_at)
-        VALUES(?,?,?,?,?,?,?,?)`, [opaqueId('receipt'), 'evidence.capture.failure', 'failed', payload, sha256Hex(payload), null, time(this.clock), null]);
+      createManifest({ db: this.db, kind: 'evidence.capture.failure', status: 'failed', payload, createdAt: time(this.clock), policy: this.policy });
     } catch { /* diagnostic receipt creation must not hide the pending event */ }
   }
 

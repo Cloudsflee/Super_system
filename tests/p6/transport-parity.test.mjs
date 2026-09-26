@@ -37,7 +37,7 @@ test('P6 REST, MCP HTTP, stdio and Gateway share Execution schemas and receipts'
     assert.equal(stdio[1].result.command_id, 'execution.get');
     assert.equal(stdio[1].result.structuredContent.execution.id, fixture.execution.id);
 
-    const gatewayBody = { name: 'execution_get', arguments: { execution_id: fixture.execution.id }, mcp_token: client.token };
+    const gatewayBody = { command_id: 'execution_get', arguments: { execution_id: fixture.execution.id }, mcp_token: client.token };
     const timestamp = String(Math.floor(Date.now() / 1000));
     const nonce = 'p6-transport-gateway-nonce';
     const gateway = await json(`${network.base}/api/v2/gateway/forward`, {
@@ -54,6 +54,21 @@ test('P6 REST, MCP HTTP, stdio and Gateway share Execution schemas and receipts'
     assert.equal(gateway.status, 200);
     assert.equal(gateway.payload.data.result.command_id, 'execution.get');
     assert.equal(gateway.payload.data.result.result.execution.id, fixture.execution.id);
+    const legacyGatewayBody = { name: 'execution_get', arguments: { execution_id: fixture.execution.id }, mcp_token: client.token };
+    const legacyTimestamp = String(Math.floor(Date.now() / 1000));
+    const legacyNonce = 'p6-gateway-legacy-name';
+    const legacyGateway = await json(`${network.base}/api/v2/gateway/forward`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'X-AIWS-Gateway-Id': 'gateway-p6-parity',
+        'X-AIWS-Gateway-Timestamp': legacyTimestamp,
+        'X-AIWS-Gateway-Nonce': legacyNonce,
+        'X-AIWS-Gateway-Signature': state.runtime.gateway.sign({ timestamp: legacyTimestamp, nonce: legacyNonce, body: legacyGatewayBody })
+      },
+      body: JSON.stringify(legacyGatewayBody)
+    });
+    assert.ok(legacyGateway.status >= 400 && legacyGateway.status < 500);
 
     const project = state.runtime.db.get('SELECT revision FROM projects WHERE id=?', [fixture.project.id]);
     const createInput = {

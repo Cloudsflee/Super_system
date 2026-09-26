@@ -20,14 +20,14 @@ test('Provider lifecycle and Brief templates preserve revision CAS and immutable
     const enabled = await state.runtime.identity.enableProfile(created.profile.id, { expected_revision: 3, idempotency_key: 'p10-profile-enable' }, state.principal);
     assert.equal(enabled.profile.lifecycle_status, 'enabled');
 
-    const project = await state.runtime.project.createProject({ name: 'Template Project', idempotency_key: 'p10-template-project' }, state.principal);
+    const project = await state.runtime.projectWorkflow.createProject({ name: 'Template Project', idempotency_key: 'p10-template-project' }, state.principal);
     const template = await state.runtime.p10Service.createBriefTemplate({ team_id: project.team_id, name: 'Delivery Brief', content: { sections: ['objective','acceptance'] }, expected_revision: 0, idempotency_key: 'p10-template-create' }, state.principal);
     const revised = await state.runtime.p10Service.updateBriefTemplate(template.template.id, { content: { sections: ['objective','constraints','acceptance'] }, expected_revision: 1, idempotency_key: 'p10-template-update' }, state.principal);
     assert.equal(revised.template.current_revision, 2);
     const parallel = await state.runtime.p10Service.createBriefTemplate({ team_id: project.team_id, name: 'Parallel Brief', content: revised.template.content, expected_revision: 0, idempotency_key: 'p10-template-parallel' }, state.principal);
     assert.notEqual(parallel.template.id, template.template.id);
     assert.equal(parallel.template.content_sha256, revised.template.content_sha256);
-    const brief = await state.runtime.project.createBrief(project.id, { objective: 'Ship parity', acceptance: ['verified'], template_id: template.template.id, template_revision: 2, expected_revision: 1, idempotency_key: 'p10-template-brief' }, state.principal);
+    const brief = await state.runtime.projectWorkflow.createBrief(project.id, { objective: 'Ship parity', acceptance: ['verified'], template_id: template.template.id, template_revision: 2, expected_revision: 1, idempotency_key: 'p10-template-brief' }, state.principal);
     assert.deepEqual({ id: brief.revision_record.template_id, revision: brief.revision_record.template_revision, sha256: brief.revision_record.template_sha256 }, { id: template.template.id, revision: 2, sha256: revised.template.content_sha256 });
     assert.throws(() => state.runtime.p10Service.updateBriefTemplate(template.template.id, { content: {}, expected_revision: 1, idempotency_key: 'p10-template-stale' }, state.principal), (error) => error.code === 'revision_conflict');
     const archived = await state.runtime.p10Service.archiveBriefTemplate(template.template.id, { expected_revision: 2, idempotency_key: 'p10-template-archive' }, state.principal);
@@ -63,25 +63,25 @@ test('real Provider probing passes the bound credential only as a zeroable lease
 test('draft onboarding pins Brief before generation and activates only after proposal apply and confirmation', async () => {
   const state = await open();
   try {
-    const project = await state.runtime.project.createProject({ name: 'Ordered onboarding', idempotency_key: 'p10-onboarding-project' }, state.principal);
-    const intake = await state.runtime.project.submitIntake(project.id, { mode: 'brainstorm', content: { idea: 'ordered flow' }, expected_revision: 1, idempotency_key: 'p10-onboarding-intake' }, state.principal);
+    const project = await state.runtime.projectWorkflow.createProject({ name: 'Ordered onboarding', idempotency_key: 'p10-onboarding-project' }, state.principal);
+    const intake = await state.runtime.projectWorkflow.submitIntake(project.id, { mode: 'brainstorm', content: { idea: 'ordered flow' }, expected_revision: 1, idempotency_key: 'p10-onboarding-intake' }, state.principal);
     await waitOperation(state.runtime, intake.operation.operation_id, state.principal.actorId);
-    const brief = await state.runtime.project.createBrief(project.id, { content: { objective: 'Ship ordered onboarding', users: ['Owner'], scope: { in: ['Web'] }, constraints: ['CAS'], milestones: ['Ready'], acceptance: ['verified'], risks: ['drift'], open_questions: ['none'] }, expected_revision: 1, idempotency_key: 'p10-onboarding-brief' }, state.principal);
-    const workflow = await state.runtime.project.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'review', kind: 'workstream', title: 'Review' }] }, expected_revision: 1, idempotency_key: 'p10-onboarding-workflow' }, state.principal);
-    let current = state.runtime.project.getProject(project.id, state.principal);
+    const brief = await state.runtime.projectWorkflow.createBrief(project.id, { content: { objective: 'Ship ordered onboarding', users: ['Owner'], scope: { in: ['Web'] }, constraints: ['CAS'], milestones: ['Ready'], acceptance: ['verified'], risks: ['drift'], open_questions: ['none'] }, expected_revision: 1, idempotency_key: 'p10-onboarding-brief' }, state.principal);
+    const workflow = await state.runtime.projectWorkflow.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'review', kind: 'workstream', title: 'Review' }] }, expected_revision: 1, idempotency_key: 'p10-onboarding-workflow' }, state.principal);
+    let current = state.runtime.projectWorkflow.getProject(project.id, state.principal);
     assert.equal(current.status, 'draft');
-    const started = await state.runtime.project.startGeneration(project.id, { candidate: { nodes: [{ id: 'deliver', kind: 'workstream', title: 'Deliver' }] }, expected_revision: current.revision, idempotency_key: 'p10-onboarding-generation' }, state.principal);
+    const started = await state.runtime.projectWorkflow.startGeneration(project.id, { candidate: { nodes: [{ id: 'deliver', kind: 'workstream', title: 'Deliver' }] }, expected_revision: current.revision, idempotency_key: 'p10-onboarding-generation' }, state.principal);
     await waitOperation(state.runtime, started.operation.operation_id, state.principal.actorId);
-    const pending = state.runtime.project.listGenerations(project.id, state.principal)[0];
+    const pending = state.runtime.projectWorkflow.listGenerations(project.id, state.principal)[0];
     assert.deepEqual({ revision: pending.source_brief_revision, hash: pending.source_brief_hash }, { revision: brief.revision_record.revision, hash: brief.revision_record.content_sha256 });
-    const evaluated = await state.runtime.project.evaluateCritic(pending.id, { status: 'passed', issues: [], expected_revision: pending.revision, idempotency_key: 'p10-onboarding-critic' }, state.principal);
-    const applied = await state.runtime.project.applyProposal(evaluated.proposal.id, { expected_revision: workflow.workflow.revision, idempotency_key: 'p10-onboarding-apply' }, state.principal);
+    const evaluated = await state.runtime.projectWorkflow.evaluateCritic(pending.id, { status: 'passed', issues: [], expected_revision: pending.revision, idempotency_key: 'p10-onboarding-critic' }, state.principal);
+    const applied = await state.runtime.projectWorkflow.applyProposal(evaluated.proposal.id, { expected_revision: workflow.workflow.revision, idempotency_key: 'p10-onboarding-apply' }, state.principal);
     assert.equal(applied.proposal.status, 'applied');
     const appliedRevision = state.runtime.db.get('SELECT source_brief_revision,source_brief_hash FROM workflow_revisions WHERE proposal_id=?', [evaluated.proposal.id]);
     assert.deepEqual({ revision: appliedRevision.source_brief_revision, hash: appliedRevision.source_brief_hash }, { revision: brief.revision_record.revision, hash: brief.revision_record.content_sha256 });
-    current = state.runtime.project.getProject(project.id, state.principal);
+    current = state.runtime.projectWorkflow.getProject(project.id, state.principal);
     assert.equal(current.status, 'draft');
-    const confirmed = await state.runtime.project.confirmBrief(project.id, { brief_revision: brief.revision_record.revision, expected_revision: current.revision, idempotency_key: 'p10-onboarding-confirm' }, state.principal);
+    const confirmed = await state.runtime.projectWorkflow.confirmBrief(project.id, { brief_revision: brief.revision_record.revision, expected_revision: current.revision, idempotency_key: 'p10-onboarding-confirm' }, state.principal);
     assert.equal(confirmed.project.status, 'active');
     assert.equal(confirmed.project.onboarding_state, 'confirmed');
   } finally { await close(state); }
@@ -90,27 +90,27 @@ test('draft onboarding pins Brief before generation and activates only after pro
 test('proposal apply marks a draft-Brief generation stale when the source revision drifts', async () => {
   const state = await open();
   try {
-    const project = await state.runtime.project.createProject({ name: 'Brief drift', idempotency_key: 'p10-drift-project' }, state.principal);
-    const intake = await state.runtime.project.submitIntake(project.id, { mode: 'brainstorm', expected_revision: 1, idempotency_key: 'p10-drift-intake' }, state.principal);
+    const project = await state.runtime.projectWorkflow.createProject({ name: 'Brief drift', idempotency_key: 'p10-drift-project' }, state.principal);
+    const intake = await state.runtime.projectWorkflow.submitIntake(project.id, { mode: 'brainstorm', expected_revision: 1, idempotency_key: 'p10-drift-intake' }, state.principal);
     await waitOperation(state.runtime, intake.operation.operation_id, state.principal.actorId);
-    await state.runtime.project.createBrief(project.id, { objective: 'Original', acceptance: ['one'], expected_revision: 1, idempotency_key: 'p10-drift-brief-one' }, state.principal);
-    const workflow = await state.runtime.project.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'one', kind: 'workstream', title: 'One' }] }, expected_revision: 1, idempotency_key: 'p10-drift-workflow' }, state.principal);
-    let current = state.runtime.project.getProject(project.id, state.principal);
-    const started = await state.runtime.project.startGeneration(project.id, { candidate: { nodes: [{ id: 'two', kind: 'workstream', title: 'Two' }] }, expected_revision: current.revision, idempotency_key: 'p10-drift-generation' }, state.principal);
+    await state.runtime.projectWorkflow.createBrief(project.id, { objective: 'Original', acceptance: ['one'], expected_revision: 1, idempotency_key: 'p10-drift-brief-one' }, state.principal);
+    const workflow = await state.runtime.projectWorkflow.reviseWorkflow(project.id, { graph: { nodes: [{ id: 'one', kind: 'workstream', title: 'One' }] }, expected_revision: 1, idempotency_key: 'p10-drift-workflow' }, state.principal);
+    let current = state.runtime.projectWorkflow.getProject(project.id, state.principal);
+    const started = await state.runtime.projectWorkflow.startGeneration(project.id, { candidate: { nodes: [{ id: 'two', kind: 'workstream', title: 'Two' }] }, expected_revision: current.revision, idempotency_key: 'p10-drift-generation' }, state.principal);
     await waitOperation(state.runtime, started.operation.operation_id, state.principal.actorId);
-    const pending = state.runtime.project.listGenerations(project.id, state.principal)[0];
-    const evaluated = await state.runtime.project.evaluateCritic(pending.id, { status: 'passed', issues: [], expected_revision: pending.revision, idempotency_key: 'p10-drift-critic' }, state.principal);
-    current = state.runtime.project.getProject(project.id, state.principal);
-    await state.runtime.project.createBrief(project.id, { objective: 'Changed', acceptance: ['two'], expected_revision: current.revision, idempotency_key: 'p10-drift-brief-two' }, state.principal);
-    await assert.rejects(state.runtime.project.applyProposal(evaluated.proposal.id, { expected_revision: workflow.workflow.revision, idempotency_key: 'p10-drift-apply' }, state.principal), (error) => error.code === 'workflow_proposal_stale' && error.details.source_brief_revision === 1 && error.details.brief_revision === 2);
-    assert.equal(state.runtime.project.getProposal(evaluated.proposal.id, state.principal).status, 'stale');
+    const pending = state.runtime.projectWorkflow.listGenerations(project.id, state.principal)[0];
+    const evaluated = await state.runtime.projectWorkflow.evaluateCritic(pending.id, { status: 'passed', issues: [], expected_revision: pending.revision, idempotency_key: 'p10-drift-critic' }, state.principal);
+    current = state.runtime.projectWorkflow.getProject(project.id, state.principal);
+    await state.runtime.projectWorkflow.createBrief(project.id, { objective: 'Changed', acceptance: ['two'], expected_revision: current.revision, idempotency_key: 'p10-drift-brief-two' }, state.principal);
+    await assert.rejects(state.runtime.projectWorkflow.applyProposal(evaluated.proposal.id, { expected_revision: workflow.workflow.revision, idempotency_key: 'p10-drift-apply' }, state.principal), (error) => error.code === 'workflow_proposal_stale' && error.details.source_brief_revision === 1 && error.details.brief_revision === 2);
+    assert.equal(state.runtime.projectWorkflow.getProposal(evaluated.proposal.id, state.principal).status, 'stale');
   } finally { await close(state); }
 });
 
 test('Project deletion rechecks blockers and tombstones only after confirmation', async () => {
   const state = await open();
   try {
-    const clean = await state.runtime.project.createProject({ name: 'Disposable Project', idempotency_key: 'p10-delete-project' }, state.principal);
+    const clean = await state.runtime.projectWorkflow.createProject({ name: 'Disposable Project', idempotency_key: 'p10-delete-project' }, state.principal);
     const prepared = await state.runtime.p10Service.prepareProjectDeletion(clean.id, { target_name: clean.name, expected_revision: clean.revision, idempotency_key: 'p10-project-delete-prepare' }, state.principal);
     const confirmed = await state.runtime.p10Service.confirmProjectDeletion(prepared.intent.id, { target_name: clean.name, expected_revision: 1, idempotency_key: 'p10-project-delete-confirm' }, state.principal);
     assert.equal(confirmed.intent.status, 'ready');
@@ -120,7 +120,7 @@ test('Project deletion rechecks blockers and tombstones only after confirmation'
     assert.equal(row.status, 'archived');
     assert.ok(row.deleted_at);
 
-    const blockedProject = await state.runtime.project.createProject({ name: 'Busy Project', idempotency_key: 'p10-busy-project' }, state.principal);
+    const blockedProject = await state.runtime.projectWorkflow.createProject({ name: 'Busy Project', idempotency_key: 'p10-busy-project' }, state.principal);
     const workspace = await createWorkspace(state, blockedProject, 'p10-busy');
     const prerequisites = await createAssistPrerequisites(state, blockedProject, 'p10-busy');
     await state.runtime.assist.createSession({ project_id: blockedProject.id, scope: 'project', scope_id: blockedProject.id, context_pack_id: prerequisites.pack.id, profile_id: prerequisites.profile.id, repository_workspace_id: workspace.workspace.id, idempotency_key: 'p10-busy-assist' }, state.principal);
@@ -135,8 +135,8 @@ test('Project deletion rechecks blockers and tombstones only after confirmation'
 test('Repository deletion requires name, HEAD, revision, and two independent session proofs', async () => {
   const state = await open();
   try {
-    const project = await state.runtime.project.createProject({ name: 'Repository Delete', idempotency_key: 'p10-repo-project' }, state.principal);
-    await state.runtime.project.createRepositoryConnection(project.id, { provider: 'fixture', source_kind: 'git', source_locator: 'fixture/delete-target', source_revision: 'a'.repeat(40), source_hash: 'b'.repeat(64), idempotency_key: 'p10-repo-connection' }, state.principal);
+    const project = await state.runtime.projectWorkflow.createProject({ name: 'Repository Delete', idempotency_key: 'p10-repo-project' }, state.principal);
+    await state.runtime.projectWorkflow.createRepositoryConnection(project.id, { provider: 'fixture', source_kind: 'git', source_locator: 'fixture/delete-target', source_revision: 'a'.repeat(40), source_hash: 'b'.repeat(64), idempotency_key: 'p10-repo-connection' }, state.principal);
     const target = state.runtime.db.get('SELECT t.* FROM repository_targets t JOIN repository_connections c ON c.id=t.connection_id WHERE c.project_id=?', [project.id]);
     const prepared = await state.runtime.p10Service.prepareRepositoryDeletion(target.id, { target_full_name: 'fixture/delete-target', expected_head_sha: 'a'.repeat(40), expected_revision: target.revision, idempotency_key: 'p10-repo-delete-prepare' }, state.principal);
     const creator = await state.runtime.p10Service.confirmRepositoryDeletion(prepared.intent.id, 'creator', { target_full_name: 'fixture/delete-target', expected_head_sha: 'a'.repeat(40), expected_revision: 1, idempotency_key: 'p10-repo-delete-creator' }, state.principal);
@@ -156,7 +156,7 @@ test('Repository deletion requires name, HEAD, revision, and two independent ses
 test('Assist metadata, fork, side-thread, review comments, and reversible deletion reuse the shared ledger', async () => {
   const state = await open();
   try {
-    const project = await state.runtime.project.createProject({ name: 'Assist Lifecycle', idempotency_key: 'p10-assist-project' }, state.principal);
+    const project = await state.runtime.projectWorkflow.createProject({ name: 'Assist Lifecycle', idempotency_key: 'p10-assist-project' }, state.principal);
     const workspace = await createWorkspace(state, project, 'p10-assist');
     const prerequisites = await createAssistPrerequisites(state, project, 'p10-assist');
     const created = await state.runtime.assist.createSession({ project_id: project.id, scope: 'project', scope_id: project.id, context_pack_id: prerequisites.pack.id, profile_id: prerequisites.profile.id, repository_workspace_id: workspace.workspace.id, title: 'Primary review', mode: 'guided', idempotency_key: 'p10-assist-create' }, state.principal);

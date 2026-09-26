@@ -82,6 +82,7 @@
         "scripts/lib/gate-process.mjs",
         "scripts/lib/port-lease.mjs",
         "scripts/lib/git-blob.mjs",
+        "scripts/lib/gate-inventory.mjs",
         "docs/architecture/decision-log.md"
       ],
       "target_modules": [
@@ -104,7 +105,13 @@
         "scripts/v3-clean-p10-parity.mjs",
         "scripts/v3-clean-p10-evidence.mjs",
         "scripts/lib/p10-post-closure.mjs",
-        ".githooks/pre-push"
+        ".githooks/pre-push",
+        "apps/api/server.mjs",
+        "apps/api/src/clean/database.mjs",
+        "apps/api/src/clean/events.mjs",
+        "apps/api/src/clean/platform.mjs",
+        "apps/api/src/clean/receipts.mjs",
+        "apps/api/src/clean/runtime.mjs"
       ],
       "tables": [],
       "apis": [],
@@ -132,7 +139,8 @@
         "tests/p10/port-lease.test.mjs",
         "tests/unit/recovery-golden.test.mjs",
         "tests/integration/mcp-stdio-r5.test.mjs",
-        "tests/integration/codex-provider-flow.test.mjs"
+        "tests/integration/codex-provider-flow.test.mjs",
+        "tests/p1/clean-platform.test.mjs"
       ],
       "ui_tests": [],
       "evidence": [
@@ -169,7 +177,8 @@
         "docs/evidence/post-p10-development-reliability-20260905/change.patch",
         "docs/evidence/post-p10-development-reliability-20260905/rollback.ps1",
         "docs/evidence/post-p10-development-reliability-20260905"
-      ]
+      ],
+      "retired_paths": []
     },
     {
       "id": "REC-D10-FRONTEND-024",
@@ -190,58 +199,72 @@
         "V2.3 mature web workflows"
       ],
       "target_modules": [
+        "apps/web/package.json",
         "apps/web/src/App.tsx",
         "apps/web/src/api.ts",
-        "apps/web/src/features/identity/IdentityAccessPage.tsx",
-        "apps/web/src/features/identity/index.ts",
-        "apps/web/src/styles.css",
-        "apps/web/src/test/identity-access.test.tsx",
-        "apps/web/package.json",
-        "apps/web/vite.config.ts",
-        "apps/web/src/features/operations/OperationsPage.tsx",
-        "apps/web/src/features/operations/index.ts",
-        "apps/web/src/test/operations-p8.test.tsx",
-        "apps/web/src/features/p10/FinalBusinessParityPage.tsx",
-        "apps/web/src/features/setup/SystemOnboarding.tsx",
-        "apps/web/src/features/setup/GithubSetup.tsx",
-        "apps/web/src/features/settings/SettingsPage.tsx",
-        "apps/web/src/features/project/ProjectOnboardingPage.tsx",
-        "scripts/e2e.mjs",
-        "apps/web/src/features/assets/AssetsPage.tsx",
-        "apps/web/src/features/audit/AuditPage.tsx",
+        "apps/web/src/features/assets/index.ts",
         "apps/web/src/features/assist/AssistMarkdown.tsx",
         "apps/web/src/features/assist/AttachmentPreview.tsx",
         "apps/web/src/features/assist/OfficePreview.tsx",
         "apps/web/src/features/assist/PdfPreview.tsx",
         "apps/web/src/features/assist/TurnTimeline.tsx",
         "apps/web/src/features/assist/TypedEvent.tsx",
+        "apps/web/src/features/assist/index.ts",
         "apps/web/src/features/assist/office-preview.worker.ts",
-        "apps/web/src/features/context/ContextMapPage.tsx",
+        "apps/web/src/features/audit/index.ts",
+        "apps/web/src/features/context/index.ts",
         "apps/web/src/features/execution/QualityPolicyPanel.tsx",
-        "apps/web/src/features/nodes/NodeWorkspacePage.tsx",
+        "apps/web/src/features/execution/index.ts",
+        "apps/web/src/features/identity/IdentityAccessPage.tsx",
+        "apps/web/src/features/identity/index.ts",
+        "apps/web/src/features/nodes/index.ts",
+        "apps/web/src/features/operations/OperationsPage.tsx",
+        "apps/web/src/features/operations/index.ts",
+        "apps/web/src/features/p10/FinalBusinessParityPage.tsx",
+        "apps/web/src/features/project/ProjectOnboardingPage.tsx",
         "apps/web/src/features/project/WorkflowCanvas.tsx",
-        "apps/web/src/features/projects/ProjectsPage.tsx",
+        "apps/web/src/features/project/index.ts",
+        "apps/web/src/features/projects/index.ts",
         "apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx",
+        "apps/web/src/features/projects/onboarding/index.ts",
+        "apps/web/src/features/projects/preparation/data.ts",
+        "apps/web/src/features/projects/preparation/index.tsx",
         "apps/web/src/features/settings/BriefTemplatesPanel.tsx",
+        "apps/web/src/features/settings/SettingsPage.tsx",
+        "apps/web/src/features/settings/index.ts",
+        "apps/web/src/features/setup/GithubSetup.tsx",
+        "apps/web/src/features/setup/SystemOnboarding.tsx",
+        "apps/web/src/features/setup/codex-device-auth.ts",
+        "apps/web/src/features/setup/index.ts",
+        "apps/web/src/features/workflow/WorkflowPage/index.ts",
+        "apps/web/src/features/workflow/index.ts",
+        "apps/web/src/hooks/useOperationStatus.ts",
+        "apps/web/src/styles.css",
+        "apps/web/src/test/identity-access.test.tsx",
+        "apps/web/src/test/operation-status.test.tsx",
+        "apps/web/src/test/operations-p8.test.tsx",
+        "apps/web/src/test/project-preparation.test.tsx",
+        "apps/web/src/workspace.ts",
+        "apps/web/vite.config.ts",
+        "scripts/e2e.mjs"
+      ],
+      "retired_paths": [
+        "apps/web/src/features/assets/AssetsPage.tsx",
+        "apps/web/src/features/audit/AuditPage.tsx",
+        "apps/web/src/features/context/ContextMapPage.tsx",
+        "apps/web/src/features/nodes/NodeWorkspacePage.tsx",
+        "apps/web/src/features/projects/ProjectsPage.tsx",
+        "apps/web/src/features/setup/CleanSetupPage.tsx",
         "apps/web/src/features/setup/CodexDiscoveryPicker.tsx",
         "apps/web/src/features/setup/CodexSetup.tsx",
-        "apps/web/src/features/setup/codex-device-auth.ts",
-        "apps/web/src/features/workflow/WorkflowPage/index.ts",
-        "apps/web/src/features/workflow/WorkstreamPage.tsx",
-        "apps/web/src/features/assets/index.ts",
-        "apps/web/src/features/audit/index.ts",
-        "apps/web/src/features/nodes/index.ts",
-        "apps/web/src/features/projects/index.ts",
-        "apps/web/src/features/projects/onboarding/index.ts",
-        "apps/web/src/features/workflow/index.ts",
-        "apps/web/src/features/assist/index.ts",
-        "apps/web/src/features/context/index.ts",
-        "apps/web/src/features/execution/index.ts",
-        "apps/web/src/features/project/index.ts",
-        "apps/web/src/features/settings/index.ts",
-        "apps/web/src/features/setup/index.ts",
-        "apps/web/src/features/projects/preparation/index.tsx",
-        "apps/web/src/test/project-preparation.test.tsx"
+        "apps/web/src/features/workflow/WorkstreamPage.tsx"
+      ],
+      "maintenance_paths": [
+        "tests/p4/helpers.mjs",
+        "tests/p5/helpers.mjs",
+        "tests/p6/helpers.mjs",
+        "tests/p7/helpers.mjs",
+        "tests/p8/helpers.mjs"
       ],
       "tables": [],
       "apis": [
@@ -296,6 +319,7 @@
         "tests/p2/identity-acl-security.test.mjs",
         "tests/p8/http-contract.test.mjs",
         "tests/p10/http-contract.test.mjs",
+        "tests/p10/github-deletion-permissions.test.mjs",
         "tests/p10/post-closure-restoration.test.mjs"
       ],
       "ui_tests": [
@@ -365,7 +389,6 @@
         "apps/web/src/features/operations/OperationsPage.tsx",
         "Dockerfile",
         ".dockerignore",
-        "apps/web/src/features/audit/AuditPage.tsx",
         "scripts/development-receipt.mjs"
       ],
       "tables": [
@@ -408,6 +431,7 @@
       ],
       "behavior_tests": [
         "tests/p8/importer.test.mjs",
+        "tests/p8/github-adapter.test.mjs",
         "tests/p8/deployment-backup.test.mjs",
         "tests/p8/delivery-operations.test.mjs",
         "tests/p8/http-contract.test.mjs",
@@ -578,8 +602,6 @@
         "apps/api/src/clean/config.mjs",
         "config/github-app.local.example.json",
         "apps/api/src/clean/app-server-adapter.mjs",
-        "apps/web/src/features/setup/CodexDiscoveryPicker.tsx",
-        "apps/web/src/features/setup/CodexSetup.tsx",
         "apps/web/src/features/setup/codex-device-auth.ts"
       ],
       "tables": [
@@ -943,7 +965,6 @@
         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
         "apps/api/src/clean/p10-service.mjs",
         "apps/web/src/features/project/ProjectOnboardingPage.tsx",
-        "apps/web/src/features/projects/ProjectsPage.tsx",
         "apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx",
         "apps/web/src/features/settings/BriefTemplatesPanel.tsx"
       ],
@@ -1032,9 +1053,7 @@
         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
         "apps/web/src/features/project/ProjectOnboardingPage.tsx",
         "apps/web/src/features/project/WorkflowCanvas.tsx",
-        "apps/web/src/features/workflow/WorkflowPage/index.ts",
-        "apps/web/src/features/workflow/WorkstreamPage.tsx",
-        "apps/web/src/features/nodes/NodeWorkspacePage.tsx"
+        "apps/web/src/features/workflow/WorkflowPage/index.ts"
       ],
       "tables": [
         "workflows",
@@ -2403,7 +2422,8 @@
         "apps/web/src/api.ts",
         "apps/api/src/clean/migrations/009-final-business-parity-governance.mjs",
         "apps/api/src/clean/p10-service.mjs",
-        "packages/contracts/src/codex-device-auth.mjs"
+        "packages/contracts/src/codex-device-auth.mjs",
+        "apps/api/src/clean/p5-domain-helpers.mjs"
       ],
       "tables": [
         "schema_migrations"
@@ -2424,7 +2444,8 @@
         "tests/p9/web-governance.test.mjs",
         "tests/p10/http-contract.test.mjs",
         "tests/p10/migration.test.mjs",
-        "tests/p10/post-closure-restoration.test.mjs"
+        "tests/p10/post-closure-restoration.test.mjs",
+        "tests/integration/v3-clean-p1.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/offline-p9.test.ts",
@@ -2456,7 +2477,12 @@
         "docs/evidence/v3-clean-p10-final-governance-20260829/verification.json"
       ],
       "parity_map": "docs/architecture/p10-parity/business-parity-map.json",
-      "parity_phase": "P10"
+      "parity_phase": "P10",
+      "retired_paths": [
+        "apps/api/src/clean/cas-store.mjs",
+        "apps/api/src/clean/event-service.mjs",
+        "apps/api/src/clean/operation-service.mjs"
+      ]
     }
   ],
   "active_runtime": "v3-clean",

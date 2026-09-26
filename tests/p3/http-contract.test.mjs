@@ -134,13 +134,13 @@ test('P3 project access remains resolver- and ACL-scoped', async () => {
   try {
     const setup = await runtime.identity.setupComplete({ display_name: 'Owner', team_name: 'Team', idempotency_key: 'p3-scope-setup-key' });
     const principal = runtime.identity.authenticateProof(setup.session.proof);
-    const project = await runtime.project.createProject({ name: 'Scoped', idempotency_key: 'p3-scope-project-key' }, principal);
+    const project = await runtime.projectWorkflow.createProject({ name: 'Scoped', idempotency_key: 'p3-scope-project-key' }, principal);
     await runtime.identity.setAclEntry(
       project.id,
       { principal_actor_id: principal.actorId, resource: 'project', action: 'read', effect: 'deny', expected_revision: 0, idempotency_key: 'p3-scope-deny-key' },
       principal
     );
-    assert.throws(() => runtime.project.getProject(project.id, principal), (error) => error.code === 'permission_denied');
+    assert.throws(() => runtime.projectWorkflow.getProject(project.id, principal), (error) => error.code === 'permission_denied');
     assert.throws(() => runtime.authorization.assert(principal, 'read', 'outside-project', { resource: 'project' }), (error) => error.code === 'project_denied');
   } finally {
     runtime.close();

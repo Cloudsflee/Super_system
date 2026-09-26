@@ -88,6 +88,64 @@ export function appendAggregate(events, tx, {
   });
 }
 
+// Compatibility call-shape adapters for the older P2/P3 domains. These keep
+// the owner implementation singular while allowing those domains to migrate
+// without introducing their own transaction writers.
+export function appendAggregateInTransaction(tx, events, input) {
+  return appendAggregate(events, tx, input);
+}
+
+export function operationLedger(tx, events = null) {
+  const operations = tx?.__cleanOperations || events?.operations;
+  if (!operations
+    || typeof operations.createInTransaction !== 'function'
+    || typeof operations.linkInTransaction !== 'function'
+    || typeof operations.getIdempotencyInTransaction !== 'function'
+    || typeof operations.saveIdempotencyInTransaction !== 'function') {
+    throw new TypeError('clean_operation_service_required');
+  }
+  tx.__cleanOperations = operations;
+  return operations;
+}
+
+export function createInlineOperation(tx, eventsOrInput, maybeInput = null) {
+  const input = maybeInput ? { ...maybeInput, events: eventsOrInput } : eventsOrInput;
+  const { events = null, actorId, commandId, resourceType, resourceId, projectId = null, requestHash: hash, parentOperationId = null, now } = input || {};
+  const operations = operationLedger(tx, events);
+  return createOperation(operations, tx, {
+    actorId, commandId, resourceType, resourceId, projectId, requestHash: hash,
+    idempotencyKey: `inline-${opaqueId('key')}`, parentOperationId, status: 'succeeded'
+  }, now);
+}
+
+export function linkOperation(tx, operationId, aggregateTypeOrLinks, aggregateId, now) {
+  const links = Array.isArray(aggregateTypeOrLinks)
+    ? (typeof aggregateTypeOrLinks[0] === 'string' ? [aggregateTypeOrLinks] : aggregateTypeOrLinks)
+    : [[aggregateTypeOrLinks, aggregateId]];
+  const timestamp = Array.isArray(aggregateTypeOrLinks) ? aggregateId : now;
+  return operationLedger(tx).linkInTransaction(tx, operationId, links, timestamp);
+}
+
+export function getIdempotency(tx, actorId, commandId, idempotencyKey, hash, now) {
+  return operationLedger(tx).getIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey, requestHash: hash, now });
+}
+
+export function saveIdempotency(tx, actorId, commandId, idempotencyKey, hash, response, operationId, now, responseStatus = 200) {
+  return operationLedger(tx).saveIdempotencyInTransaction(tx, { actorId, commandId, idempotencyKey, requestHash: hash, response, operationId, responseStatus, now });
+}
+
+export function operationEnvelope(value) {
+  return {
+    operation_id: value.operation_id || value.id,
+    status: value.status || 'succeeded',
+    revision: Number(value.revision || 1),
+    resource_type: value.resourceType || value.resource_type || null,
+    resource_id: value.resourceId || value.resource_id || null,
+    audit_reference: value.audit_reference || null,
+    terminal: ['succeeded', 'failed', 'cancelled', 'expired'].includes(value.status || 'succeeded')
+  };
+}
+
 export function operationView(operations, operationId, principal = null, projectId = null) {
   return operations.get(String(operationId), {
     actorId: principal?.actorId || null,

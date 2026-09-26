@@ -20,7 +20,7 @@ try {
   await runtime.recovery;
   const setup = await runtime.identity.setupComplete({ display_name: 'P4 Performance', team_name: 'P4 Performance', idempotency_key: 'p4-performance-setup' });
   const principal = runtime.identity.authenticateProof(setup.session.proof);
-  const project = await runtime.project.createProject({ name: 'P4 1000 node fixture', idempotency_key: 'p4-performance-project' }, principal);
+  const project = await runtime.projectWorkflow.createProject({ name: 'P4 1000 node fixture', idempotency_key: 'p4-performance-project' }, principal);
   for (let index = 0; index < 1000; index += 1) {
     await runtime.context.createSource(project.id, {
       kind: 'note', title: `Node ${String(index).padStart(4, '0')}`, uri: `performance/node-${String(index).padStart(4, '0')}`,

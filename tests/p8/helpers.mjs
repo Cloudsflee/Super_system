@@ -34,7 +34,7 @@ export async function prepare(state, suffix = 'flow') {
   await waitOperation(state.runtime, started.operation.operation_id, state.principal.actorId);
   base.execution = state.runtime.execution.get(base.execution.id, state.principal);
   const captured = await state.runtime.evidence.capture({ project_id: base.project.id, execution_id: base.execution.id, logical_name: 'delivery.json', asset_kind: 'execution_output', source_type: 'manual', source_ref: `fixture:${suffix}`, media_type: 'application/json', content_base64: Buffer.from('{"delivery":true}').toString('base64'), expected_revision: 0, idempotency_key: `p8-${suffix}-asset` }, state.principal);
-  await state.runtime.project.createOutcomeRequirement(base.project.id, { requirement_key: `delivery-${suffix}`, rubric: { evaluator: 'evidence_count', minimum: 1 }, workflow_revision: 1, idempotency_key: `p8-${suffix}-requirement` }, state.principal);
+  await state.runtime.projectWorkflow.createOutcomeRequirement(base.project.id, { requirement_key: `delivery-${suffix}`, rubric: { evaluator: 'evidence_count', minimum: 1 }, workflow_revision: 1, idempotency_key: `p8-${suffix}-requirement` }, state.principal);
   const execution = state.runtime.execution.get(base.execution.id, state.principal);
   const evaluation = await state.runtime.outcomeEvaluation.evaluate(execution.id, { expected_revision: execution.revision, idempotency_key: `p8-${suffix}-outcome` }, state.principal);
   await waitOperation(state.runtime, evaluation.operation.operation_id, state.principal.actorId);
@@ -60,7 +60,7 @@ export async function prepareDelivery(state, suffix = 'delivery') {
   const base = await prepare(state, suffix);
   const profile = await githubProfile(state, suffix);
   const connection = state.runtime.db.get('SELECT * FROM repository_connections WHERE project_id=?', [base.project.id]);
-  const metadataJson = canonicalJson({ github_profile_id: profile.id, repository_full_name: 'fixture/delivery-target' });
+  const metadataJson = canonicalJson({ provider_profile_id: profile.id, repository_full_name: 'fixture/delivery-target' });
   state.runtime.db.run("UPDATE repository_connections SET provider='git',credential_ref_id=?,source_locator='fixture/delivery-target',metadata_json=?,metadata_sha256=? WHERE id=?", [profile.credential_ref_id, metadataJson, sha256Hex(metadataJson), connection.id]);
   const target = state.runtime.db.get('SELECT * FROM repository_targets WHERE connection_id=?', [connection.id]);
   const baseSha = 'a'.repeat(40);

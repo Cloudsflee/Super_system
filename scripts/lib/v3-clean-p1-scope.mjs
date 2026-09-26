@@ -1,3 +1,5 @@
+import { GATE_INVENTORY } from './gate-inventory.mjs';
+
 export const P1_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-gate-contract-complete-20260819';
 export const P1_PARENT_EVIDENCE_DIRECTORY = 'docs/evidence/v3-clean-p1-completion-audit-20260819';
 export const P1_BASELINE_DIRECTORY = '.ai-workspace/v3-clean-p1-gate-contract-complete-baseline-20260819';
@@ -25,17 +27,7 @@ export const P1_GATE_SYNC_EVIDENCE_DOCUMENTS = Object.freeze([
   'docs/architecture/v23-capability-matrix.md'
 ]);
 
-export const P1_GATE_SYNC_COMMANDS = Object.freeze([
-  'pnpm check',
-  'pnpm audit:p1',
-  'pnpm scan:clean',
-  'pnpm test:p1',
-  'pnpm recovery:plan',
-  'pnpm recovery:catalog',
-  'pnpm recovery:coverage',
-  'pnpm recovery:impact -- --audit',
-  'pnpm verify'
-]);
+export const P1_GATE_SYNC_COMMANDS = GATE_INVENTORY.p1;
 
 export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
   source_files: Object.freeze([
@@ -55,6 +47,7 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'scripts/lib/gate-process.mjs',
     'scripts/lib/port-lease.mjs',
     'scripts/lib/git-blob.mjs',
+    'scripts/lib/gate-inventory.mjs',
     'docs/architecture/decision-log.md'
   ]),
   target_modules: Object.freeze([
@@ -77,7 +70,13 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'scripts/v3-clean-p10-parity.mjs',
     'scripts/v3-clean-p10-evidence.mjs',
     'scripts/lib/p10-post-closure.mjs',
-    '.githooks/pre-push'
+    '.githooks/pre-push',
+    'apps/api/server.mjs',
+    'apps/api/src/clean/database.mjs',
+    'apps/api/src/clean/events.mjs',
+    'apps/api/src/clean/platform.mjs',
+    'apps/api/src/clean/receipts.mjs',
+    'apps/api/src/clean/runtime.mjs'
   ]),
   behavior_tests: Object.freeze([
     'tests/unit/recovery-governance.test.mjs',
@@ -99,7 +98,8 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'tests/p10/port-lease.test.mjs',
     'tests/unit/recovery-golden.test.mjs',
     'tests/integration/mcp-stdio-r5.test.mjs',
-    'tests/integration/codex-provider-flow.test.mjs'
+    'tests/integration/codex-provider-flow.test.mjs',
+    'tests/p1/clean-platform.test.mjs'
   ]),
   ui_tests: Object.freeze([])
 });
@@ -137,11 +137,9 @@ export const P1_CLEAN_ROOT = 'apps/api/src/clean/';
 export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Object.entries({
   dev: { command: 'node scripts/dev.mjs', role: 'active_process', phase: 'P1' },
   'dev:clean': { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
-  'dev:api': { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
   'dev:broker': { command: 'node apps/runner-broker/clean-server.mjs', role: 'active_process', phase: 'P6' },
   'fixture:legacy:dev-broker': { command: 'node apps/runner-broker/server.mjs', role: 'deferred_fixture', phase: 'P6' },
   start: { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
-  'start:clean': { command: 'node apps/api/server.mjs', role: 'active_process', phase: 'P1' },
   build: { command: 'corepack pnpm --filter @aiws/web build', role: 'characterization_gate', phase: 'P9' },
   check: { command: 'node scripts/check.mjs', role: 'p1_gate', phase: 'P1' },
   'scan:clean': { command: 'node scripts/v3-clean-architecture-scan.mjs', role: 'p1_gate', phase: 'P1' },
@@ -179,7 +177,6 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'test:release': { command: 'node --test tests/release/*.test.mjs', role: 'characterization_gate', phase: 'P8-P9' },
   'test:runner-real': { command: 'node scripts/runner-real-smoke.mjs', role: 'characterization_gate', phase: 'P6' },
   'test:development': { command: 'node --test tests/p10/development-reliability.test.mjs', role: 'development_gate', phase: 'P10+' },
-  'probe:development': { command: 'node scripts/runner-real-smoke.mjs', role: 'development_probe', phase: 'P10+' },
   'github:seed-fixture': { command: 'node scripts/github-seed-fixture.mjs', role: 'deferred_fixture', phase: 'P7' },
   'verify:dev': { command: 'node scripts/verify-dev.mjs', role: 'development_gate', phase: 'P10+' },
   verify: { command: 'node scripts/verify.mjs', role: 'p1_gate', phase: 'P1' },
@@ -443,8 +440,6 @@ const P10_FILES = new Set([
   'apps/api/src/clean/local-setup-service.mjs',
   'apps/api/src/clean/github-setup-service.mjs',
   'apps/parser-worker/archive-worker.mjs',
-  'apps/web/src/features/assets/AssetsPage.tsx',
-  'apps/web/src/features/audit/AuditPage.tsx',
   'apps/web/src/features/assist/AssistMarkdown.tsx',
   'apps/web/src/features/assist/AttachmentPreview.tsx',
   'apps/web/src/features/assist/OfficePreview.tsx',
@@ -452,21 +447,17 @@ const P10_FILES = new Set([
   'apps/web/src/features/assist/TurnTimeline.tsx',
   'apps/web/src/features/assist/TypedEvent.tsx',
   'apps/web/src/features/assist/office-preview.worker.ts',
-  'apps/web/src/features/context/ContextMapPage.tsx',
   'apps/web/src/features/execution/QualityPolicyPanel.tsx',
-  'apps/web/src/features/nodes/NodeWorkspacePage.tsx',
   'apps/web/src/features/project/WorkflowCanvas.tsx',
-  'apps/web/src/features/projects/ProjectsPage.tsx',
   'apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx',
   'apps/web/src/features/settings/BriefTemplatesPanel.tsx',
-  'apps/web/src/features/setup/CodexDiscoveryPicker.tsx',
-  'apps/web/src/features/setup/CodexSetup.tsx',
   'apps/web/src/features/setup/SystemOnboarding.tsx',
   'apps/web/src/features/setup/GithubSetup.tsx',
   'apps/web/src/features/setup/codex-device-auth.ts',
   'apps/web/src/features/setup/index.ts',
   'config/github-app.local.example.json',
-  'apps/web/src/features/workflow/WorkstreamPage.tsx',
+  'apps/web/src/hooks/useOperationStatus.ts',
+  'apps/web/src/test/operation-status.test.tsx',
   'apps/web/src/features/quality/',
   'apps/web/src/test/p10-business-parity.test.tsx',
   'apps/web/src/test/p10-quality.test.tsx',

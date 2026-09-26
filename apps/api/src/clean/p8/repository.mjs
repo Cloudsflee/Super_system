@@ -572,7 +572,7 @@ export class CleanP8Service {
     const row = this.db.get(`SELECT t.*,c.project_id,c.credential_ref_id,c.source_locator,c.metadata_json AS connection_metadata_json FROM repository_targets t JOIN repository_connections c ON c.id=t.connection_id WHERE t.id=?`, [delivery.repository_target_id]);
     if (!row || row.project_id !== delivery.project_id) throw new PlatformError('repository_target_missing', 'repository target is unavailable', {}, 409);
     const metadata = parseJson(row.connection_metadata_json, {});
-    const profileId = metadata.github_profile_id || metadata.provider_profile_id || metadata.profile_id;
+    const profileId = metadata.provider_profile_id;
     let profile = profileId ? this.db.get("SELECT * FROM provider_profiles WHERE id=? AND provider='github'", [String(profileId)]) : null;
     if (!profile && row.credential_ref_id) profile = this.db.get("SELECT * FROM provider_profiles WHERE credential_ref_id=? AND provider='github' ORDER BY updated_at DESC,id LIMIT 1", [row.credential_ref_id]);
     if (!profile) throw new PlatformError('github_profile_required', 'GitHub provider profile is required', {}, 409);

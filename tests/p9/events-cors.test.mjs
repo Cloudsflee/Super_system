@@ -9,8 +9,8 @@ test('project JSON replay is scoped, redacted, continuous and cursor-bound', asy
   const state = await open();
   const network = await listen(state.runtime);
   try {
-    const projectA = await state.runtime.project.createProject({ name: 'P9 A', idempotency_key: 'p9-events-project-a' }, state.principal);
-    await state.runtime.project.createProject({ name: 'P9 B', idempotency_key: 'p9-events-project-b' }, state.principal);
+    const projectA = await state.runtime.projectWorkflow.createProject({ name: 'P9 A', idempotency_key: 'p9-events-project-a' }, state.principal);
+    await state.runtime.projectWorkflow.createProject({ name: 'P9 B', idempotency_key: 'p9-events-project-b' }, state.principal);
     await state.runtime.events.append({
       aggregateType: 'p9_fixture', aggregateId: 'p9-a-tail', aggregateRevision: 1,
       actorId: state.principal.actorId, projectId: projectA.id, type: 'operation.fixture',
@@ -41,7 +41,7 @@ test('project JSON replay is scoped, redacted, continuous and cursor-bound', asy
     assert.equal(second.response.status, 200, JSON.stringify(second.body));
     assert.equal(second.body.data.events[0].previous_project_sequence, first.body.data.events[0].sequence);
 
-    const projectB = await state.runtime.project.createProject({ name: 'P9 C', idempotency_key: 'p9-events-project-c' }, state.principal);
+    const projectB = await state.runtime.projectWorkflow.createProject({ name: 'P9 C', idempotency_key: 'p9-events-project-c' }, state.principal);
     const wrongScope = await json(await fetch(`${network.base}/api/v2/events?project_id=${encodeURIComponent(projectB.id)}&cursor=${encodeURIComponent(first.body.data.next_cursor)}`, { headers: sessionHeaders(state.proof) }));
     assert.equal(wrongScope.response.status, 400);
     assert.equal(wrongScope.body.error.code, 'cursor_scope_mismatch');
@@ -72,7 +72,7 @@ test('SSE uses global ids, Last-Event-ID precedence and disconnects after ACL re
   const state = await open();
   const network = await listen(state.runtime);
   try {
-    const project = await state.runtime.project.createProject({ name: 'P9 SSE', idempotency_key: 'p9-sse-project' }, state.principal);
+    const project = await state.runtime.projectWorkflow.createProject({ name: 'P9 SSE', idempotency_key: 'p9-sse-project' }, state.principal);
     await state.runtime.events.append({ aggregateType: 'p9_fixture', aggregateId: 'p9-sse-event', aggregateRevision: 1, actorId: state.principal.actorId, projectId: project.id, type: 'operation.fixture', data: { state: 'ready' } });
     const base = `${network.base}/api/v2/events?project_id=${encodeURIComponent(project.id)}`;
     const page = await json(await fetch(`${base}&limit=1`, { headers: sessionHeaders(state.proof) }));

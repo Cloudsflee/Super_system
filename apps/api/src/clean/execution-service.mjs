@@ -22,13 +22,13 @@ const CHECK_IDS = new Set(['node_test', 'git_diff_check']);
 const execFileAsync = promisify(execFile);
 
 export class CleanExecutionService {
-  constructor({ db, events, operations, authorization, runner, projectWorkflow, assist, clock, config = {}, sleep = null, retryDelays = [1000, 4000] } = {}) {
+  constructor({ db, events, operations, authorization, runner, projectWorkflow, assist, clock, config = {}, sleep = null, retryDelays = [1000, 4000], policy = null } = {}) {
     if (!db || !events || !operations || !authorization || !runner || !projectWorkflow) throw new TypeError('execution_service_dependencies_required');
     this.db = db; this.events = events; this.operations = operations; this.authorization = authorization; this.runner = runner;
     this.projectWorkflow = projectWorkflow; this.assist = assist; this.clock = clock; this.config = config;
     this.sleep = sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms))); this.retryDelays = retryDelays; this.active = new Map();
     this.workspaceRoot = path.resolve(config.workspaceRoot || path.join(process.cwd(), '.ai-workspace', 'v3-clean', 'workspaces'));
-    this.candidates = new CandidateWorkspace({ db, root: this.workspaceRoot, repository: projectWorkflow });
+    this.candidates = new CandidateWorkspace({ db, root: this.workspaceRoot, repository: projectWorkflow, policy: policy || runner.policy });
     this.taskRoot = path.join(this.workspaceRoot, '.p6-tasks'); this.replaySecret = String(config.cursorSecret || 'v3-clean-p6-replay');
     fs.mkdirSync(this.taskRoot, { recursive: true, mode: 0o700 });
   }

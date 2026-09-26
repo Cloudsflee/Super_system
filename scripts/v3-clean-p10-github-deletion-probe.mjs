@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
@@ -8,21 +9,23 @@ import { emitProbe } from './lib/v3-clean-p6-runner-probe.mjs';
 
 const API = 'https://api.github.com';
 
-await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
-  const fixture = loadAppFixture();
+export async function runGithubDeletionProbe({
+  fixture = loadAppFixture(),
+  credential = loadGitCredential(),
+  adapter = new GitHubAppAdapter(),
+  fetchImpl = globalThis.fetch
+} = {}) {
   const privateKeyText = String(fixture.private_key || '');
   const privateKey = Buffer.from(privateKeyText, 'utf8');
-  const credential = loadGitCredential();
   const token = Buffer.from(credential.password, 'utf8');
-  fixture.private_key = '';
-  credential.password = '';
-  const adapter = new GitHubAppAdapter();
+  if (credential && typeof credential === 'object') credential.password = '';
+  if (fixture && typeof fixture === 'object') fixture.private_key = '';
   const auth = () => ({ appId: fixture.app_id, installationId: fixture.installation_id, privateKey: Buffer.from(privateKeyText, 'utf8') });
   let created = null;
   let stage = 'identity';
 
   try {
-    const account = await githubJson('/user', token);
+    const account = await githubJson('/user', token, { fetchImpl });
     const owner = String(account.value?.login || credential.username || '');
     if (!owner) throw new Error('github_account_missing');
     const suffix = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${process.pid}-${randomBytes(4).toString('hex')}`;
@@ -30,11 +33,12 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
     const fullName = `${owner}/${name}`;
 
     stage = 'collision-check';
-    const collision = await githubJson(`/repos/${encodeRepository(fullName)}`, token, { allowStatus: [404] });
+    const collision = await githubJson(`/repos/${encodeRepository(fullName)}`, token, { allowStatus: [404], fetchImpl });
     if (collision.status !== 404) throw new Error('github_fixture_name_preexisting');
 
     stage = 'create';
     const create = await githubJson('/user/repos', token, {
+      fetchImpl,
       method: 'POST',
       body: {
         name,
@@ -53,18 +57,16 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
     };
     if (!/^\d+$/.test(created.id) || created.full_name.toLowerCase() !== fullName.toLowerCase()) throw new Error('github_fixture_identity_invalid');
 
-    stage = 'head';
-    const head = await waitForHead(created.full_name, created.default_branch, token);
-    if (!/^[a-f0-9]{40}$/.test(head)) throw new Error('github_fixture_head_missing');
-
     stage = 'app-discovery';
-    let discovery = await findAppRepository(adapter, auth, created);
+    let discovery = await ensureAppRepositoryAccess({ adapter, auth, repository: created, installationId: fixture.installation_id, bind: (installationId, repositoryId) => bindRepositoryToInstallation(installationId, repositoryId, token, fetchImpl) });
     if (!discovery) {
-      stage = 'installation-bind';
-      await bindRepositoryToInstallation(fixture.installation_id, created.id, token);
-      stage = 'app-discovery';
-      discovery = await waitForAppDiscovery(adapter, auth, created);
+      throw new Error('github_fixture_not_discovered_by_app');
     }
+
+    stage = 'app-head';
+    const appSnapshot = await waitForAppHead(adapter, auth, created);
+    const head = String(appSnapshot.commit_sha || appSnapshot.revision || '');
+    if (!/^[a-f0-9]{40}$/.test(head)) throw new Error('github_fixture_head_missing');
 
     stage = 'delete';
     let deleted;
@@ -77,14 +79,14 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
       });
     } catch (error) {
       if (error?.code !== 'external_result_unknown') throw error;
-      const reconciledAfterUnknown = await adapter.reconcileRepositoryDeletion(auth(), { repository: created.full_name, repositoryId: created.id });
+      const reconciledAfterUnknown = await adapter.reconcileRepositoryDeletion(auth(), { repository: created.full_name, repositoryId: created.id, expectedPreviouslyBound: true });
       if (reconciledAfterUnknown.exists) throw error;
       deleted = { deleted: true, repository_id: created.id, full_name: created.full_name, head_sha: head, reconciled_after_unknown: true };
     }
     if (deleted.deleted !== true || String(deleted.repository_id) !== created.id) throw new Error('github_fixture_delete_identity_mismatch');
 
     stage = 'reconcile';
-    const reconciled = await adapter.reconcileRepositoryDeletion(auth(), { repository: created.full_name, repositoryId: created.id });
+    const reconciled = await adapter.reconcileRepositoryDeletion(auth(), { repository: created.full_name, repositoryId: created.id, expectedPreviouslyBound: true });
     if (reconciled.exists !== false || String(reconciled.repository_id) !== created.id) throw new Error('github_fixture_delete_reconcile_failed');
 
     const receipt = {
@@ -95,6 +97,8 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
         generated_repository_id: created.id,
         repository_selection: discovery.repository_selection,
         installation_repository_bound: discovery.bound === true,
+        app_head_validated: true,
+        app_delete_authorized: true,
         preexisting_check: 'absent'
       },
       deletion: {
@@ -104,6 +108,7 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
         repository_id_bound: true,
         expected_head_sha_bound: true,
         head_sha: head,
+        reconcile_resolution: String(reconciled.resolution || 'repository_not_found_after_bound_delete'),
         session_proofs: 2
       },
       cleanup: { only_generated_repository_id: created.id, no_broad_cleanup: true, residual_repository: false }
@@ -115,13 +120,17 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
     throw error;
   } finally {
     if (created?.id) {
-      try { await cleanupCreatedRepository(created, token); }
+      try { await cleanupCreatedRepository(created, token, fetchImpl); }
       catch (error) { throw new Error(`github_fixture_cleanup_failed:${String(error?.message || error)}`, { cause: error }); }
     }
     token.fill(0);
     privateKey.fill(0);
   }
-});
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', () => runGithubDeletionProbe());
+}
 
 function loadAppFixture() {
   if (process.env.AIWS_P10_GITHUB_APP_BUNDLE) return JSON.parse(process.env.AIWS_P10_GITHUB_APP_BUNDLE);
@@ -162,16 +171,6 @@ function loadGitCredential() {
   return { username: String(values.username || ''), password: String(values.password) };
 }
 
-async function waitForHead(repository, branch, token) {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    const response = await githubJson(`/repos/${encodeRepository(repository)}/git/ref/heads/${encodeURIComponent(branch)}`, token, { allowStatus: [404, 409] });
-    const sha = String(response.value?.object?.sha || '');
-    if (response.status === 200 && /^[a-f0-9]{40}$/.test(sha)) return sha;
-    await delay(500);
-  }
-  return '';
-}
-
 async function waitForAppDiscovery(adapter, auth, repository) {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     const found = await findAppRepository(adapter, auth, repository);
@@ -179,6 +178,23 @@ async function waitForAppDiscovery(adapter, auth, repository) {
     await delay(500);
   }
   throw new Error('github_fixture_not_discovered_by_app');
+}
+
+async function waitForAppHead(adapter, auth, repository) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      const snapshot = await adapter.inspectRepository(auth(), { fullName: repository.full_name, repositoryId: repository.id, branch: repository.default_branch });
+      if (/^[a-f0-9]{40}$/.test(String(snapshot.commit_sha || snapshot.revision || ''))) return snapshot;
+      lastError = new Error('github_fixture_head_missing');
+    } catch (error) {
+      lastError = error;
+      const status = Number(error?.details?.status || error?.status || 0);
+      if (status !== 404 && status !== 409 && error?.code !== 'github_branch_head_invalid') throw error;
+    }
+    await delay(500);
+  }
+  throw lastError || new Error('github_fixture_head_missing');
 }
 
 async function findAppRepository(adapter, auth, repository) {
@@ -194,22 +210,58 @@ async function findAppRepository(adapter, auth, repository) {
   return null;
 }
 
-async function bindRepositoryToInstallation(installationId, repositoryId, token) {
-  const result = await githubJson(`/user/installations/${encodeURIComponent(String(installationId))}/repositories/${encodeURIComponent(String(repositoryId))}`, token, { method: 'PUT' });
+async function installationSelection(adapter, auth, installationId) {
+  let cursor = null;
+  for (let page = 0; page < 20; page += 1) {
+    const result = await adapter.listInstallations(auth(), { cursor, limit: 100 });
+    const found = (result.installations || []).find((item) => String(item.id) === String(installationId));
+    if (found) return String(found.repository_selection || '').toLowerCase() === 'selected' ? 'selected' : String(found.repository_selection || 'all').toLowerCase() || 'all';
+    if (!result.next_cursor) break;
+    cursor = result.next_cursor;
+  }
+  throw new Error('github_installation_not_found');
+}
+
+/**
+ * Resolve App visibility before any user-token binding.  All-repositories
+ * installations must already expose the repository; only selected
+ * installations may use the PAT's installation-repository binding endpoint.
+ * This function is exported for the deterministic permission matrix test.
+ */
+export async function ensureAppRepositoryAccess({ adapter, auth, repository, installationId, bind }) {
+  const selection = await installationSelection(adapter, auth, installationId);
+  const found = await findAppRepository(adapter, auth, repository);
+  if (found) return { ...found, repository_selection: selection, bound: false };
+  if (selection !== 'selected') throw new Error('github_installation_repository_not_visible');
+  if (typeof bind !== 'function') throw new Error('github_installation_bind_unavailable');
+  await bind(installationId, repository.id);
+  const discovered = await waitForAppDiscovery(adapter, auth, repository);
+  return { ...discovered, repository_selection: selection, bound: true };
+}
+
+async function bindRepositoryToInstallation(installationId, repositoryId, token, fetchImpl = globalThis.fetch) {
+  let result;
+  try {
+    result = await githubJson(`/user/installations/${encodeURIComponent(String(installationId))}/repositories/${encodeURIComponent(String(repositoryId))}`, token, { method: 'PUT', fetchImpl });
+  } catch (error) {
+    if (error?.status === 403) throw Object.assign(new Error('github_installation_access_denied'), { code: 'github_installation_access_denied', status: 403 });
+    if (error?.status === 404) throw Object.assign(new Error('github_installation_not_found'), { code: 'github_installation_not_found', status: 404 });
+    throw error;
+  }
   if (![204, 304].includes(result.status)) throw new Error(`github_fixture_installation_bind_${result.status}`);
 }
 
-async function cleanupCreatedRepository(created, token) {
+export async function cleanupCreatedRepository(created, token, fetchImpl = globalThis.fetch) {
   const route = `/repos/${encodeRepository(created.full_name)}`;
-  const current = await githubJson(route, token, { allowStatus: [404] });
+  const current = await githubJson(route, token, { allowStatus: [404], fetchImpl });
   if (current.status === 404) return;
   if (String(current.value?.id || '') !== String(created.id)) throw new Error('github_cleanup_identity_mismatch');
-  const deleted = await githubJson(route, token, { method: 'DELETE', allowStatus: [404] });
+  const deleted = await githubJson(route, token, { method: 'DELETE', allowStatus: [404], fetchImpl });
   if (![204, 404].includes(deleted.status)) throw new Error('github_cleanup_failed');
 }
 
-async function githubJson(route, token, { method = 'GET', body = null, allowStatus = [] } = {}) {
-  const response = await fetch(`${API}${route}`, {
+async function githubJson(route, token, { method = 'GET', body = null, allowStatus = [], fetchImpl = globalThis.fetch } = {}) {
+  const response = await fetchImpl(`${API}${route}`, {
     method,
     headers: {
       accept: 'application/vnd.github+json',
@@ -223,7 +275,12 @@ async function githubJson(route, token, { method = 'GET', body = null, allowStat
   const text = await response.text();
   let value = {};
   try { value = text ? JSON.parse(text) : {}; } catch { value = {}; }
-  if (!response.ok && !allowStatus.includes(response.status)) throw new Error(`github_fixture_request_${response.status}`);
+  if (!response.ok && !allowStatus.includes(response.status)) {
+    const error = new Error(`github_fixture_request_${response.status}`);
+    error.code = `github_http_${response.status}`;
+    error.status = response.status;
+    throw error;
+  }
   return { status: response.status, value, oauth_scopes: response.headers.get('x-oauth-scopes') || '' };
 }
 
