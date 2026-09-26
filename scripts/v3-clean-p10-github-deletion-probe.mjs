@@ -23,6 +23,7 @@ export async function runGithubDeletionProbe({
   const auth = () => ({ appId: fixture.app_id, installationId: fixture.installation_id, privateKey: Buffer.from(privateKeyText, 'utf8') });
   let created = null;
   let stage = 'identity';
+  let failure = null;
 
   try {
     const account = await githubJson('/user', token, { fetchImpl });
@@ -116,12 +117,16 @@ export async function runGithubDeletionProbe({
     created = null;
     return receipt;
   } catch (error) {
+    failure = error;
     error.code = `github_p10_${stage}_${String(error?.code || error?.message || 'failed').replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 80)}`;
     throw error;
   } finally {
     if (created?.id) {
       try { await cleanupCreatedRepositoryWithApp(created, adapter, auth); }
-      catch (error) { throw new Error(`github_fixture_cleanup_failed:${String(error?.message || error)}`, { cause: error }); }
+      catch (error) {
+        const original = failure ? `:${String(failure.code || failure.message || failure).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120)}` : '';
+        throw new Error(`github_fixture_cleanup_failed:${String(error?.code || error?.message || error)}${original}`, { cause: error });
+      }
     }
     token.fill(0);
     privateKey.fill(0);
