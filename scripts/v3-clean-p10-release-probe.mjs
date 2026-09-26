@@ -224,7 +224,7 @@ async function verifyBrowser() {
   for (const [name, width, height] of [['desktop', 1440, 900], ['tablet', 1024, 768], ['mobile', 390, 844]]) {
     await page.setViewportSize({ width, height });
     await page.goto(`${base}/#/projects/${encodeURIComponent(projectId)}/governance`, { waitUntil: 'networkidle' });
-    await page.getByRole('heading', { name: '项目控制' }).waitFor();
+    await page.getByRole('heading', { name: '业务对等总览' }).waitFor();
     await page.waitForTimeout(250);
     await page.keyboard.press('Tab');
     const focus = await page.evaluate(() => document.activeElement?.tagName || '');
