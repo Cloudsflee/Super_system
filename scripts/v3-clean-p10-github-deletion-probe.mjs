@@ -25,8 +25,6 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
     const account = await githubJson('/user', token);
     const owner = String(account.value?.login || credential.username || '');
     if (!owner) throw new Error('github_account_missing');
-    const oauthScopes = String(account.oauth_scopes || '').split(',').map((item) => item.trim()).filter(Boolean);
-    if (oauthScopes.length && !oauthScopes.includes('delete_repo')) throw new Error('github_fixture_creator_delete_scope_missing');
     const suffix = `${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${process.pid}-${randomBytes(4).toString('hex')}`;
     const name = `aiws-p10-delete-${suffix}`.toLowerCase();
     const fullName = `${owner}/${name}`;
@@ -59,11 +57,14 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
     const head = await waitForHead(created.full_name, created.default_branch, token);
     if (!/^[a-f0-9]{40}$/.test(head)) throw new Error('github_fixture_head_missing');
 
-    stage = 'installation-bind';
-    await bindRepositoryToInstallation(fixture.installation_id, created.id, token);
-
     stage = 'app-discovery';
-    const discovery = await waitForAppDiscovery(adapter, auth, created);
+    let discovery = await findAppRepository(adapter, auth, created);
+    if (!discovery) {
+      stage = 'installation-bind';
+      await bindRepositoryToInstallation(fixture.installation_id, created.id, token);
+      stage = 'app-discovery';
+      discovery = await waitForAppDiscovery(adapter, auth, created);
+    }
 
     stage = 'delete';
     let deleted;
@@ -93,7 +94,7 @@ await emitProbe('aiws.v3-clean.p10-github-deletion-probe.v1', async () => {
         repository: created.full_name,
         generated_repository_id: created.id,
         repository_selection: discovery.repository_selection,
-        installation_repository_bound: true,
+        installation_repository_bound: discovery.bound === true,
         preexisting_check: 'absent'
       },
       deletion: {
@@ -173,18 +174,24 @@ async function waitForHead(repository, branch, token) {
 
 async function waitForAppDiscovery(adapter, auth, repository) {
   for (let attempt = 0; attempt < 30; attempt += 1) {
-    let cursor = null;
-    for (let page = 0; page < 20; page += 1) {
-      const result = await adapter.listRepositories(auth(), { cursor, limit: 100 });
-      if (result.repositories.some((item) => String(item.id) === repository.id && item.full_name.toLowerCase() === repository.full_name.toLowerCase())) {
-        return { repository_selection: 'all', discovered: true };
-      }
-      if (!result.next_cursor) break;
-      cursor = result.next_cursor;
-    }
+    const found = await findAppRepository(adapter, auth, repository);
+    if (found) return { ...found, bound: true };
     await delay(500);
   }
   throw new Error('github_fixture_not_discovered_by_app');
+}
+
+async function findAppRepository(adapter, auth, repository) {
+  let cursor = null;
+  for (let page = 0; page < 20; page += 1) {
+    const result = await adapter.listRepositories(auth(), { cursor, limit: 100 });
+    if (result.repositories.some((item) => String(item.id) === repository.id && item.full_name.toLowerCase() === repository.full_name.toLowerCase())) {
+      return { repository_selection: 'preselected', discovered: true, bound: false };
+    }
+    if (!result.next_cursor) break;
+    cursor = result.next_cursor;
+  }
+  return null;
 }
 
 async function bindRepositoryToInstallation(installationId, repositoryId, token) {
