@@ -77,6 +77,8 @@ export function useAssistWorkspace(props: WorkspacePageProps) {
     if (currentScope.current.projectId !== projectId || currentScope.current.selectedId !== selectedId) return null;
     if (result.data.project_id !== projectId) throw new Error('Assist session project mismatch');
     setBundle(result.data);
+    const activeTurn = result.data.turns?.find((turn) => ACTIVE_TURNS.has(turn.status) && turn.operation_id);
+    if (activeTurn) setOperation({ operation_id: activeTurn.operation_id, status: activeTurn.status, revision: activeTurn.revision });
     return result.data;
   }, [projectId, selectedId]);
 
@@ -101,6 +103,23 @@ export function useAssistWorkspace(props: WorkspacePageProps) {
   const fetchOperation = useCallback(async (operationId: string, signal: AbortSignal) => {
     return (await apiV2<Operation>(`/api/v2/operations/${encodeURIComponent(operationId)}`, { signal })).data;
   }, []);
+
+  const pollEvents = useCallback(async (signal?: AbortSignal) => {
+    if (!selectedId || !online) return;
+    const result = await apiV2<Replay>(`/api/v2/assist/sessions/${encodeURIComponent(selectedId)}/events?cursor=${encodeURIComponent(String(cursor))}&limit=200`, { signal });
+    if (signal?.aborted) return;
+    if (currentScope.current.projectId !== projectId || currentScope.current.selectedId !== selectedId) return;
+    const replay = result.data;
+    if (replay.events?.length) {
+      setCursor(replay.next_cursor);
+      setTimelineEvents((current) => [...new Map([...current, ...replay.events].map((event) => [event.sequence, event])).values()].sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0)));
+    }
+    if (replay.events?.length || currentBundle.current?.turns?.some((turn) => ACTIVE_TURNS.has(turn.status))) await loadBundle();
+    if (signal?.aborted) return;
+    setServiceAvailable(true);
+    setStreamState(replay.events?.some((event) => event.type.includes('message')) ? 'partial' : 'connected');
+    await loadRelated().catch(() => undefined);
+  }, [cursor, loadBundle, loadRelated, online, projectId, selectedId]);
 
   const handleError = useCallback(async (failure: unknown, fallback: string) => {
     const text = failure instanceof Error ? failure.message : fallback;
@@ -136,32 +155,17 @@ export function useAssistWorkspace(props: WorkspacePageProps) {
     enabled: Boolean(operation && online && ACTIVE_OPERATIONS.has(operation.status)),
     intervalMs: 500,
     fetchStatus: fetchOperation,
-    onUpdate: setOperation,
+    onUpdate: (next) => { setOperation(next); void pollEvents().catch(() => undefined); },
     onTerminal: () => { void refresh().catch(() => undefined); },
-    onError: () => setStreamState('reconnecting')
+    onError: () => { setStreamState('reconnecting'); void pollEvents().catch(() => undefined); }
   });
 
   useEffect(() => {
     if (!selectedId || !online) return;
-    let disposed = false;
-    const poll = async () => {
-      try {
-        const result = await apiV2<Replay>(`/api/v2/assist/sessions/${encodeURIComponent(selectedId)}/events?cursor=${encodeURIComponent(String(cursor))}&limit=200`);
-        if (disposed) return;
-        const replay = result.data;
-        if (replay.events?.length) {
-          setCursor(replay.next_cursor);
-          setTimelineEvents((current) => [...new Map([...current, ...replay.events].map((event) => [event.sequence, event])).values()].sort((left, right) => Number(left.sequence || 0) - Number(right.sequence || 0)));
-        }
-        if (replay.events?.length || currentBundle.current?.turns?.some((turn) => ACTIVE_TURNS.has(turn.status))) await loadBundle();
-        setServiceAvailable(true);
-        setStreamState(replay.events?.some((event) => event.type.includes('message')) ? 'partial' : 'connected');
-        await loadRelated().catch(() => undefined);
-      } catch (failure) { if (!disposed) { setStreamState('reconnecting'); if (failure instanceof TypeError || failure instanceof ApiError && failure.code === 'network_error') setServiceAvailable(false); } }
-    };
-    void poll(); const timer = setInterval(() => void poll(), 1200);
-    return () => { disposed = true; clearInterval(timer); };
-  }, [selectedId, online, cursor, loadBundle, loadRelated]);
+    const controller = new AbortController();
+    void pollEvents(controller.signal).catch((failure) => { if (!controller.signal.aborted) { setStreamState('reconnecting'); if (failure instanceof TypeError || failure instanceof ApiError && failure.code === 'network_error') setServiceAvailable(false); } });
+    return () => controller.abort();
+  }, [online, pollEvents, selectedId]);
 
   const createSession = async () => {
     if (!projectId || !canMutate || mutationInFlight.current) return;

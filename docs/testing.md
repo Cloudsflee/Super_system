@@ -929,13 +929,15 @@ advance, but the sorted set of all 27 `{id,status}` pairs must remain identical
 to the tag (`27 released`, `0 historical`).
 
 The Web regression restores the six-entry hidden drawer and continuous system
-and project onboarding without adding a schema or public API. Component tests
-cover drawer default/overlay/Escape/focus-trap/focus-restore behavior, account-
-scoped completion and GitHub-skip markers, the verified Codex hard gate,
-GitHub discovery, secret storage hygiene, existing-project bypass, both Intake
-modes, template-backed complete Briefs, refresh recovery, revision conflict,
-source drift/retry, and the exact generation -> critic -> proposal apply ->
-Brief confirm sequence. `scripts/e2e.mjs` runs the same journey at 1440x900,
+and project onboarding without adding a schema or public API. Project onboarding
+owns only initial Intake, GitHub source discovery, source-drift retry, and the
+handoff to the canonical Project Workflow workbench. Brief editing, Workflow
+editing, generation, Critic, proposal apply, and confirmation are tested only
+through that workbench owner. Component tests cover drawer
+default/overlay/Escape/focus-trap/focus-restore behavior, account-scoped
+completion and GitHub-skip markers, the verified Codex hard gate, GitHub
+discovery, secret storage hygiene, existing-project bypass, both Intake modes,
+source drift/retry, and the canonical Workflow mutation path. `scripts/e2e.mjs` runs the same journey at 1440x900,
 1024x768, and 390x844 with WCAG AA, console/HTTP, overflow, overlap, and drawer
 receipts. The existing internal governance deep-link remains in the 19-group
 acceptance journey but is absent from user navigation.

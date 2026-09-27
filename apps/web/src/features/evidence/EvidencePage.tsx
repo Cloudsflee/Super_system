@@ -6,7 +6,7 @@ import {
 import { ApiError, apiV2, formatBytes, formatTime, mutateV2, shortHash } from '../../api';
 import type { WorkspacePageProps } from '../../workspace';
 import { errorCodeLabel, kindLabel, statusLabel } from '../../i18n';
-import { waitForOperation } from '../../hooks/useOperationStatus';
+import { OPERATION_TERMINAL_STATUSES, useOperationStatus, waitForOperation } from '../../hooks/useOperationStatus';
 
 type AssetVersion = { id: string; asset_id: string; version_no: number; parser_run_id: string | null; source_sha256: string; content_sha256: string; metadata: Record<string, unknown>; metadata_sha256: string; created_at: string };
 type Asset = { id: string; project_id: string; execution_id: string | null; logical_name: string; asset_kind: string; source_type: string; source_ref: string; current_version_id: string; current_version: number; current: AssetVersion | null; status: string; revision: number; updated_at: string };
@@ -15,6 +15,7 @@ type Attestation = { id: string; attestation_type: string; subject_sha256: strin
 type ParserFormat = { id: string; format_key: string; label: string; family: string; status: string; extensions: string[] };
 type ParserRun = { id: string; status: string; attempt_no: number; retry_of_parser_run_id: string | null; output_asset_version_id: string | null; receipt_sha256: string; error_code: string; revision: number; completed_at: string | null };
 type Operation = { operation_id: string; resource_id: string; status: string; error_code?: string };
+const PARSER_TERMINAL_STATUSES = new Set([...OPERATION_TERMINAL_STATUSES, 'parsed']);
 
 export function EvidencePage({ projectId, notify }: WorkspacePageProps) {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -63,11 +64,16 @@ export function EvidencePage({ projectId, notify }: WorkspacePageProps) {
 
   useEffect(() => { void loadList().catch((error) => report(error, setFault, notify)); }, [loadList, notify]);
   useEffect(() => { if (selectedId) sessionStorage.setItem('aiws:v3:selected-asset', selectedId); setConfirmTombstone(false); void loadDetail(selectedId).catch((error) => report(error, setFault, notify)); }, [loadDetail, notify, selectedId]);
-  useEffect(() => {
-    if (!parserRun || !['queued', 'running'].includes(parserRun.status)) return;
-    const timer = setInterval(() => void apiV2<{ parser_run: ParserRun }>(`/api/v2/parser-runs/${encodeURIComponent(parserRun.id)}`).then((value) => setParserRun(value.data.parser_run)).catch((error) => report(error, setFault, notify)), 1000);
-    return () => clearInterval(timer);
-  }, [notify, parserRun]);
+  useOperationStatus(parserRun, {
+    enabled: Boolean(parserRun && ['queued', 'running'].includes(parserRun.status)),
+    operationId: parserRun?.id,
+    intervalMs: 1000,
+    terminalStatuses: PARSER_TERMINAL_STATUSES,
+    fetchStatus: async (parserRunId, signal) => (await apiV2<{ parser_run: ParserRun }>(`/api/v2/parser-runs/${encodeURIComponent(parserRunId)}`, { signal })).data.parser_run,
+    onUpdate: setParserRun,
+    onTerminal: () => { void loadList().catch((error) => report(error, setFault, notify)); },
+    onError: (error) => report(error, setFault, notify)
+  });
 
   const refresh = async () => { setBusy('refresh'); try { await loadList(); await loadDetail(); } catch (error) { report(error, setFault, notify); } finally { setBusy(''); } };
   const capture = async () => {

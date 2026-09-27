@@ -94,8 +94,7 @@ export function ContextPage({ projectId, selectedProject, navigate, notify }: Co
     stream.onmessage = () => void load();
     stream.addEventListener('context.projection.completed', () => void load());
     stream.addEventListener('context.projection.failed', () => void load());
-    const timer = window.setInterval(() => void load(), 1500);
-    return () => { stream.close(); window.clearInterval(timer); };
+    return () => { stream.close(); };
   }, [load, projectId, projection?.jobs]);
 
   const visibleNodes = useMemo(() => {
