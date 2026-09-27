@@ -90,14 +90,17 @@ function ExecutionWorkspace({ projectId, selectedProject, notify, navigate }: Wo
   useEffect(() => { setEvents([]); setDetail(null); setAttempts([]); setCheckpoints([]); void loadDetail(selectedId).catch((error) => handleFault(error, setFault, notify)); }, [loadDetail, notify, selectedId]);
   useEffect(() => {
     if (!online || !detail || !['queued', 'running', 'pause_requested'].includes(detail.status)) return;
-    const timer = setInterval(() => void loadDetail(detail.id).catch((error) => handleFault(error, setFault, notify)), 1500);
-    return () => clearInterval(timer);
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      if (disposed) return;
+      try { await loadDetail(detail.id); }
+      catch (error) { if (!disposed) handleFault(error, setFault, notify); }
+      if (!disposed) timer = setTimeout(() => void poll(), 1500);
+    };
+    timer = setTimeout(() => void poll(), 1500);
+    return () => { disposed = true; if (timer) clearTimeout(timer); };
   }, [detail?.id, detail?.status, loadDetail, notify, online]);
-
-  useEffect(() => queryClient.getQueryCache().subscribe(event => {
-    if (!online || event.type !== 'updated' || event.action.type !== 'invalidate' || event.query.queryKey[3] !== projectId || event.query.queryKey[4] !== 'execution') return;
-    void loadDetail().catch(error => handleFault(error, setFault, notify));
-  }), [loadDetail, notify, online, projectId]);
   useEffect(() => { if (fault || resultMessage) resultRef.current?.focus(); }, [fault, resultMessage]);
   useEffect(() => {
     if (queryId && detail?.id === queryId && announcedLink.current !== queryId) {
