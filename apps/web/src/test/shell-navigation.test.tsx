@@ -67,7 +67,7 @@ it('keeps the six-entry drawer closed by default and traps, closes, and restores
   await waitFor(() => expect(opener).toHaveFocus());
 });
 
-it('redirects a draft project workflow deep-link to parameterized onboarding', async () => {
+it('keeps a draft project workflow deep-link on the canonical workbench', async () => {
   location.hash = '#/projects/project_draft/workflow';
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -91,8 +91,8 @@ it('redirects a draft project workflow deep-link to parameterized onboarding', a
     return envelope({});
   }));
   render(<App />);
-  await screen.findByTestId('project-onboarding');
-  expect(location.hash).toBe('#/projects/project_draft/onboarding');
+  await screen.findByText('工作流草稿', { exact: true });
+  expect(location.hash).toBe('#/projects/project_draft/workflow');
 });
 
 it('renders a bounded Offline shell when bootstrap cannot reach the API', async () => {

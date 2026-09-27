@@ -84,11 +84,6 @@ try {
   try { await page.getByRole('heading', { name: '项目', exact: true }).waitFor({ timeout: 8_000 }); }
   catch (error) { process.stderr.write(`Clean Web projects body:\n${await page.locator('body').innerText()}\nState=${JSON.stringify(await page.locator('.app-shell').evaluate((element) => ({ ...element.dataset })))}\nURL=${page.url()}\nRequests=${JSON.stringify(requests.slice(-30))}\nHTTP=${JSON.stringify(httpErrors)}\n`); throw error; }
 
-  const onboardingTemplate = await pageApi('/api/v2/brief-templates', {
-    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-onboarding-template', 'X-Expected-Revision': '0' },
-    body: { name: 'P10 Onboarding Brief', content: { objective: 'Verify continuous onboarding', users: ['Maintainer'], scope: { in: ['Web'], out: ['Production'] }, constraints: ['CAS'], milestones: ['Workflow ready'], acceptance: ['browser verified'], risks: ['source drift'], open_questions: ['none'] }, expected_revision: 0 }
-  });
-  assert(onboardingTemplate.status === 201 && onboardingTemplate.body.data?.template?.id, `onboarding-template:${onboardingTemplate.status}`);
   await page.getByLabel('项目名称').fill('P10 Clean project');
   await page.getByLabel('项目说明').fill('Clean E2E fixture');
   await page.getByRole('button', { name: '创建项目', exact: true }).click();
@@ -96,30 +91,37 @@ try {
   await captureOnboardingState(page, 'project-intake');
   await page.getByLabel('初始构想').fill('Complete the Clean browser journey');
   await page.getByRole('button', { name: '提交 Intake', exact: true }).click();
-  await page.getByRole('heading', { name: '编辑完整 Brief', exact: true }).waitFor();
-  await captureOnboardingState(page, 'project-brief');
-  await page.getByLabel('Brief 模板').selectOption(onboardingTemplate.body.data.template.id);
-  await page.getByRole('button', { name: '应用模板', exact: true }).click();
-  await page.getByRole('button', { name: '保存 Brief', exact: true }).click();
-  await page.getByRole('heading', { name: '审查 Brief 与初始 Workflow', exact: true }).waitFor();
-  await captureOnboardingState(page, 'project-review');
-  await page.getByRole('button', { name: '保存初始 Workflow', exact: true }).click();
-  await page.getByRole('button', { name: '生成候选', exact: true }).click();
-  await page.getByRole('button', { name: '执行 Critic', exact: true }).waitFor();
-  await page.getByRole('button', { name: '执行 Critic', exact: true }).click();
-  try { await page.getByRole('button', { name: '应用 Proposal', exact: true }).waitFor(); }
-  catch (error) { process.stderr.write(`Project onboarding after Critic:\n${await page.locator('body').innerText()}\nHTTP=${JSON.stringify(httpErrors.slice(-20))}\nRequests=${JSON.stringify(requests.slice(-30))}\n`); throw error; }
-  await page.getByRole('button', { name: '应用 Proposal', exact: true }).click();
-  try { await page.getByRole('button', { name: '确认 Brief 并激活', exact: true }).waitFor(); }
-  catch (error) { process.stderr.write(`Project onboarding after Proposal apply:\n${await page.locator('body').innerText()}\nHTTP=${JSON.stringify(httpErrors.slice(-20))}\nRequests=${JSON.stringify(requests.slice(-30))}\n`); throw error; }
-  await page.getByRole('button', { name: '确认 Brief 并激活', exact: true }).click();
-  await page.getByText('工作流草稿', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Intake 已完成', exact: true }).waitFor();
+  await captureOnboardingState(page, 'project-intake-complete');
+  await page.getByRole('button', { name: '进入 Workflow 工作台', exact: true }).click();
+  try { await page.getByText('工作流草稿', { exact: true }).waitFor(); }
+  catch (error) { process.stderr.write(`Project workflow handoff body:\n${await page.locator('body').innerText()}\nURL=${page.url()}\nHTTP=${JSON.stringify(httpErrors.slice(-20))}\nRequests=${JSON.stringify(requests.slice(-30))}\n`); throw error; }
 
   const setup = await pageApi('/api/v2/setup');
   assert(setup.status === 200 && setup.body.data?.needs_setup === false, 'setup cookie/session');
   const projects = await pageApi('/api/v2/projects');
   const project = projects.body.data?.projects?.find((item) => item.name === 'P10 Clean project');
   assert(project?.id, 'project create');
+
+  // The onboarding page intentionally stops at Intake. Seed the minimum
+  // confirmed Brief and draft Workflow through their canonical API owners so
+  // the later execution fixtures can exercise the same project.
+  const initialBrief = await pageApi(`/api/v2/projects/${project.id}/briefs`, {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-initial-brief', 'X-Expected-Revision': String(project.revision) },
+    body: { content: { objective: 'Verify the Clean browser journey', users: ['Maintainer'], scope: { in: ['Web'], out: [] }, acceptance: ['browser verified'] }, expected_revision: project.revision }
+  });
+  assert(initialBrief.status === 201 && initialBrief.body.data?.brief?.current_revision, `initial-brief:${initialBrief.status}`);
+  const afterBrief = await pageApi(`/api/v2/projects/${project.id}`);
+  const confirmedBrief = await pageApi(`/api/v2/projects/${project.id}/briefs/${initialBrief.body.data.brief.current_revision}/confirm`, {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-initial-confirm', 'X-Expected-Revision': String(afterBrief.body.data.project.revision) },
+    body: { brief_revision: initialBrief.body.data.brief.current_revision, expected_revision: afterBrief.body.data.project.revision }
+  });
+  assert(confirmedBrief.status === 200, `initial-confirm:${confirmedBrief.status}`);
+  const initialWorkflow = await pageApi(`/api/v2/projects/${project.id}/workflow-draft`, {
+    method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-initial-workflow', 'X-Expected-Revision': '1' },
+    body: { graph: { nodes: [{ id: 'discover', kind: 'workstream', title: 'Discover' }, { id: 'deliver', kind: 'task', title: 'Deliver', parent_id: 'discover', config: { execution: { mode: 'read', argv: ['node', '--version'], cwd_role: 'task', input_paths: [], output_paths: [], deadline_seconds: 60, resource_profile: 'light', capabilities: ['network:none', 'workspace:read'], check_ids: ['node_test'] } }, contract: { acceptance: ['node_test'] } }] }, layout: {}, expected_revision: 1 }
+  });
+  assert([200, 201].includes(initialWorkflow.status), `initial-workflow:${initialWorkflow.status}:${JSON.stringify(initialWorkflow.body)}`);
 
   const providerCredential = await pageApi('/api/v2/credentials', {
     method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-provider-credential', 'X-Expected-Revision': '0' },
@@ -507,7 +509,7 @@ try {
     api_port: apiPort, web_port: webPort, viewports: ['mobile', 'laptop', 'desktop'],
     routes: ['governance', 'context', 'settings', 'execution', 'execution-quality', 'execution-outcome', 'evidence', 'connections', 'outcome', 'delivery', 'operations', 'identity', 'exchange', 'runner', 'parser', 'deployment', 'backup', 'importer'], business_groups: ['identity-acl','provider-settings','project-brief','workflow','repository','context','assist','files-approval','terminal-bridge','runner-execution','evidence','parser','quality','outcome','mcp-exchange-gateway','delivery','operations-recovery','offline-pwa','web-complete-experience'], request_count: requests.length,
     legacy_api_v1_requests: legacyRequests, browser_errors: browserErrors, http_errors: httpErrors, proxy_diagnostics: proxyDiagnostics,
-    onboarding: { system: ['owner-team','codex-probe','github-skip','summary'], project: ['intake','brief-template','workflow-generation','critic','proposal-apply','brief-confirm'], secret_storage: 'passed' },
+    onboarding: { system: ['owner-team','codex-probe','github-skip','summary'], project: ['intake','workflow-handoff'], secret_storage: 'passed' },
     drawer: drawerReceipts, accessibility: accessibilityReceipts, onboarding_layouts: onboardingLayoutReceipts, workbench,
     layouts: layoutReceipts, context_pack_hash: pack.body.data.pack.pack_hash,
     runner_profile: { id: profileId, type: readyProfile.body.data.profile.runner_type, status: readyProfile.body.data.profile.status },

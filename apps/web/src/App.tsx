@@ -198,11 +198,6 @@ function WorkspaceLayout() {
   const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projectId, projects]);
 
   useEffect(() => {
-    if (!['workflow', 'repository', 'context', 'assist', 'execution', 'outcome', 'delivery'].includes(page) || !selectedProject || selectedProject.status !== 'draft') return;
-    routerNavigate(`/projects/${encodeURIComponent(selectedProject.id)}/onboarding`, { replace: true });
-  }, [page, routerNavigate, selectedProject]);
-
-  useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(null), 4200);
     return () => clearTimeout(timer);
@@ -290,12 +285,10 @@ function WorkspaceLayout() {
   };
 
   const navigateProject = useCallback((id: string, next: WorkspaceRoute, query?: Record<string, string>) => {
-    const project = projects.find((item) => item.id === id);
-    const target = next === 'workflow' && project?.status === 'draft' ? 'onboarding' : next;
-    routerNavigate(projectDeepLink(id, target, query).slice(1));
+    routerNavigate(projectDeepLink(id, next, query).slice(1));
     setNotice(null);
     closeNavigation();
-  }, [closeNavigation, projects, routerNavigate]);
+  }, [closeNavigation, routerNavigate]);
 
   const navigate = useCallback((next: WorkspaceRoute) => {
     if (!setupReady) { setNotice({ tone: 'error', text: '请先完成系统配置' }); closeNavigation(); return; }
