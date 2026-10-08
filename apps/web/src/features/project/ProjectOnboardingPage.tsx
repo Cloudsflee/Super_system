@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { AlertTriangle, Check, ChevronRight, CircleAlert, Github, LoaderCircle, RefreshCw, RotateCcw } from 'lucide-react';
 import { ApiError, apiV2, mutateV2 } from '../../api';
+import { OPERATION_TERMINAL_STATUSES, useOperationStatus, type OperationStatusSnapshot } from '../../hooks/useOperationStatus';
 import type { WorkspacePageProps } from '../../workspace';
 import { errorCodeLabel, statusLabel } from '../../i18n';
 
 type ProjectRecord = { id: string; name: string; status: string; onboarding_state?: string; revision: number };
 type Intake = { id: string; status: string; mode: 'brainstorm' | 'existing'; source_kind?: string; source_revision?: string; source_hash?: string; error_code?: string; attempt: number; revision: number };
 type GithubRepository = { id: number; full_name: string; default_branch?: string };
+type IntakeOperation = OperationStatusSnapshot & { error_code?: string; revision?: number };
 
 /** The onboarding surface owns only initial Intake. All Brief/Workflow mutations live in ProjectWorkflowPage. */
 export function deriveProjectOnboardingStep(_project: ProjectRecord | null, intake: Intake | null): 1 | 2 | 3 {
@@ -33,6 +35,7 @@ export function ProjectOnboardingPage({ projectId, navigateProject, notify }: Wo
   const [sourceLocator, setSourceLocator] = useState('');
   const [sourceRevision, setSourceRevision] = useState('');
   const [selectedRepository, setSelectedRepository] = useState('');
+  const [operation, setOperation] = useState<IntakeOperation | null>(null);
 
   const load = useCallback(async () => {
     if (!projectId) { setLoadState('error'); setFailure('项目未选择'); return; }
@@ -54,9 +57,33 @@ export function ProjectOnboardingPage({ projectId, navigateProject, notify }: Wo
 
   useEffect(() => { void load(); }, [load]);
 
+  useOperationStatus(operation, {
+    intervalMs: 500,
+    fetchStatus: async (operationId, signal) => {
+      const result = await apiV2<IntakeOperation>(`/api/v2/operations/${encodeURIComponent(operationId)}`, { signal });
+      const value = (result.data as { operation?: IntakeOperation }).operation || result.data;
+      return { ...value, id: String(value.operation_id || value.id || operationId), operation_id: String(value.operation_id || value.id || operationId), status: String(value.status || '') };
+    },
+    onUpdate: (next) => {
+      setOperation(next);
+      setIntake((current) => current ? { ...current, status: String(next.status), error_code: next.error_code || current.error_code } : current);
+    },
+    onTerminal: (next) => {
+      setOperation(null);
+      setBusy('');
+      if (['failed', 'rejected', 'cancelled', 'canceled', 'aborted'].includes(String(next.status))) {
+        setFailure(errorCodeLabel(String(next.error_code || 'intake_failed')));
+      }
+      void load();
+    },
+    onError: (error) => {
+      if (error instanceof ApiError) setFailure(error.message);
+    }
+  });
+
   const run = async (key: string, action: () => Promise<unknown>) => {
     setBusy(key); setFailure(''); setConflict('');
-    try { await action(); await load(); }
+    try { return await action(); }
     catch (error) {
       const apiError = error instanceof ApiError ? error : null;
       if (apiError?.status === 409 || apiError?.code === 'revision_conflict') setConflict(apiError.message);
@@ -72,16 +99,33 @@ export function ProjectOnboardingPage({ projectId, navigateProject, notify }: Wo
     setRepositories(result.data.repositories || []);
   });
 
+  const bindOperation = (result: unknown) => {
+    const envelope = result as { data?: { operation?: IntakeOperation; operation_id?: string; status?: string }; operation?: IntakeOperation; operation_id?: string; status?: string };
+    const value = envelope?.data || envelope;
+    const nested = value.operation;
+    const operationId = String(value.operation_id || nested?.operation_id || nested?.id || '');
+    if (!operationId) { void load(); return; }
+    const snapshot = { ...(nested || value), id: operationId, operation_id: operationId, status: String(nested?.status || value.status || 'processing') } as IntakeOperation;
+    if (OPERATION_TERMINAL_STATUSES.has(snapshot.status)) {
+      setBusy('');
+      setOperation(null);
+      if (['failed', 'rejected', 'cancelled', 'canceled', 'aborted'].includes(snapshot.status)) setFailure(errorCodeLabel(String(snapshot.error_code || 'intake_failed')));
+      void load();
+      return;
+    }
+    setOperation(snapshot);
+  };
+
   const submitIntake = (event: FormEvent) => {
     event.preventDefault();
-    void run('intake', () => mutateV2(`/api/v2/projects/${encodeURIComponent(projectId)}/intake`, {
+    void run('intake', async () => bindOperation(await mutateV2(`/api/v2/projects/${encodeURIComponent(projectId)}/intake`, {
       mode,
       source: mode === 'existing' ? { kind: selectedRepository ? 'github' : 'opaque', locator: sourceLocator.trim(), revision: sourceRevision.trim() } : {},
       content: mode === 'brainstorm' ? { idea: idea.trim() } : { read_only: true }
-    }, 'POST', intake?.revision));
+    }, 'POST', intake?.revision)));
   };
 
-  const retryIntake = () => void run('intake-retry', () => mutateV2(`/api/v2/projects/${encodeURIComponent(projectId)}/intake/retry`, {}, 'POST', intake?.revision));
+  const retryIntake = () => void run('intake-retry', async () => bindOperation(await mutateV2(`/api/v2/projects/${encodeURIComponent(projectId)}/intake/retry`, {}, 'POST', intake?.revision)));
   const step = deriveProjectOnboardingStep(project, intake);
   const complete = step === 2;
 

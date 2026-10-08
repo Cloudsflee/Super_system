@@ -6,6 +6,7 @@ import { routeParams } from './src/clean/registry.mjs';
 import { createCleanWebHandler } from './src/clean/web-static.mjs';
 
 export function createApp(options = {}) {
+  options = assertActiveRuntimeOptions(options);
   let runtime = options.runtime;
   if (!runtime) {
     try {
@@ -84,6 +85,16 @@ export async function start(options = {}) {
     await app.close();
   };
   return { ...app, server, close };
+}
+
+function assertActiveRuntimeOptions(options) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('active_runtime_options_invalid');
+  const retiredKeys = ['schemaVersion', 'phase', 'cleanPhase', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10'];
+  const retired = retiredKeys.find((key) => Object.prototype.hasOwnProperty.call(options, key));
+  if (retired) throw new TypeError(`active_runtime_option_retired:${retired}`);
+  if (Object.prototype.hasOwnProperty.call(options, 'targetVersion') && Number(options.targetVersion) !== 9) throw new TypeError('active_schema_version_required');
+  if (Object.prototype.hasOwnProperty.call(options, 'runtimePhase') && Number(options.runtimePhase) !== 10) throw new TypeError('active_runtime_phase_required');
+  return { ...options, targetVersion: 9, runtimePhase: 10 };
 }
 
 function rejectUpgrade(socket, status, code) {

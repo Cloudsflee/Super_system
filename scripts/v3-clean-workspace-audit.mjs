@@ -61,7 +61,7 @@ export function auditWorkspace(options = {}) {
 
   const sourceFiles = collectSourceFiles(root);
   const legacyImporters = [];
-  const legacyImportPattern = /(?:from\s+|import\s*\(\s*)['"]([^'"]*server-legacy\.mjs)['"]/g;
+  const legacyImportPattern = /(?:from\s+|import\s*\(\s*)['"]([^'"]*(?:server-legacy\.mjs|fixtures[\\/]historical[\\/]api-v23[\\/]server\.mjs))['"]/g;
   for (const file of sourceFiles) {
     const source = fs.readFileSync(path.join(root, file), 'utf8');
     if ([...source.matchAll(legacyImportPattern)].length) legacyImporters.push(file);

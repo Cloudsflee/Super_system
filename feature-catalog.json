@@ -225,8 +225,6 @@
         "apps/web/src/features/project/WorkflowCanvas.tsx",
         "apps/web/src/features/project/index.ts",
         "apps/web/src/features/projects/index.ts",
-        "apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx",
-        "apps/web/src/features/projects/onboarding/index.ts",
         "apps/web/src/features/projects/preparation/data.ts",
         "apps/web/src/features/projects/preparation/index.tsx",
         "apps/web/src/features/settings/BriefTemplatesPanel.tsx",
@@ -966,7 +964,6 @@
         "apps/web/src/features/project/ProjectWorkflowPage.tsx",
         "apps/api/src/clean/p10-service.mjs",
         "apps/web/src/features/project/ProjectOnboardingPage.tsx",
-        "apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx",
         "apps/web/src/features/settings/BriefTemplatesPanel.tsx"
       ],
       "tables": [

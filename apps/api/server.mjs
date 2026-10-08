@@ -19,8 +19,6 @@ function activeOptions(options = {}) {
   return { ...options, targetVersion: ACTIVE_SCHEMA_VERSION, runtimePhase: ACTIVE_RUNTIME_PHASE };
 }
 
-export { createCleanApp, startClean };
-
 export async function createApp(options = {}) {
   return createCleanApp(activeOptions(options));
 }

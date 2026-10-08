@@ -449,7 +449,6 @@ const P10_FILES = new Set([
   'apps/web/src/features/assist/office-preview.worker.ts',
   'apps/web/src/features/execution/QualityPolicyPanel.tsx',
   'apps/web/src/features/project/WorkflowCanvas.tsx',
-  'apps/web/src/features/projects/onboarding/ProjectOnboardingPage.tsx',
   'apps/web/src/features/settings/BriefTemplatesPanel.tsx',
   'apps/web/src/features/setup/SystemOnboarding.tsx',
   'apps/web/src/features/setup/GithubSetup.tsx',
@@ -496,6 +495,7 @@ export function classifyWorkspacePath(value) {
     return { kind: 'p1', phase: 'P1', rows: [...P1_PLATFORM_ROWS] };
   }
   if (file === 'apps/api/server-legacy.mjs') return { kind: 'fixture', phase: 'P2-P9', reason: 'historical API runtime' };
+  if (file.startsWith('fixtures/historical/')) return { kind: 'fixture', phase: 'historical', reason: 'explicit Historical fixture execution surface' };
   if (file.startsWith('apps/api/src/')) return { kind: 'fixture', phase: 'P2-P8', reason: 'historical domain/runtime input' };
   if (file.startsWith('apps/web/')) return { kind: 'fixture', phase: 'P9', reason: 'pre-clean Web characterization' };
   if (file.startsWith('apps/runner-broker/')) return { kind: 'fixture', phase: 'P6', reason: 'runner adapter characterization' };

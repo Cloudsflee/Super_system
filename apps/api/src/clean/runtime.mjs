@@ -306,8 +306,9 @@ export function createNotReadyRuntime(options = {}, failure = null) {
   rejectRuntimeCompatibilityOptions(options);
   const config = options.config || loadCleanConfig(options.env || process.env);
   const policy = options.policy || new RedactionPolicy();
-  const targetVersion = targetVersionFromOptions(options);
-  const runtimePhase = runtimePhaseFromOptions(options, targetVersion);
+  // A degraded active process must never advertise a historical phase.
+  const targetVersion = 9;
+  const runtimePhase = 10;
   const registry = createCleanCommandRegistry({ targetVersion, runtimePhase });
   const details = failure?.details && typeof failure.details === 'object' ? failure.details : {};
   const reason = String(details.reason || failure?.code || 'startup_failed');
