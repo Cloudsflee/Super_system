@@ -1165,6 +1165,10 @@ archive rows with content proofs. `verify --manifest <file>` checks destinations
 `rollback --manifest <file> --dry-run` validates all reverse targets and
 `rollback --manifest <file>` restores them without replacing new files.
 Manifests, ACL snapshots and journals contain private paths and stay outside Git.
+Windows migration commands use a per-manifest OS mutex and a kill-on-close job;
+an interrupted owner cannot leave a live writer behind an abandoned lock.
+An explicit repeated apply validates its existing intent, bytes and ACLs before
+resuming a completed copy or rename. Partial or changed copies remain failures.
 `pnpm workspace:storage -- audit` checks the bidirectional source inventory;
 `pnpm check` also runs it. New creation sites need creator, cleanup and entrypoint
 registration in scripts/lib/workspace-storage-sources.json.

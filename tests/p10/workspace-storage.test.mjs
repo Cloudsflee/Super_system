@@ -7,7 +7,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { runManaged } from '../../scripts/workspace-run.mjs';
-import { snapshot, sealManifest, applyManifest, layout, loadManifest } from '../../scripts/lib/workspace-storage.mjs';
+import { snapshot, sealManifest, applyManifest, layout, loadManifest, digest } from '../../scripts/lib/workspace-storage.mjs';
 import { validateCreationSites } from '../../scripts/workspace-storage.mjs';
 
 function fixture(t) {
@@ -180,6 +180,21 @@ test('interrupted rename resumes from an immutable intent without repeating a mo
   // disposable test journal; production receipts are never deleted.
   fs.unlinkSync(path.join(m.manifest + '.journal', 'sample.applied.json'));
   assert.equal(applyManifest(m.manifest, 'apply').ok, true);
+  assert.equal(applyManifest(m.manifest, 'apply').ok, true);
+  assert.deepEqual(applyManifest(m.manifest, 'rollback').byte_exact_mismatches, []);
+});
+
+test('OS migration lock rejects concurrency and releases after its owner crashes', async t => {
+  if (process.platform !== 'win32') return;
+  const f = fixture(t); const m = migration(f);
+  const name = 'Global\\AIWS.Storage.' + digest(fs.realpathSync(m.manifest).toLowerCase());
+  const holder = spawn('pwsh.exe', ['-NoProfile', '-NonInteractive', '-Command', "$m=[Threading.Mutex]::new($false,$env:STORAGE_MUTEX_NAME);if(-not $m.WaitOne(0)){exit 2};[Console]::WriteLine('READY');Start-Sleep -Seconds 30"], { env: { ...process.env, STORAGE_MUTEX_NAME: name }, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+  const closed = new Promise(resolve => holder.once('close', resolve));
+  try {
+    await new Promise((resolve, reject) => { holder.stdout.once('data', value => String(value).includes('READY') ? resolve() : reject(new Error('mutex_not_ready'))); holder.once('error', reject); holder.once('exit', () => reject(new Error('mutex_owner_exited'))); });
+    assert.throws(() => applyManifest(m.manifest, 'apply'), /storage_manifest_busy/);
+    assert.equal(fs.existsSync(m.source), true);
+  } finally { holder.kill(); await closed; }
   assert.equal(applyManifest(m.manifest, 'apply').ok, true);
   assert.deepEqual(applyManifest(m.manifest, 'rollback').byte_exact_mismatches, []);
 });

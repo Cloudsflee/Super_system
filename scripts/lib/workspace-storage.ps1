@@ -1,7 +1,27 @@
 # Owner: Platform/Testing. Phase: P10+. Private ACL preservation and handle check.
-param([string]$Action, [string]$Source, [string]$Destination, [string]$AclFile)
+param([string]$Action, [string]$Source, [string]$Destination, [string]$AclFile, [string]$CliScript, [string]$MutexKey, [string]$DryRun)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+if ($Action -eq 'Mutex') {
+  $mutex = [Threading.Mutex]::new($false, ('Global\AIWS.Storage.' + $MutexKey))
+  $owned = $false
+  try {
+    try { $owned = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $owned = $true }
+    if (-not $owned) { throw 'storage_manifest_busy' }
+    $env:AIWS_STORAGE_MUTEX_KEY = $MutexKey
+    $arguments = @($CliScript, $Destination, '--manifest', $Source)
+    if ($DryRun -eq 'true') { $arguments += '--dry-run' }
+    # The mutex owner also owns the kill-on-close job. If this process dies,
+    # the mutating child cannot outlive the OS lock and race a resumed apply.
+    $request = @{command=$AclFile;args=$arguments;cwd=(Get-Location).Path;receipt=$null}
+    . (Join-Path $PSScriptRoot 'workspace-process.ps1') -RequestJson ($request | ConvertTo-Json -Compress)
+    $result = $LASTEXITCODE
+  } finally {
+    if ($owned) { $mutex.ReleaseMutex() }
+    $mutex.Dispose()
+  }
+  exit $result
+}
 $sourceRoot = [IO.Path]::GetFullPath($Source).TrimEnd('\')
 $destinationRoot = [IO.Path]::GetFullPath($Destination).TrimEnd('\')
 function ComparableAcl([string]$sddl) {

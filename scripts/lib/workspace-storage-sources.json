@@ -184,7 +184,7 @@
     },
     {
       "file": "scripts/lib/workspace-storage.mjs",
-      "line": 32,
+      "line": 33,
       "source_sha256": "90eb5e2bb3ce04e600bb68f9da84c5997287eadf6e3196d2d74a9f5c9e35ad54",
       "source": "return { main, temp: fs.realpathSync(temp), archive: fs.realpathSync(archive), worktrees: sibling('worktrees'), systemTemp: fs.realpathSync(os.tmpdir()) };",
       "creator": "scripts/lib/workspace-storage.mjs",

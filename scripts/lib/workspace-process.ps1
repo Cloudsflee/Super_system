@@ -1,8 +1,9 @@
 # Owner: Platform/Testing. Phase: P10+. Windows process-tree ownership.
+param([string]$RequestJson)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
-$request = [Console]::In.ReadToEnd() | ConvertFrom-Json
+$request = $(if ($RequestJson) { $RequestJson } else { [Console]::In.ReadToEnd() }) | ConvertFrom-Json
 Add-Type -TypeDefinition @'
 using System;
 using System.Text;
@@ -75,11 +76,12 @@ public static class StorageProcess {
 try {
   $result = [StorageProcess]::Run($request.command, [string[]]$request.args, $request.cwd)
   $receipt = @{exit_status=$result[0];remaining_processes=$result[1];pid=$result[2]}
-  [IO.File]::WriteAllText($request.receipt, ($receipt | ConvertTo-Json -Compress))
+  if ($request.receipt) { [IO.File]::WriteAllText($request.receipt, ($receipt | ConvertTo-Json -Compress)) }
   if ($result[1] -gt 0) { exit 1 }
   exit $result[0]
 } catch {
   $code = if ($_.Exception.InnerException.NativeErrorCode -eq 2) { 'ENOENT' } else { 'workspace_run_process_start_failed' }
-  [IO.File]::WriteAllText($request.receipt, (@{exit_status=1;error=$code} | ConvertTo-Json -Compress))
+  if ($request.receipt) { [IO.File]::WriteAllText($request.receipt, (@{exit_status=1;error=$code} | ConvertTo-Json -Compress)) }
+  else { [Console]::Error.WriteLine($code) }
   exit 1
 }

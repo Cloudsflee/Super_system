@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 export const digest = value => createHash('sha256').update(value).digest('hex');
 export const fail = code => { throw Object.assign(new Error(code), { code }); };
@@ -130,10 +131,16 @@ export function sealManifest(file, body) {
 export function applyManifest(file, action, dryRun = false) {
   const manifest = loadManifest(file);
   if (!['apply', 'verify', 'rollback'].includes(action)) fail('storage_action_invalid');
+  const mutexKey = digest(fs.realpathSync(file).toLowerCase());
+  if (process.platform === 'win32' && process.env.AIWS_STORAGE_MUTEX_KEY !== mutexKey) {
+    const result = spawnSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', fileURLToPath(new URL('./workspace-storage.ps1', import.meta.url)), '-Action', 'Mutex', '-Source', path.resolve(file), '-Destination', action, '-AclFile', process.execPath, '-CliScript', fileURLToPath(new URL('../workspace-storage.mjs', import.meta.url)), '-MutexKey', mutexKey, '-DryRun', String(dryRun)], { encoding: 'utf8', windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
+    if (!result.stdout?.trim()) fail(result.stderr?.trim() || 'storage_mutex_operation_failed');
+    return JSON.parse(result.stdout);
+  }
   const journal = `${file}.journal`;
   if (action === 'apply') fs.mkdirSync(journal, { recursive: true, mode: 0o700 });
   const lock = `${file}.lock`;
-  const descriptor = fs.openSync(lock, 'wx', 0o600);
+  const descriptor = process.platform === 'win32' ? null : fs.openSync(lock, 'wx', 0o600);
   const results = [];
   try {
     const items = manifest.items.filter(item => item.classification === 'archive');
@@ -194,6 +201,6 @@ export function applyManifest(file, action, dryRun = false) {
         if (!dryRun && action !== 'verify') writeExclusive(path.join(journal, `${item.id}.failed-${randomUUID()}.json`), results.at(-1));
       }
     }
-  } finally { fs.closeSync(descriptor); fs.unlinkSync(lock); }
+  } finally { if (descriptor != null) { fs.closeSync(descriptor); fs.unlinkSync(lock); } }
   return { action, dry_run: dryRun, results, byte_exact_mismatches: results.filter(row => !row.ok).map(row => row.id), ok: results.every(row => row.ok) };
 }
