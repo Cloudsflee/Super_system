@@ -1150,6 +1150,8 @@ compilation. A kill-on-close Job Object receives the child before its suspended
 thread resumes. Surviving descendants are terminated and make the run fail;
 cleanup starts only after the owned job has drained. Shell command strings are
 never used to launch Node, Git, Corepack or Pnpm.
+Windows children also receive a process-scoped core.longpaths=true Git setting;
+existing GIT_CONFIG entries are preserved and no global Git configuration changes.
 
 Successful runs remove their temporary data. Failed runs retain the original
 exit code and move diagnostic data to archives/failed-runs. Authentication homes

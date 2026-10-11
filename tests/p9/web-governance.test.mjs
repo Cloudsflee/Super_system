@@ -11,7 +11,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 
 test('P9 Web foundation, dependencies and retired files are synchronized', () => {
   const web = JSON.parse(read('apps/web/package.json'));
-  assert.equal(web.scripts.dev, 'vite --host 127.0.0.1 --port 5174 --strictPort');
+  assert.equal(web.scripts.dev, 'node ../../scripts/workspace-run.mjs -- node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5174 --strictPort');
   assert.match(web.dependencies['react-router-dom'], /^\^7\./);
   assert.match(web.dependencies['@tanstack/react-query'], /^\^5\./);
   assert.match(web.dependencies.idb, /^\^8\./);

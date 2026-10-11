@@ -53,6 +53,13 @@ export async function runManaged(argv, options = {}) {
   options.signal?.addEventListener('abort', onAbort, { once: true });
   try {
     const childEnvironment = { ...env, AIWS_TEMP_ROOT: roots.temp, AIWS_ARCHIVE_ROOT: roots.archive, AIWS_STORAGE_RUN_ID: runId, AIWS_STORAGE_COMMAND_ID: commandId, AIWS_PORT_LEASE_ROOT: sharedLock, TEMP: temporary, TMP: temporary, TMPDIR: temporary };
+    if (process.platform === 'win32') {
+      const count = Number(childEnvironment.GIT_CONFIG_COUNT || 0);
+      if (!Number.isSafeInteger(count) || count < 0) fail('workspace_run_git_config_invalid');
+      childEnvironment.GIT_CONFIG_COUNT = String(count + 1);
+      childEnvironment[`GIT_CONFIG_KEY_${count}`] = 'core.longpaths';
+      childEnvironment[`GIT_CONFIG_VALUE_${count}`] = 'true';
+    }
     for (const key of Object.keys(childEnvironment)) if (key.toLowerCase() === 'psmodulepath') delete childEnvironment[key];
     const nativeReceipt = path.join(commandRoot, '.process-result.json');
     const windows = process.platform === 'win32';
