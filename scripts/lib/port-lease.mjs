@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { spawnGateProcess } from './gate-process.mjs';
 
 export const PORT_RETRY_DELAYS_MS = Object.freeze([100, 250, 500, 1000, 2000]);
-const LOCK_DIRECTORY = path.join(os.tmpdir(), 'aiws-port-leases-v1');
+const LOCK_DIRECTORY = process.env.AIWS_PORT_LEASE_ROOT || path.join(os.tmpdir(), 'aiws-port-leases-v1');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const watched = new WeakMap();
 const errorWithCode = (code, cause) => Object.assign(new Error(code, { cause }), { code });

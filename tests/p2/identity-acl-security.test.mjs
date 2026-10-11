@@ -1,15 +1,28 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  createCleanRuntime,
+  createCleanRuntime as createRuntime,
   FakeProviderAdapter,
   sha256Hex
 } from '../../apps/api/src/clean/index.mjs';
 import { createCleanHttpHandler } from '../../apps/api/src/clean/http.mjs';
+
+const ownedRuntimes = new Set();
+function createCleanRuntime(...args) {
+  const runtime = createRuntime(...args);
+  ownedRuntimes.add(runtime);
+  return runtime;
+}
+afterEach(async () => {
+  const resources = [...ownedRuntimes]; ownedRuntimes.clear();
+  const results = await Promise.allSettled(resources.map(runtime => runtime.close()));
+  const errors = results.filter(row => row.status === 'rejected').map(row => row.reason);
+  if (errors.length) throw new AggregateError(errors, 'fixture_close_failed');
+});
 
 function fixture(overrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p2-security-'));

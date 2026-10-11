@@ -1251,3 +1251,20 @@ serialized requests. Dead Web wrappers are removed and represented in the
 retired parity inventory. GitHub deletion separates PAT creation from App
 installation discovery, HEAD validation, deletion and reconciliation, with
 Selected-repository binding and cleanup failures treated as blocking results.
+
+### Workspace storage maintenance
+
+Owner: Platform/Testing. Phase: P10+ (D-040; no new governance phase).
+Storage management is development infrastructure, not a business runtime import.
+Reuse sibling worktrees/temp/archives across linked worktrees. Register every
+temporary creation site and its cleanup owner; preserve shared port coordination.
+Use `pnpm workspace:run -- node <script>` for direct tests and external probes.
+Use `pnpm workspace:storage -- scan --out <manifest>` followed by reviewed apply,
+verify and rollback commands. Historical data is archived only with ownership,
+idle-state and byte/ACL proofs; active, referenced and unknown objects remain.
+The GS-001 through GS-007 review synchronizes commands, scope, Catalog references,
+testing policy and regression tests without status promotion or Evidence rewrites.
+Acceptance: `pnpm workspace:storage -- audit`, `pnpm test:p10`, two P1/P2 rounds,
+the maintenance and user-plan gate inventory, and actual isolated rollback.
+Private manifests, original outputs, patch and rollback receipts stay in the
+existing archives/storage task directory. Business schema and /api/v2 are fixed.

@@ -1132,3 +1132,46 @@ git diff --check
 Local maintenance receipts and rollback artifacts remain under the ignored
 `.ai-workspace/change-receipts/` directory. They do not alter Catalog status or
 formal P1-P10 Evidence.
+
+### Workspace storage lifecycle (Platform/Testing, P10+)
+
+The infrastructure-only storage maintenance keeps V3-Clean, /api/v2, schema v9
+and Catalog statuses fixed. Root Node test, Gate and development scripts and
+Web test/dev scripts use `workspace:run`. Direct probes and individual tests
+must use `pnpm workspace:run -- node <script> [args]`. Outputs and final receipts
+belong outside the temporary tree. Fixtures close servers, databases and workers;
+the launcher owns only its UUID command directory. Nested runs share an identity
+but use separate command directories. Explicit AIWS_TEMP_ROOT/AIWS_ARCHIVE_ROOT
+override the existing sibling layout derived from Git's common directory.
+The launcher sets TEMP/TMP/TMPDIR only for children and preserves the original
+shared aiws-port-leases-v1 location in AIWS_PORT_LEASE_ROOT.
+On Windows, PowerShell 7 is required for Unicode/long-path-safe in-memory native
+compilation. A kill-on-close Job Object receives the child before its suspended
+thread resumes. Surviving descendants are terminated and make the run fail;
+cleanup starts only after the owned job has drained. Shell command strings are
+never used to launch Node, Git, Corepack or Pnpm.
+
+Successful runs remove their temporary data. Failed runs retain the original
+exit code and move diagnostic data to archives/failed-runs. Authentication homes
+remain the responsibility of their credential owner; detected leftovers block
+archival and produce a separate cleanup error. No automatic expiry or PID-based
+reclamation is performed. Unowned historical directories require explicit review.
+
+`pnpm workspace:storage -- scan --out <private-manifest>` inventories fixed local
+roots without traversing links. `apply --manifest <file>` moves only reviewed
+archive rows with content proofs. `verify --manifest <file>` checks destinations;
+`rollback --manifest <file> --dry-run` validates all reverse targets and
+`rollback --manifest <file>` restores them without replacing new files.
+Manifests, ACL snapshots and journals contain private paths and stay outside Git.
+`pnpm workspace:storage -- audit` checks the bidirectional source inventory;
+`pnpm check` also runs it. New creation sites need creator, cleanup and entrypoint
+registration in scripts/lib/workspace-storage-sources.json.
+
+GS-001 through GS-007 review: package commands, P1 scope, maintenance inventory,
+Catalog path/test references, this policy and the development plan change
+together. Validators are strengthened; no status, Critic rule, P10 allowlist or
+formal Evidence is changed. Acceptance includes tests/p10/workspace-storage.test.mjs,
+two managed P1/P2 rounds, all user-plan gates, and isolated actual same/cross-volume
+rollback. A failed Gate freezes verification; a successful directory operation
+does not establish a release. Local receipts are in the existing sibling archives
+under the storage task's independent run directory.

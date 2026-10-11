@@ -62,7 +62,7 @@ test('P8 Evidence is hash-complete and synchronized with the layered Catalog pro
 test('P8 package, testing policy, plan, matrix and Evidence references stay synchronized', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(Object.keys(manifest.scripts).length, Object.keys(P1_PACKAGE_SCRIPT_DEFINITIONS).length);
-  assert.equal(manifest.scripts['test:p8'], 'node --test tests/p8/*.test.mjs');
+  assert.equal(manifest.scripts['test:p8'], 'node scripts/workspace-run.mjs -- node --test tests/p8/*.test.mjs');
   assert.equal(manifest.scripts['evidence:p8'], 'node scripts/v3-clean-p8-evidence.mjs');
   for (const file of ['AGENTS.md', 'docs/testing.md', 'docs/architecture/v3-clean-development-plan.md', 'docs/architecture/v23-capability-matrix.md']) {
     const text = fs.readFileSync(path.join(root, file), 'utf8');

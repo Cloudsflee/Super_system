@@ -1,0 +1,2036 @@
+{
+  "owner": "Platform/Testing",
+  "phase": "P10+",
+  "sites": [
+    {
+      "file": "apps/api/src/clean/app-server-adapter.mjs",
+      "line": 188,
+      "source_sha256": "b8643da72d47941bb95a93e0aa30b407301ffa3be5badc881b69cc4a703ecd7f",
+      "source": "this.homeRoot = homeRoot || path.join(os.tmpdir(), 'aiws-codex-home');",
+      "creator": "apps/api/src/clean/app-server-adapter.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/api/src/clean/app-server-adapter.mjs",
+      "line": 223,
+      "source_sha256": "552faaebbc6c5664f3952157b65c3f7ffa29fc648e70072371267fe9a0175c9a",
+      "source": "return fs.mkdtempSync(path.join(this.homeRoot, `${String(label).replace(/[^a-z0-9_-]/gi, '_')}-`));",
+      "creator": "apps/api/src/clean/app-server-adapter.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/api/src/clean/local-setup-service.mjs",
+      "line": 30,
+      "source_sha256": "4939bb2290558c18c85500fc9e0c7c435c79de3601ec456bdcf9d682f877a6c1",
+      "source": "this.deviceRoot = path.resolve(String(config.providerHomeRoot || path.join(config.home || os.tmpdir(), 'provider-homes')), 'device-login');",
+      "creator": "apps/api/src/clean/local-setup-service.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/api/src/clean/local-setup-service.mjs",
+      "line": 210,
+      "source_sha256": "d353dab3c5ef578847163e2a7cc717e7e732fd303d301cc332e0a7d886acda78",
+      "source": "job.home = fs.mkdtempSync(path.join(this.deviceRoot, 'login-'));",
+      "creator": "apps/api/src/clean/local-setup-service.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/api/src/clean/runner-adapters.mjs",
+      "line": 73,
+      "source_sha256": "fa3bdf1bd48265d50752a19264ca4b545c3720b411270ba72e5f8bda01570637",
+      "source": "this.homeRoot = path.resolve(homeRoot || path.join(os.tmpdir(), 'aiws-host-runner-homes'));",
+      "creator": "apps/api/src/clean/runner-adapters.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/api/src/clean/workflow-adapters.mjs",
+      "line": 304,
+      "source_sha256": "b373742e695939bfaa14805ecaa0fa9844699c55860de53035230f560d8117aa",
+      "source": "const staging = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'aiws-git-probe-'));",
+      "creator": "apps/api/src/clean/workflow-adapters.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/api/src/git-fixture.mjs",
+      "line": 226,
+      "source_sha256": "2c2bfa1ea3d378e611dd226c12dafe5efefbe5595d4bb7903bc844817c23ef78",
+      "source": "const indexFile = path.join(os.tmpdir(), `aiws-index-${randomUUID()}`);",
+      "creator": "apps/api/src/git-fixture.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/api/src/github-integration.mjs",
+      "line": 133,
+      "source_sha256": "8d07a34462d4a1b1a8a5cb4fd43636839f3aa31d103ef7c5832e9bf34a7fb899",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-github-delivery-'));",
+      "creator": "apps/api/src/github-integration.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/parser-worker/parser-engine.mjs",
+      "line": 143,
+      "source_sha256": "fdad78642c89d0705102318a174c57ed0826eaf6024b8b551528ca7ece6da621",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-parser-media-'));",
+      "creator": "apps/parser-worker/parser-engine.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/runner-broker/server.mjs",
+      "line": 565,
+      "source_sha256": "1120ffd30715ea30003f02fe51cb4d8328a52c15bc805bbf305f70d9179c1863",
+      "source": "hostHome = fs.mkdtempSync(path.join(hostRuntimeRoot, 'probe-'));",
+      "creator": "apps/runner-broker/server.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/runner-broker/server.mjs",
+      "line": 667,
+      "source_sha256": "6ac3d8c2a38b76ee126ba27c074ff00747f7a2fa5115dd9e2e5ae2287b5dab9d",
+      "source": "job.hostHome = fs.mkdtempSync(path.join(hostRuntimeRoot, 'run-'));",
+      "creator": "apps/runner-broker/server.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "apps/windows-native-bridge/probe.mjs",
+      "line": 6,
+      "source_sha256": "a0b6226cc4616e94dd58d7cdf0c6c3cc7298ae33abb9470b38d15c3fb4b9ee3a",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-bridge-probe-'));",
+      "creator": "apps/windows-native-bridge/probe.mjs",
+      "cleanup_owner": "existing_runtime_owner",
+      "entrypoint": "existing runtime (test launcher not imported)",
+      "exception": null
+    },
+    {
+      "file": "scripts/acceptance.mjs",
+      "line": 8,
+      "source_sha256": "9f4389024bda4d2f45f6c939c9f3cc4a9deba9ad77c27bb2ae55c70c82930c06",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-acceptance-'));",
+      "creator": "scripts/acceptance.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/development-receipt.mjs",
+      "line": 66,
+      "source_sha256": "40031f81b52ac59fccd349256399e7aa5cb5cba0be6b4ca75b0a7330a0a523f4",
+      "source": "const snapshotRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-development-receipt-'));",
+      "creator": "scripts/development-receipt.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/e2e-legacy.mjs",
+      "line": 14,
+      "source_sha256": "d107b9c9775b68a7cf921afbb64ccea637bd3171cfc92576fe72933b2e152caa",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-e2e-'));",
+      "creator": "scripts/e2e-legacy.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/github-seed-fixture.mjs",
+      "line": 16,
+      "source_sha256": "e1b45980d7c34bc7d3b88b497fbed1659a63607303e69866588ec2ccfe0f2242",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-github-fixture-'));",
+      "creator": "scripts/github-seed-fixture.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/lib/port-lease.mjs",
+      "line": 11,
+      "source_sha256": "80fdc84f50d9c241b86d2a9b0c991d31d7f02803e48caef7142ab0fcc9fe0a4d",
+      "source": "const LOCK_DIRECTORY = process.env.AIWS_PORT_LEASE_ROOT || path.join(os.tmpdir(), 'aiws-port-leases-v1');",
+      "creator": "scripts/lib/port-lease.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": "shared coordination; retained outside runs"
+    },
+    {
+      "file": "scripts/lib/port-lease.mjs",
+      "line": 141,
+      "source_sha256": "46c8e39043613312c59e1c29c15108b977d820abef8c55636cb8f2e0963709bd",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`));",
+      "creator": "scripts/lib/port-lease.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/lib/workspace-storage.mjs",
+      "line": 32,
+      "source_sha256": "90eb5e2bb3ce04e600bb68f9da84c5997287eadf6e3196d2d74a9f5c9e35ad54",
+      "source": "return { main, temp: fs.realpathSync(temp), archive: fs.realpathSync(archive), worktrees: sibling('worktrees'), systemTemp: fs.realpathSync(os.tmpdir()) };",
+      "creator": "scripts/lib/workspace-storage.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/production-lifecycle.mjs",
+      "line": 25,
+      "source_sha256": "711ad49d2da0579cc0f792dc5b542f64cfa4a3d8a4af3b36177881cafa797d11",
+      "source": "async function restore(id) { const source = findBackup(id); if (!source || !fs.existsSync(path.join(source, 'manifest.json'))) throw new Error('backup_not_found'); const staging = await fsp.mkdtemp(path.join(os.tmpdir(), 'aiws-restore-')); try { for (const name of componentNames) if (fs.existsSync(path.join(source, name))) await fsp.cp(path.join(source, name), path.join(staging, name), { recursive: true, force: true }); const expected = JSON.parse(fs.readFileSync(path.join(source, 'manifest.json'), 'utf8')); const actual = Object.fromEntries(componentNames.map((name) => [name, digest(path.join(staging, name))])); const mismatches = componentNames.filter((name) => (expected.components?.[name] || null) !== (actual[name] || null)); if (mismatches.length) throw new Error(`backup_integrity_mismatch:${mismatches.join(',')}`); for (const name of componentNames) { const target = path.join(home, name); if (fs.existsSync(path.join(staging, name))) { if (fs.existsSync(target)) fs.rmSync(target, { recursive: true, force: true }); fs.renameSync(path.join(staging, name), target); } } writeState({ ...(readState() || {}), restored_backup_id: path.basename(source), restored_at: new Date().toISOString(), manifest: manifest() }); output({ status: 'restored', backup_id: path.basename(source), byte_exact_mismatches: [] }); } finally { if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true }); } }",
+      "creator": "scripts/production-lifecycle.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/r2-migration-evidence.mjs",
+      "line": 12,
+      "source_sha256": "e7164869991fcd2aafc097675e2543190baf45c22db0609f5d7765ebf87783ef",
+      "source": "const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r2-migration-evidence-'));",
+      "creator": "scripts/r2-migration-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/r3-migration-evidence.mjs",
+      "line": 12,
+      "source_sha256": "ca8370026ccfeaf8856801c59def627ce158e051dfdbcedf6630e2354dc2614d",
+      "source": "const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r3-migration-evidence-'));",
+      "creator": "scripts/r3-migration-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/r4-migration-evidence.mjs",
+      "line": 12,
+      "source_sha256": "18b5dc585ec667aeb253fdbe02ec03dbd9dc134ebb157983c3eb93acfcf770b7",
+      "source": "const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r4-migration-evidence-'));",
+      "creator": "scripts/r4-migration-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/r5-e2e.mjs",
+      "line": 32,
+      "source_sha256": "0b936e22ac3281bdc74629d4a432c80cb894ac7fba88b65367891259fd80db62",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r5-e2e-'));",
+      "creator": "scripts/r5-e2e.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/r5-migration-evidence.mjs",
+      "line": 10,
+      "source_sha256": "d51308ca176800b7d6334edae3381648225b09b225da6e1501ff1f721fe76e2a",
+      "source": "const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r5-migration-evidence-'));",
+      "creator": "scripts/r5-migration-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/r6-evidence.mjs",
+      "line": 27,
+      "source_sha256": "576ccc52d7821aff03f535a3ee86897bab14b40a386e3b62330fd9b7946a0817",
+      "source": "const v5Home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r6-v5-'));",
+      "creator": "scripts/r6-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/recovery-evidence.mjs",
+      "line": 597,
+      "source_sha256": "add8afbe8d1a9f20612d506cb6fb1aa78497df037d226003f838aa9708893930",
+      "source": "const worktree = path.join(os.tmpdir(), `aiws-${label}-rollback-${process.pid}-${randomUUID()}`);",
+      "creator": "scripts/recovery-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/recovery-golden.mjs",
+      "line": 119,
+      "source_sha256": "df73329e4d34525987a2ee333ded8b963742e8c0d2476f4196745058e41f4e78",
+      "source": "const worktree = path.join(os.tmpdir(), `aiws-v23-golden-${process.pid}-${randomUUID()}`);",
+      "creator": "scripts/recovery-golden.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/recovery-golden.mjs",
+      "line": 379,
+      "source_sha256": "ad8e5eb4b576e7d1637641af48d6671e73e507ceb9a674bae249079fd82b886f",
+      "source": "const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r3-golden-source-'));",
+      "creator": "scripts/recovery-golden.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/release-promote.mjs",
+      "line": 297,
+      "source_sha256": "cb713b5f3adf976918023688f678deb92b46c77eb9fa49b40db1d0fc66bc823f",
+      "source": "const extractionRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-production-'));",
+      "creator": "scripts/release-promote.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/release-rehearsal.mjs",
+      "line": 358,
+      "source_sha256": "f9c216c5bfcd5a30a5e26e652e491dd8a964b0d0bcdc01f3e6ad2c229ed448f9",
+      "source": "const extractionRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-source-'));",
+      "creator": "scripts/release-rehearsal.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/release-rehearsal.mjs",
+      "line": 398,
+      "source_sha256": "0ca961f6e7f041e1af8d3c1fa5ef535865290def7cbc7c812d5a7e22a9f1a795",
+      "source": "const restoredRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-restored-'));",
+      "creator": "scripts/release-rehearsal.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/runner-real-smoke.mjs",
+      "line": 41,
+      "source_sha256": "886ed533190f88f80b3f258457c5df5006215c4a4c49de4119de0cf0b315446c",
+      "source": "const composeFile = path.join(os.tmpdir(), `aiws-real-${stamp}.yml`);",
+      "creator": "scripts/runner-real-smoke.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/runner-real-smoke.mjs",
+      "line": 42,
+      "source_sha256": "d1ae223a0a58135a54fdcf04f29ee5c3d210471617804b361c3cea68ae5689af",
+      "source": "const tempSecret = path.join(os.tmpdir(), `aiws-real-broker-${stamp}`);",
+      "creator": "scripts/runner-real-smoke.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p1-evidence.mjs",
+      "line": 36,
+      "source_sha256": "ee73a5ac453b6e119d8295ed0be621f27d6e780ca45a9521c0443618e62c38a0",
+      "source": "const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p1-sync-'));",
+      "creator": "scripts/v3-clean-p1-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p1-global-sync-evidence.mjs",
+      "line": 235,
+      "source_sha256": "e198833ddf3e9d4871fa4b9f3a256f67e80747df282d945212ea6d09c2b00695",
+      "source": "const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-completion-audit-platform-'));",
+      "creator": "scripts/v3-clean-p1-global-sync-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p1-global-sync-evidence.mjs",
+      "line": 380,
+      "source_sha256": "6cb8baac9bd8a7be8912a8007839cb119c97f8f0e6f1776c2895bf807d9a0593",
+      "source": "const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-completion-audit-rollback-'));",
+      "creator": "scripts/v3-clean-p1-global-sync-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p10-parser-probe.mjs",
+      "line": 27,
+      "source_sha256": "b6e73e534315cf2cd505e0e251a1feb8590ffeb6e3ced6f27a956b27c4fe0110",
+      "source": "const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-parser-probe-'));",
+      "creator": "scripts/v3-clean-p10-parser-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p2-evidence.mjs",
+      "line": 41,
+      "source_sha256": "6dd664c4f0a9feb4f0b0444c95bbb56be093d3f47b93bed974f1ea6d3ee5f0f7",
+      "source": "const baselineCopy = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p2-baseline-'));",
+      "creator": "scripts/v3-clean-p2-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p2-evidence.mjs",
+      "line": 42,
+      "source_sha256": "7e019b4a511afa92628b2291b05e0c0e855e364d8aa4dea50883794393e719ed",
+      "source": "const probeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p2-probe-'));",
+      "creator": "scripts/v3-clean-p2-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p2-evidence.mjs",
+      "line": 43,
+      "source_sha256": "f846b4c32a67dadc0153dd8d143e774cd7c7765b60721d00388652dcb2b7bde9",
+      "source": "const rollbackRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p2-rollback-'));",
+      "creator": "scripts/v3-clean-p2-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p3-evidence.mjs",
+      "line": 26,
+      "source_sha256": "f5b613e64c7cce347759653babe86c4534da1f82dad159ded5f0114f6e748af8",
+      "source": "const baselineCopy = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p3-baseline-'));",
+      "creator": "scripts/v3-clean-p3-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p3-evidence.mjs",
+      "line": 27,
+      "source_sha256": "661a3fc87cb7e4622c8e9a9541668242675852403bce62fe6c46411e76d34474",
+      "source": "const probeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p3-probe-'));",
+      "creator": "scripts/v3-clean-p3-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p3-evidence.mjs",
+      "line": 28,
+      "source_sha256": "c217700fa1b42498b28aec5e887360252a3496261b812529a8757f7023c73666",
+      "source": "const rollbackRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p3-rollback-'));",
+      "creator": "scripts/v3-clean-p3-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p4-evidence.mjs",
+      "line": 272,
+      "source_sha256": "20cd8d3d89f378fb896d3737417a0c8120134ef056d563b79c7a87432821fdaa",
+      "source": "const temporaryIndex = path.join(os.tmpdir(), `aiws-p4-index-${process.pid}-${Date.now()}`);",
+      "creator": "scripts/v3-clean-p4-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p4-evidence.mjs",
+      "line": 432,
+      "source_sha256": "e23e350d6cd9bd58659aa8cdc0ecd82c108fbef0166c121d692926a3a5bc40a6",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p4-migration-evidence-'));",
+      "creator": "scripts/v3-clean-p4-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p4-evidence.mjs",
+      "line": 464,
+      "source_sha256": "77ece660fc52e1e4e245d4f1a4ad356ff9ace573c4a3aeffdcd77d68cbaf3859",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p4-migration-fault-'));",
+      "creator": "scripts/v3-clean-p4-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p4-evidence.mjs",
+      "line": 500,
+      "source_sha256": "9345fc5185271ec0ac868018a4abfb8930921a42038c5165f41309fae8748342",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p4-rollback-source-'));",
+      "creator": "scripts/v3-clean-p4-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p4-evidence.mjs",
+      "line": 790,
+      "source_sha256": "125e49d18051f75e2446753b1920d3eaf1e55c835529da42ba11556248d462c9",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p4-rollback-verify-'));",
+      "creator": "scripts/v3-clean-p4-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p4-evidence.mjs",
+      "line": 942,
+      "source_sha256": "2a282c0fbe837bf0c23c22aef7b9692e2bb3f26d26993377f4546b5c308cc867",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p4-evidence-db-'));",
+      "creator": "scripts/v3-clean-p4-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p4-gateway-probe.mjs",
+      "line": 9,
+      "source_sha256": "c76389464686bcfb908b94351c990761437d7c6be890bcbd64acd5722d759027",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p4-gateway-probe-'));",
+      "creator": "scripts/v3-clean-p4-gateway-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p4-performance.mjs",
+      "line": 7,
+      "source_sha256": "6424ca162cecf3393fe5409414ff7b6167e02dcdcf20062fc7df411cc70343da",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p4-performance-'));",
+      "creator": "scripts/v3-clean-p4-performance.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p5-assist-probe.mjs",
+      "line": 100,
+      "source_sha256": "164ab810628a1e0bd5043e7c4f2b7a1cc079dac87b7e8d612daaca59355d75d7",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p5-assist-probe-'));",
+      "creator": "scripts/v3-clean-p5-assist-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p5-bridge-probe.mjs",
+      "line": 9,
+      "source_sha256": "994c0e727dd03249d5dc8cbf0aacf2d714400c455f13d1fd0b9df5cc35d77bcc",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p5-bridge-probe-'));",
+      "creator": "scripts/v3-clean-p5-bridge-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p5-evidence.mjs",
+      "line": 212,
+      "source_sha256": "04aefcb44d5a27228ad9e0d8217af2a8f8036b1249a3defad6cd62c78e1d1bd8",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p5-migration-')); let database;",
+      "creator": "scripts/v3-clean-p5-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p5-evidence.mjs",
+      "line": 228,
+      "source_sha256": "b6bfd331ac7232314e22dd45001e5da26a06e8555dd5e4bb399a6928db53b786",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p5-rollback-source-')); let database;",
+      "creator": "scripts/v3-clean-p5-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p5-evidence.mjs",
+      "line": 262,
+      "source_sha256": "92217c81800fc3b54151ba191b7f2442ede5b9e94a81c36bb242a16d3356b755",
+      "source": "const shell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh'; const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p5-rollback-verify-')); const source = path.join(fixture, 'source'); const isolated = path.join(fixture, 'isolated'); fs.mkdirSync(source, { recursive: true });",
+      "creator": "scripts/v3-clean-p5-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p5-evidence.mjs",
+      "line": 323,
+      "source_sha256": "b172a93d34a12fe765c2b909d4a2cb242849d13f62467df44c31c60c8ac925ae",
+      "source": "function buildPatch(paths) { if (!paths.length) throw new Error('p5_patch_has_no_changed_paths'); const index = path.join(os.tmpdir(), `aiws-p5-index-${process.pid}-${Date.now()}`); const env = { ...process.env, GIT_INDEX_FILE: index }; try { const tree = spawnSync('git', ['read-tree', baseline], { cwd: root, env, encoding: 'utf8', windowsHide: true }); if (tree.status !== 0) throw new Error('p5_patch_read_tree_failed'); const add = spawnSync('git', ['add', '-A', '--', ...paths], { cwd: root, env, encoding: 'utf8', windowsHide: true, maxBuffer: 128 * 1024 * 1024 }); if (add.status !== 0) throw new Error('p5_patch_stage_failed'); const diff = spawnSync('git', ['-c', 'core.autocrlf=false', 'diff', '--cached', '--binary', '--full-index', baseline, '--', ...paths], { cwd: root, env, encoding: 'utf8', windowsHide: true, maxBuffer: 256 * 1024 * 1024 }); if (diff.status !== 0 || !diff.stdout) throw new Error('p5_patch_build_failed'); return diff.stdout; } finally { fs.rmSync(index, { force: true }); fs.rmSync(`${index}.lock`, { force: true }); } }",
+      "creator": "scripts/v3-clean-p5-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p5-evidence.mjs",
+      "line": 324,
+      "source_sha256": "6c1a21824a0f9181f4de962375160c4ac81ad07e018584045e395cc08c95554e",
+      "source": "function withDatabase(version, callback) { const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p5-evidence-db-')); let database; try { database = openCleanDatabase(path.join(fixture, 'state.sqlite'), { targetVersion: version, receiptRoot: path.join(fixture, 'receipts') }); return callback(database); } finally { database?.close(); fs.rmSync(fixture, { recursive: true, force: true }); } }",
+      "creator": "scripts/v3-clean-p5-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p6-bridge-runner-probe.mjs",
+      "line": 12,
+      "source_sha256": "2cc7a53644bfdd1e6e78e99c560c2b4393f8c3190ecc65e799e399eb147ac793",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p6-bridge-runner-probe-'));",
+      "creator": "scripts/v3-clean-p6-bridge-runner-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p6-docker-runner-probe.mjs",
+      "line": 12,
+      "source_sha256": "ea6f94d31b4fcb0df09bc900e3c388c2fd2220793c1ccf46ea968a12fa947e62",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p6-docker-probe-'));",
+      "creator": "scripts/v3-clean-p6-docker-runner-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p6-evidence.mjs",
+      "line": 233,
+      "source_sha256": "7dd1f32b1711a3e09bd076d19f86311570e48b5b42abb66ca058a6d233a721e8",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p6-migration-')); let database;",
+      "creator": "scripts/v3-clean-p6-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p6-evidence.mjs",
+      "line": 249,
+      "source_sha256": "07a4e822d13d86f84e45e48b02d53b0898565cd8fed9edbae7ac92255e40cbf5",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p6-rollback-source-')); let database;",
+      "creator": "scripts/v3-clean-p6-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p6-evidence.mjs",
+      "line": 316,
+      "source_sha256": "ddd4a24e41075e1db861e434b6a0dc54b5d6083195fc0bcbe31cb74c9cc20ee9",
+      "source": "const shell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh'; const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p6-rollback-verify-')); const source = path.join(fixture, 'source'); const isolated = path.join(fixture, 'isolated'); fs.mkdirSync(source, { recursive: true });",
+      "creator": "scripts/v3-clean-p6-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p6-evidence.mjs",
+      "line": 395,
+      "source_sha256": "3ffa82d70a4ac3d52bb01118de06f2ab4ee9e32226ff861beb102bac7d42c94f",
+      "source": "function buildPatch(paths) { if (!paths.length) throw new Error('p6_patch_has_no_changed_paths'); const index = path.join(os.tmpdir(), `aiws-p6-index-${process.pid}-${Date.now()}`); const env = { ...process.env, GIT_INDEX_FILE: index }; try { const tree = spawnSync('git', ['read-tree', baseline], { cwd: root, env, encoding: 'utf8', windowsHide: true }); if (tree.status !== 0) throw new Error('p6_patch_read_tree_failed'); const add = spawnSync('git', ['add', '-A', '--', ...paths], { cwd: root, env, encoding: 'utf8', windowsHide: true, maxBuffer: 128 * 1024 * 1024 }); if (add.status !== 0) throw new Error('p6_patch_stage_failed'); const diff = spawnSync('git', ['-c', 'core.autocrlf=false', 'diff', '--cached', '--binary', '--full-index', baseline, '--', ...paths], { cwd: root, env, encoding: 'utf8', windowsHide: true, maxBuffer: 256 * 1024 * 1024 }); if (diff.status !== 0 || !diff.stdout) throw new Error('p6_patch_build_failed'); return diff.stdout; } finally { fs.rmSync(index, { force: true }); fs.rmSync(`${index}.lock`, { force: true }); } }",
+      "creator": "scripts/v3-clean-p6-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p6-evidence.mjs",
+      "line": 396,
+      "source_sha256": "fa5cbcd52789f0ca9b6ce3e4438581c230fc4d57b7b60f6957fe1f413b465d71",
+      "source": "function withDatabase(version, callback) { const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p6-evidence-db-')); let database; try { database = openCleanDatabase(path.join(fixture, 'state.sqlite'), { targetVersion: version, receiptRoot: path.join(fixture, 'receipts') }); return callback(database); } finally { database?.close(); fs.rmSync(fixture, { recursive: true, force: true }); } }",
+      "creator": "scripts/v3-clean-p6-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p6-host-runner-probe.mjs",
+      "line": 10,
+      "source_sha256": "d91b4bbf5f508138af1508b0a34b76c3396ab2d5b63c1a39093ab09670859334",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p6-host-probe-'));",
+      "creator": "scripts/v3-clean-p6-host-runner-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p6-restart-probe.mjs",
+      "line": 16,
+      "source_sha256": "13dbe8518e714ff869f87de69b6b438516deaf0b6234cc9f37e4131195f9a790",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p6-restart-probe-'));",
+      "creator": "scripts/v3-clean-p6-restart-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p7-evidence.mjs",
+      "line": 251,
+      "source_sha256": "57076805b70220038dbdf77d36281323051f5e2226e257ab6c7ce4acc142a1d0",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p7-migration-')); let database;",
+      "creator": "scripts/v3-clean-p7-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p7-evidence.mjs",
+      "line": 267,
+      "source_sha256": "53191ccc5e58a4c512825ed1d192ae710928ebd3490175f73b9ea9eab786210f",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p7-rollback-source-')); let database;",
+      "creator": "scripts/v3-clean-p7-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p7-evidence.mjs",
+      "line": 335,
+      "source_sha256": "f2396da65c69d69bbfbbafc470d94b6f185267f2264f66de0a9e8a4a17c48c44",
+      "source": "const shell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh'; const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p7-rollback-verify-')); const source = path.join(fixture, 'source'); const isolated = path.join(fixture, 'isolated'); fs.mkdirSync(source, { recursive: true });",
+      "creator": "scripts/v3-clean-p7-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p7-evidence.mjs",
+      "line": 424,
+      "source_sha256": "d5b3d5ca95e80afc88abaeced230835dc4e9c17999e47f1207caae9f3d5a2ee4",
+      "source": "function buildPatch(paths) { if (!paths.length) throw new Error('p7_patch_has_no_changed_paths'); const index = path.join(os.tmpdir(), `aiws-p7-index-${process.pid}-${Date.now()}`); const env = { ...process.env, GIT_INDEX_FILE: index }; try { const tree = spawnSync('git', ['read-tree', baseline], { cwd: root, env, encoding: 'utf8', windowsHide: true }); if (tree.status !== 0) throw new Error('p7_patch_read_tree_failed'); const add = spawnSync('git', ['add', '-A', '--', ...paths], { cwd: root, env, encoding: 'utf8', windowsHide: true, maxBuffer: 128 * 1024 * 1024 }); if (add.status !== 0) throw new Error('p7_patch_stage_failed'); const diff = spawnSync('git', ['-c', 'core.autocrlf=false', 'diff', '--cached', '--binary', '--full-index', baseline, '--', ...paths], { cwd: root, env, encoding: 'utf8', windowsHide: true, maxBuffer: 256 * 1024 * 1024 }); if (diff.status !== 0 || !diff.stdout) throw new Error('p7_patch_build_failed'); return diff.stdout; } finally { fs.rmSync(index, { force: true }); fs.rmSync(`${index}.lock`, { force: true }); } }",
+      "creator": "scripts/v3-clean-p7-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p7-evidence.mjs",
+      "line": 425,
+      "source_sha256": "75a85d8a46d6b1022395581fa852fe4876d58875fec3916fec1edc003d6f40d2",
+      "source": "function withDatabase(version, callback) { const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p7-evidence-db-')); let database; try { database = openCleanDatabase(path.join(fixture, 'state.sqlite'), { targetVersion: version, receiptRoot: path.join(fixture, 'receipts') }); return callback(database); } finally { database?.close(); fs.rmSync(fixture, { recursive: true, force: true }); } }",
+      "creator": "scripts/v3-clean-p7-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p7-parser-probe.mjs",
+      "line": 18,
+      "source_sha256": "1726726a880a602f2bc6627233f9bafd6f9a04faa21a58cd45af87e9954ec618",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p7-parser-probe-'));",
+      "creator": "scripts/v3-clean-p7-parser-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+      "line": 26,
+      "source_sha256": "b44e3da25e945953b9b4817b868248c154445b50c77f619d412d9bd092054fe6",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p8-deployment-external-'));",
+      "creator": "scripts/v3-clean-p8-deployment-rollback-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p8-evidence.mjs",
+      "line": 283,
+      "source_sha256": "64f5fab3016bf7e87997ffa5bc0ded0f6bae365d5f6b06aa30e510c8962ee58e",
+      "source": "const index = path.join(os.tmpdir(), `aiws-p8-evidence-index-${process.pid}-${Date.now()}`);",
+      "creator": "scripts/v3-clean-p8-evidence.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p8-importer-probe.mjs",
+      "line": 8,
+      "source_sha256": "95bb5ec9d458d14fa2113915112059097b139dfc11fcf67580a6e2f4b70bc3bf",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p8-import-probe-'));",
+      "creator": "scripts/v3-clean-p8-importer-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p8-performance.mjs",
+      "line": 2,
+      "source_sha256": "2a224719974327ee84d1444d1b6f3cab7c610c98c8e52b82ed7afc76bd58fcfd",
+      "source": "const root=fs.mkdtempSync(path.join(os.tmpdir(),'p8-perf-')); const db=openCleanDatabase(path.join(root,'state.sqlite'),{targetVersion:8,receiptRoot:path.join(root,'receipts')});",
+      "creator": "scripts/v3-clean-p8-performance.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-p9-release-probe.mjs",
+      "line": 15,
+      "source_sha256": "123ccc460480782dddbdd6e51e92fca7a91f863aa334032d40525ff27cc4b207",
+      "source": "const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p9-release-'));",
+      "creator": "scripts/v3-clean-p9-release-probe.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-real-development-loop.mjs",
+      "line": 72,
+      "source_sha256": "10498f870ff1a4b075fc0e312e90a5e9631d7beaa7b90552ce4d666902503f0f",
+      "source": "return { root: fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-real-loop-')), requested, redirected: true };",
+      "creator": "scripts/v3-clean-real-development-loop.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-real-development-loop.mjs",
+      "line": 111,
+      "source_sha256": "ea5390d5cfa2e0e04ef5c766a4e735ed20c178f3b65ae08f920af3365fd84c0f",
+      "source": "const baseline = fs.mkdtempSync(path.join(os.tmpdir(), `${runId}-rollback-baseline-`));",
+      "creator": "scripts/v3-clean-real-development-loop.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/v3-clean-real-development-loop.mjs",
+      "line": 112,
+      "source_sha256": "bc8e81174598d65112924888fe29887d1aa16f4ad7e3b920484e587e323e0156",
+      "source": "const isolated = fs.mkdtempSync(path.join(os.tmpdir(), `${runId}-rollback-isolated-`));",
+      "creator": "scripts/v3-clean-real-development-loop.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/workspace-run.mjs",
+      "line": 36,
+      "source_sha256": "ed22b9c473425894c34f70e4a7c8b9c8be20d5e868e0e2d6482f96cc6db7a20f",
+      "source": "const sharedLock = env.AIWS_PORT_LEASE_ROOT || path.join(os.tmpdir(), 'aiws-port-leases-v1');",
+      "creator": "scripts/workspace-run.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/workspace-storage.mjs",
+      "line": 16,
+      "source_sha256": "07c20429a59857f94aa67ed7c5f0164aa82fb9fdf28ab9b02f4c4ffc2a900287",
+      "source": "if (!/\\b(?:mkdtemp(?:Sync)?\\s*\\(|(?:os\\.)?tmpdir\\s*\\()/.test(line)) return;",
+      "creator": "scripts/workspace-storage.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/codex-provider-flow.test.mjs",
+      "line": 52,
+      "source_sha256": "0f4868d53858183b096c52df2536fa688fb92664e71dd57c9274ee796f8dac69",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-codex-discovery-'));",
+      "creator": "tests/integration/codex-provider-flow.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/context-r5.test.mjs",
+      "line": 187,
+      "source_sha256": "61cdc6b624308eef16e76e2c80763720fc1b3191db23ad3257cd4300465c2eec",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r5-index-branches-'));",
+      "creator": "tests/integration/context-r5.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "line": 22,
+      "source_sha256": "84206a78f9a794513665c14d984b90def4686b69108c992ec4cf56bdec3d64ed",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-config-regression-'));",
+      "creator": "tests/integration/debt-regression.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "line": 92,
+      "source_sha256": "b7081fbd0593e772ac8c9ac310a4a2b6cc57a794d26915c35b7040a23378a5f9",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-staging-regression-'));",
+      "creator": "tests/integration/debt-regression.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "line": 127,
+      "source_sha256": "54d0991c9fede3806dc242e6da394d8662d27b60389738f8e5c77708c80c9bad",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-staging-symlink-'));",
+      "creator": "tests/integration/debt-regression.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "line": 128,
+      "source_sha256": "3d6fc27943e2aebad118c5ebafd46cead8a5c1435c9757ec8ee347f803f86296",
+      "source": "const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-staging-outside-'));",
+      "creator": "tests/integration/debt-regression.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "line": 155,
+      "source_sha256": "acdd40d8653ed6e1c737b3d9c8de8782c37179b879b92f1bc88ee7cd365e6c13",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-git-regression-'));",
+      "creator": "tests/integration/debt-regression.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "line": 156,
+      "source_sha256": "6783014cd0a2ee741a979370737fa9f61489369c67497ca5933344b213636897",
+      "source": "const second = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-git-regression-second-'));",
+      "creator": "tests/integration/debt-regression.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "line": 183,
+      "source_sha256": "9e0bfabbf50be2639f4c36852269d51a6e03c27d371c4b304a0b1dcda6e97ce2",
+      "source": "const broker = createBroker({ config: { secret: 'broker-regression-secret', dataRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-broker-regression-')), dataVolume: 'aiws-data-v3', runnerDigest: digest, runnerImage: `runner@${digest}`, executor: 'mock', model: 'codex-mini-latest' }, retentionMs: 10, maxTerminalJobs: 1 });",
+      "creator": "tests/integration/debt-regression.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "line": 339,
+      "source_sha256": "08af5d3644a8b9330d49dd624cc21e5cf3105e85b686dfd693c4c6db4bac8727",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-broker-http-regression-'));",
+      "creator": "tests/integration/debt-regression.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/debt-regression.test.mjs",
+      "line": 380,
+      "source_sha256": "0cbdb36a631a690a013e957120159a2952fb684143934502c3a2e143735403dc",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-evidence-regression-'));",
+      "creator": "tests/integration/debt-regression.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/helpers.mjs",
+      "line": 8,
+      "source_sha256": "4d3b59b0620d10178d4d03e5478bd1abddc25b2e5c0339d2b5b1944daca245c5",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-integration-'));",
+      "creator": "tests/integration/helpers.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/project-repository-r3.test.mjs",
+      "line": 33,
+      "source_sha256": "be96c24c263ebecaaa540657567513d0ab8a523793e20e47c78db19d2b449fe9",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r3-adapter-'));",
+      "creator": "tests/integration/project-repository-r3.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/project-repository-r3.test.mjs",
+      "line": 176,
+      "source_sha256": "72a9351d8611a4b705ebcd398d521a5e191d3bf29e1a83d0830d7e3d5e2ab62a",
+      "source": "const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r3-local-source-'));",
+      "creator": "tests/integration/project-repository-r3.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/restart-flow.test.mjs",
+      "line": 9,
+      "source_sha256": "beee90a95d4296a6a225da7bee8d47f89bfffb0bf13046fc36569603dd5dfd6d",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-restart-'));",
+      "creator": "tests/integration/restart-flow.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/scheduler-flow.test.mjs",
+      "line": 58,
+      "source_sha256": "cdf200fe54b50108bd56f87d29adbf37b38cc9eaa58d164fface3c8b214618be",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-scheduler-'));",
+      "creator": "tests/integration/scheduler-flow.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/setup-flow.test.mjs",
+      "line": 151,
+      "source_sha256": "9ca2b15b0d7138b71464fbc221604db7cab3b907f04e6c17b73d0d6d6446ff57",
+      "source": "const root = fs.mkdtempSync(path.join(process.cwd(), '.ai-workspace', 'vault-test-'));",
+      "creator": "tests/integration/setup-flow.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/v3-clean-p1.test.mjs",
+      "line": 50,
+      "source_sha256": "cba2d14d93cc5e5e77b6b2c5cb68c988fc7575af89dc1531ea28df54ec70646c",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-integration-'));",
+      "creator": "tests/integration/v3-clean-p1.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/v3-clean-p1.test.mjs",
+      "line": 85,
+      "source_sha256": "0cfd3fa375cdf2947393c224867e23951513e2264de33617a9a42ac45fde127f",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-boundary-'));",
+      "creator": "tests/integration/v3-clean-p1.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/v3-clean-p1.test.mjs",
+      "line": 185,
+      "source_sha256": "468df3a2b27b811d76bd0119ae3475983416d6bdcecace2dbd26b5b93db9883b",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-cas-ready-'));",
+      "creator": "tests/integration/v3-clean-p1.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/integration/v3-clean-p1.test.mjs",
+      "line": 212,
+      "source_sha256": "e16a9e07da4448e6cf101dc15703864983e9a8d648ac3f2e608108ec91b31d31",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-live-sse-'));",
+      "creator": "tests/integration/v3-clean-p1.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p1/clean-platform.test.mjs",
+      "line": 50,
+      "source_sha256": "6d7af18c060c83d0ea7640355f2aa2d6a728a3b96f546e893a1e185b49052729",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p1-'));",
+      "creator": "tests/p1/clean-platform.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p1/clean-platform.test.mjs",
+      "line": 511,
+      "source_sha256": "7b046b5d707e767dfa395fd05ced3c6fbd8da9878d73b462ac8bdce548ef5917",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-not-ready-'));",
+      "creator": "tests/p1/clean-platform.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/development-reliability.test.mjs",
+      "line": 91,
+      "source_sha256": "2c6a9ea3b7df1d34dbd6ca6f9ca1baea1e531c04eb17c7b68d4d237fe1c90f6b",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-budget-regression-'));",
+      "creator": "tests/p10/development-reliability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/development-reliability.test.mjs",
+      "line": 115,
+      "source_sha256": "261045e151b68ee81401e82c9644feeb1969bd2c2558da552e2d0ed30f73ac40",
+      "source": "const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws 参数 space '));",
+      "creator": "tests/p10/development-reliability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/development-reliability.test.mjs",
+      "line": 367,
+      "source_sha256": "707f3e668b0f0ddbef0aa695dcb45e6d626e3c16d7f53fdde6b9d2ced98a8530",
+      "source": "const output = path.join(os.tmpdir(), `aiws-development-receipt-${process.pid}-${Date.now()}.json`);",
+      "creator": "tests/p10/development-reliability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/development-reliability.test.mjs",
+      "line": 446,
+      "source_sha256": "959ed3fdaa6518a09078e9e916cd1ac2a0c455ddcf033e977fa6370dab064931",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-advisory-'));",
+      "creator": "tests/p10/development-reliability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/development-reliability.test.mjs",
+      "line": 475,
+      "source_sha256": "f100b97ec177944a425f57ecded89d725b82adcd8bbcc267d8c8710a1f51a530",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-paths-'));",
+      "creator": "tests/p10/development-reliability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/development-reliability.test.mjs",
+      "line": 498,
+      "source_sha256": "1abd1ad50b88b8106466c63587157ab1b330fda5bfa17a9ee7df6ae0aa5f41b3",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-upstream-'));",
+      "creator": "tests/p10/development-reliability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/development-reliability.test.mjs",
+      "line": 499,
+      "source_sha256": "d9abded5307755139c42a9382c9bb1de6b5a7a703fcd9b4800a769ad28e26ae8",
+      "source": "const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-remote-'));",
+      "creator": "tests/p10/development-reliability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/development-reliability.test.mjs",
+      "line": 551,
+      "source_sha256": "290aee4a5860225f873eada85a26c9d8519f4959da01da46d710e48211ef92f4",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-fallback-'));",
+      "creator": "tests/p10/development-reliability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/development-reliability.test.mjs",
+      "line": 578,
+      "source_sha256": "63a99c0d33dda0b81d666bffa5c9f3d497b9ccdeec682f0af9edcc27e18ff2da",
+      "source": "const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-dev-empty-'));",
+      "creator": "tests/p10/development-reliability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/migration.test.mjs",
+      "line": 22,
+      "source_sha256": "c0aa2f4121a472757b4f5d013b611f656932456863ad0aa3a845a5ef886762e7",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), `p10-v${version}-`));",
+      "creator": "tests/p10/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/migration.test.mjs",
+      "line": 44,
+      "source_sha256": "b064b3a3b4779933154a381dea8ecc16919b4e141c573ddd061196dbc15eaf08",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), `p10-fault-${stage}-`));",
+      "creator": "tests/p10/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/migration.test.mjs",
+      "line": 61,
+      "source_sha256": "9b96beccbdcf6dec9502d34af0e16a1047b4d375bc3e969b9c6aa7a03ecfe261",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p10-immutable-'));",
+      "creator": "tests/p10/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/port-lease.test.mjs",
+      "line": 27,
+      "source_sha256": "b1405da4a63a2385ca63cbf9b2bf00d3207d8195a3fdbb77048ec0522c8f0f28",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lease-exclusive-'));",
+      "creator": "tests/p10/port-lease.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/post-closure-restoration.test.mjs",
+      "line": 77,
+      "source_sha256": "0fc17a748fc638e25937fe6d637a33ea575c00c420aa27b891eef8b841d25ada",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-post-close-codex-'));",
+      "creator": "tests/p10/post-closure-restoration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/post-closure-restoration.test.mjs",
+      "line": 134,
+      "source_sha256": "04b28b8220740f3a92a87cbb00dab081c6e2eac664eb19379754381e64ad8fca",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-post-close-bounds-'));",
+      "creator": "tests/p10/post-closure-restoration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/post-closure-restoration.test.mjs",
+      "line": 175,
+      "source_sha256": "ae02a4d66b1169220cac57668264bfd4d90a42e7a59517e1abd028516f558c2a",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-post-close-http-'));",
+      "creator": "tests/p10/post-closure-restoration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/post-closure-restoration.test.mjs",
+      "line": 269,
+      "source_sha256": "ff3714f18a99ac9c2ea1cec4caf097c903f86bb0321e7b38ff3ae6691770403d",
+      "source": "const loaded = loadCleanConfig({ AIWS_CLEAN_HOME: path.join(os.tmpdir(), 'aiws-github-public-config') });",
+      "creator": "tests/p10/post-closure-restoration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/post-closure-restoration.test.mjs",
+      "line": 426,
+      "source_sha256": "4840444930baf194eb02fda014b43da99b07ef6964bf7805d76b025a71414180",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-github-key-path-'));",
+      "creator": "tests/p10/post-closure-restoration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/post-closure.test.mjs",
+      "line": 20,
+      "source_sha256": "b84db1aa86503dd72b932e7cea9dbd46ff37ea2438257cda412b8960bfb2f2c2",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-post-closure-'));",
+      "creator": "tests/p10/post-closure.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/post-closure.test.mjs",
+      "line": 21,
+      "source_sha256": "2c21bd9994d5b079dde1829961435353dd64cff1b6ea67bf6492d3235bdf43e1",
+      "source": "const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-post-closure-remote-'));",
+      "creator": "tests/p10/post-closure.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/real-development-loop.test.mjs",
+      "line": 172,
+      "source_sha256": "35079bd5254c45ce70b4b2345e8c39aec733711fd7c16d3e91bca6a4536d2787",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-cli-preflight-')); const source = path.join(root, 'source'); fs.mkdirSync(source);",
+      "creator": "tests/p10/real-development-loop.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/real-development-loop.test.mjs",
+      "line": 184,
+      "source_sha256": "b6509aff49988a13c1d1b3af28a496548167e3c4ee47c54d57e1955ae7b3943b",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-cli-root-')); const source = path.join(root, 'source'); fs.mkdirSync(source);",
+      "creator": "tests/p10/real-development-loop.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/real-development-loop.test.mjs",
+      "line": 197,
+      "source_sha256": "e6026adcc0e17c109c4df3829c95b0967cb7363dba0211867e611909a4cc248a",
+      "source": "const root=fs.mkdtempSync(path.join(os.tmpdir(),'aiws-local-git-')); const source=path.join(root,'source'), output=path.join(root,'managed'); fs.mkdirSync(source);",
+      "creator": "tests/p10/real-development-loop.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/real-development-loop.test.mjs",
+      "line": 213,
+      "source_sha256": "ea1801669c383b912b555694999039dd3c674585ce8f5ecbba350899f2f12ca3",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-local-git-autocrlf-')); const source = path.join(root, 'source'); fs.mkdirSync(source);",
+      "creator": "tests/p10/real-development-loop.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/real-development-loop.test.mjs",
+      "line": 259,
+      "source_sha256": "1b94417bbece03e1939ed66f95a9139075dc71fa87452d9d342aa66083690a7e",
+      "source": "const hostRoot=fs.mkdtempSync(path.join(os.tmpdir(),'aiws-host-')); const adapter=new HostRunnerAdapter({homeRoot:hostRoot}); const state=await open({runnerAdapter:adapter});",
+      "creator": "tests/p10/real-development-loop.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/real-development-loop.test.mjs",
+      "line": 280,
+      "source_sha256": "24bcca3f167e719766fd4d05f4aa4189a7bfda077aad9712f40d0397ec422eb4",
+      "source": "const hostRoot=fs.mkdtempSync(path.join(os.tmpdir(),'aiws-host-fail-')); const state=await open({runnerAdapter:new HostRunnerAdapter({homeRoot:hostRoot})});",
+      "creator": "tests/p10/real-development-loop.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/real-development-loop.test.mjs",
+      "line": 290,
+      "source_sha256": "3b6a87d9d32df0c47e3fa4c3398561d7527e02516627cb470ca1a14d2d247c09",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-complete-loop-'));",
+      "creator": "tests/p10/real-development-loop.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/remote-workspace-auth.test.mjs",
+      "line": 108,
+      "source_sha256": "ea1c3106edac70c9725328b62e1182b1774c11b5ddf8f52e9eeb65fad428b67d",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-remote-materialize-'));",
+      "creator": "tests/p10/remote-workspace-auth.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/remote-workspace-auth.test.mjs",
+      "line": 136,
+      "source_sha256": "04dfd7891eeff6b3cf69b52aafd7dd9e1687e14b5c3450c0cea1823eb4d28259",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-remote-drift-'));",
+      "creator": "tests/p10/remote-workspace-auth.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/workspace-storage.test.mjs",
+      "line": 14,
+      "source_sha256": "011ee981ba3bace9be6e2b05f879bfcccce37e950c0778c4cfe9d3682b3ffe43",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-storage-test-'));",
+      "creator": "tests/p10/workspace-storage.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/workspace-storage.test.mjs",
+      "line": 22,
+      "source_sha256": "8e2d33614f785e21585efecb29c04b008d4db4bbb01bfe19d16cc7055ff8d027",
+      "source": "const writer = \"const f=require('fs'),p=require('path'),o=require('os');f.writeFileSync(p.join(o.tmpdir(),'data.txt'),'fixture');\";",
+      "creator": "tests/p10/workspace-storage.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/workspace-storage.test.mjs",
+      "line": 48,
+      "source_sha256": "96b3cf425fb450efbdbc646719ef7282908aebe9b47ec0d57a68922817e953c3",
+      "source": "const result = await runManaged(['node', '-e', \"require('fs').writeFileSync(require('path').join(require('os').tmpdir(),'auth.json'),'private');process.exit(9)\"], { env: f.env, stdio: 'ignore' });",
+      "creator": "tests/p10/workspace-storage.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/workspace-storage.test.mjs",
+      "line": 54,
+      "source_sha256": "9e8cda5da32ece03fcf41b44af1f03f69bcbe8484ccd1d4584a7a14b9adaabbc",
+      "source": "const inner = \"require('fs').writeFileSync(process.env.STORAGE_TEST_OUTPUT,JSON.stringify({id:process.env.AIWS_STORAGE_RUN_ID,cmd:process.env.AIWS_STORAGE_COMMAND_ID,temp:require('os').tmpdir(),lock:process.env.AIWS_PORT_LEASE_ROOT}))\";",
+      "creator": "tests/p10/workspace-storage.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/workspace-storage.test.mjs",
+      "line": 136,
+      "source_sha256": "68757dc2d03b799bd359bc20d587b1f703906ac9402de2c7536fee5acd0ba550",
+      "source": "const result = await runManaged(['node', '-e', \"require('fs').unlinkSync(require('path').join(require('os').tmpdir(),'..','.owner.json'))\"], { env: f.env, stdio: 'ignore' });",
+      "creator": "tests/p10/workspace-storage.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p10/workspace-storage.test.mjs",
+      "line": 150,
+      "source_sha256": "435103c23215d0205fc442711432dfe7288d090abce7c266050bc706159aec4a",
+      "source": "const sampleRoot = fs.mkdtempSync(path.join(systemTemp, 'aiws-storage-cross-'));",
+      "creator": "tests/p10/workspace-storage.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p2/identity-acl-security.test.mjs",
+      "line": 28,
+      "source_sha256": "9de6dd4c949b015d5a308124826c945fbd7e6944c158ddf7586948a771efe26b",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p2-security-'));",
+      "creator": "tests/p2/identity-acl-security.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p2/identity-acl.test.mjs",
+      "line": 33,
+      "source_sha256": "0548289be9a8b11c4d4fdecfedf283b6fd7046b7260a729378a03c7c4c506cd4",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p2-'));",
+      "creator": "tests/p2/identity-acl.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p3/active-entrypoint.test.mjs",
+      "line": 11,
+      "source_sha256": "acc0e656e0a49e508244a1e932083911a6a5c1ac5df2e9eaa49397128b9303d3",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-active-entrypoint-'));",
+      "creator": "tests/p3/active-entrypoint.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p3/http-contract.test.mjs",
+      "line": 12,
+      "source_sha256": "6d10c3c9cd143e0916b841454570d22edcca719e48cb498c11388198086768c0",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p3-http-'));",
+      "creator": "tests/p3/http-contract.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p3/migration.test.mjs",
+      "line": 12,
+      "source_sha256": "2bc4c91ad03d0af1f4fe21a61ba4106261e15e404f7c86404b7675180719de47",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p3-migration-'));",
+      "creator": "tests/p3/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p3/project-workflow.test.mjs",
+      "line": 10,
+      "source_sha256": "bff1875238b7cfafc83f2d50aeffec7920ee58cb5e20a503864987055e422c75",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p3-'));",
+      "creator": "tests/p3/project-workflow.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p31/evidence-immutability.test.mjs",
+      "line": 9,
+      "source_sha256": "f8c5a1eee7fa39a45aec10e4bc0c2560ee128de1c2a4585972a55a7f3b759e97",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p31-evidence-'));",
+      "creator": "tests/p31/evidence-immutability.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p31/helpers.mjs",
+      "line": 7,
+      "source_sha256": "6b14733cc2bd4a5ed5371036fc7730b6d29527d9ac791afbbf403037d510d421",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p31-'));",
+      "creator": "tests/p31/helpers.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p31/layered-gates.test.mjs",
+      "line": 128,
+      "source_sha256": "9aca7f82c2dbcd7da3de9ae7c1dbe8437f9cfcf69433aed97147343b3114049d",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-layered-gate-'));",
+      "creator": "tests/p31/layered-gates.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p4/active-entrypoint.test.mjs",
+      "line": 10,
+      "source_sha256": "c135f8029b114a4e2e93110fe0e5f48e35bdc6bf7f1b69c44c6774d216ce8326",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p4-entrypoint-'));",
+      "creator": "tests/p4/active-entrypoint.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p4/governance-sync.test.mjs",
+      "line": 80,
+      "source_sha256": "f8e8713e135478711a4005e214ca8379205da731eac648cc789744569539717a",
+      "source": "const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p4-manifest-'));",
+      "creator": "tests/p4/governance-sync.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p4/helpers.mjs",
+      "line": 9,
+      "source_sha256": "97aec4dcbf687b3fb0817837834522d535ff31df3803eb1e2024aea5c75aa81b",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p4-'));",
+      "creator": "tests/p4/helpers.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p4/migration.test.mjs",
+      "line": 17,
+      "source_sha256": "f95617daa0f600d872d830185999ad2c8d1b9a416cad58dd83c9f5f181c9e6f5",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p4-migration-'));",
+      "creator": "tests/p4/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p5/helpers.mjs",
+      "line": 10,
+      "source_sha256": "98ba1710b7b1b9083a314c259c50514b839a796cab61d06235b237a9da6de4dc",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p5-'));",
+      "creator": "tests/p5/helpers.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p5/migration.test.mjs",
+      "line": 19,
+      "source_sha256": "665f2228fcaeb4887d8080c59b8b9381c70eeabfb30b7ebf3141d4763fd8d9df",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p5-migration-'));",
+      "creator": "tests/p5/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p5/provider-probe.test.mjs",
+      "line": 19,
+      "source_sha256": "c442866bc02ad90846b73fd7ed49fa899ec68db5ef84aa0ceccd904819447325",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'p5-provider-config-'));",
+      "creator": "tests/p5/provider-probe.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p5/provider-probe.test.mjs",
+      "line": 95,
+      "source_sha256": "876436b864c961292d6b4bbcf96b59900bd48dcfc0f4a67f7f5f08d2ed3f4aed",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'p5-provider-cleanup-'));",
+      "creator": "tests/p5/provider-probe.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p5/provider-probe.test.mjs",
+      "line": 105,
+      "source_sha256": "a6588882e5eb8add7d7354141c9800440dc935af44084b3f78a776530262bdca",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'p5-provider-lease-'));",
+      "creator": "tests/p5/provider-probe.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p5/terminal-bridge.test.mjs",
+      "line": 81,
+      "source_sha256": "b2a17c83a3e3bc0dd459aaf1e1c6ea8c2f9900182ef920b393f46805ed237ee6",
+      "source": "const root = fs.mkdtempSync(path.join(process.env.TEMP || process.cwd(), 'p5-bridge-test-'));",
+      "creator": "tests/p5/terminal-bridge.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p6/helpers.mjs",
+      "line": 11,
+      "source_sha256": "4cc352b9818df7b3f5f272650cd85cbb6b8b2f4e0f79ceba1c4a9fbdcf30025a",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p6-'));",
+      "creator": "tests/p6/helpers.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p6/migration.test.mjs",
+      "line": 13,
+      "source_sha256": "4c3b1c895be670ea8d5ea975c698e651594fbe28a42897cbd30f10875e17c4fb",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), `p6-migration-${version}-`)); const file = path.join(root, 'state.sqlite'); let db;",
+      "creator": "tests/p6/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p6/migration.test.mjs",
+      "line": 20,
+      "source_sha256": "e2750fe9721bb3ca38934df8b28ae759d35a7567f0bb3a38b0df0bb8f71617ea",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), `p6-fault-${stage}-`)); const file = path.join(root, 'state.sqlite'); let db;",
+      "creator": "tests/p6/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p6/migration.test.mjs",
+      "line": 26,
+      "source_sha256": "29e7b6142d2a084baa2e73f34bbd9a9ec15c37d2267e70dbd6c42c1fd0203256",
+      "source": "for (const mode of ['checksum', 'snapshot']) { const root = fs.mkdtempSync(path.join(os.tmpdir(), `p6-drift-${mode}-`)); const file = path.join(root, 'state.sqlite'); try { const db = openCleanDatabase(file, { targetVersion: 6, receiptRoot: path.join(root, 'receipts') }); db.close(); const raw = new DatabaseSync(file); if (mode === 'checksum') { raw.exec('DROP TRIGGER immutable_schema_migrations_update'); raw.prepare('UPDATE schema_migrations SET checksum=? WHERE version=6').run('0'.repeat(64)); } else raw.exec('CREATE TABLE p6_snapshot_drift(id TEXT PRIMARY KEY) STRICT'); raw.close(); assert.throws(() => openCleanDatabase(file, { targetVersion: 6, receiptRoot: path.join(root, 'receipts') }), (error) => error.code === 'not_ready' && error.details.reason === (mode === 'checksum' ? 'checksum_drift' : 'snapshot_mismatch')); } finally { fs.rmSync(root, { recursive: true, force: true }); } }",
+      "creator": "tests/p6/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p6/runner-transports.test.mjs",
+      "line": 15,
+      "source_sha256": "372d3ee45ea7cbf7a8c040812141d476351e86b5f1675f783f75350dc6783567",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p6-clean-broker-')); const secret = 'p6-clean-broker-secret'; const digest = `sha256:${'b'.repeat(64)}`;",
+      "creator": "tests/p6/runner-transports.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p6/runner-transports.test.mjs",
+      "line": 38,
+      "source_sha256": "db3947e882ab212314f371df778afc700d0f07f940ec1582a274815491ddac60",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p6-bridge-runner-'));",
+      "creator": "tests/p6/runner-transports.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p7/broker-restart-tamper.test.mjs",
+      "line": 18,
+      "source_sha256": "89dc9667aa5e34678d58418404774311e6d34c0753797015db5e55a8fa01731e",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p7-broker-'));",
+      "creator": "tests/p7/broker-restart-tamper.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p7/broker-restart-tamper.test.mjs",
+      "line": 61,
+      "source_sha256": "12e2c0b9793da58ec77350eeb09d108ff651e2adf602904843936ed36d9f3acc",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p7-broker-restart-'));",
+      "creator": "tests/p7/broker-restart-tamper.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p7/migration.test.mjs",
+      "line": 18,
+      "source_sha256": "badf310fe3747b29203f6dc10e4b03de5287c503149dc8a74266de54dd98b6e8",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), `p7-migration-${version}-`));",
+      "creator": "tests/p7/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p7/migration.test.mjs",
+      "line": 38,
+      "source_sha256": "38adec0a9c1205b1b6fd67820cda0791c26253b3a46970f4f3c4fcd4007d095c",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), `p7-fault-${stage}-`));",
+      "creator": "tests/p7/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p7/migration.test.mjs",
+      "line": 56,
+      "source_sha256": "17bb9991939c0a60b991b67fe1419119901a4f4e64253ab9eba898844468a580",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), `p7-drift-${mode}-`));",
+      "creator": "tests/p7/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p8/importer.test.mjs",
+      "line": 13,
+      "source_sha256": "97c21a80155fafa3150556d23ca2d3d08d71011a58e966840d8af1ba84df0235",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p8-import-'));",
+      "creator": "tests/p8/importer.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p8/importer.test.mjs",
+      "line": 46,
+      "source_sha256": "6993f1ce9f5b628916a271414c68ffac86d97d6a6b76c6956ada12754f261b3e",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p8-import-resume-'));",
+      "creator": "tests/p8/importer.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p8/importer.test.mjs",
+      "line": 71,
+      "source_sha256": "c72457fd7388d73e3f00c163ad87a00da26f3b3f57e8559148c771abb0538632",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p8-import-block-'));",
+      "creator": "tests/p8/importer.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p8/migration.test.mjs",
+      "line": 10,
+      "source_sha256": "e59642a1946d3e5e1a10fa4e53809fe68481d652a661261210bebcd0e59ece60",
+      "source": "for (let version=0;version<=7;version+=1) { const root=fs.mkdtempSync(path.join(os.tmpdir(),`p8-v${version}-`)); const file=path.join(root,'state.sqlite'); let db; try { if (version) { db=openCleanDatabase(file,{targetVersion:version,receiptRoot:path.join(root,'receipts')}); db.close(); } db=openCleanDatabase(file,{targetVersion:8,receiptRoot:path.join(root,'receipts')}); assert.equal(db.integrity().user_version,8); assert.deepEqual(db.integrity().foreign_key_check,[]); const names=db.query(\"SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name\").map(r=>r.name); assert.deepEqual(p8Tables.filter(x=>names.includes(x)),p8Tables); assert.equal(db.query('SELECT version FROM schema_migrations ORDER BY version').length,8); } finally { db?.close(); fs.rmSync(root,{recursive:true,force:true}); } }",
+      "creator": "tests/p8/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p8/migration.test.mjs",
+      "line": 14,
+      "source_sha256": "54a8b1b60197af6489108e3913010cc29e0834a8bddc24c277fa31be025a4699",
+      "source": "for (const stage of ['ddl','ledger','receipt','commit']) { const root=fs.mkdtempSync(path.join(os.tmpdir(),`p8-fault-${stage}-`)); const file=path.join(root,'state.sqlite'); let db=openCleanDatabase(file,{targetVersion:7,receiptRoot:path.join(root,'receipts')}); db.close(); const before=fs.readFileSync(file); assert.throws(()=>openCleanDatabase(file,{targetVersion:8,receiptRoot:path.join(root,'receipts'),failAt:`migration_008_${stage}`}),error=>error.code==='not_ready'&&error.details.migration_id==='008-delivery-deployment-importer-operations'); assert.deepEqual(fs.readFileSync(file),before); const raw=new DatabaseSync(file,{readOnly:true}); try { assert.equal(raw.prepare('PRAGMA user_version').get().user_version,7); const names=raw.prepare(\"SELECT name FROM sqlite_schema WHERE type='table'\").all().map(r=>r.name); assert.deepEqual(p8Tables.filter(x=>names.includes(x)),[]); } finally { raw.close(); fs.rmSync(root,{recursive:true,force:true}); } }",
+      "creator": "tests/p8/migration.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/p9/web-static.test.mjs",
+      "line": 10,
+      "source_sha256": "2172c7487946d241ac34e3b55071a6ed22f8def54488c309d0a95c201311dced",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p9-web-static-'));",
+      "creator": "tests/p9/web-static.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/release/p10-final-gate.test.mjs",
+      "line": 10,
+      "source_sha256": "47123318cbf9314d6a2a8219be4ac97e6bca457b5438bbce4f7b075552917413",
+      "source": "assert.ok(source.includes(\"startProbeWithPorts({ prefix: 'aiws-p10-release'\") || source.includes(\"fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p10-release-'))\"), 'shared startup lease');",
+      "creator": "tests/release/p10-final-gate.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/release/p9-release-gate.test.mjs",
+      "line": 8,
+      "source_sha256": "2740896446d74de69191d80b3b9520b8f4341fd6ebe8b661f0a204e02a00ec34",
+      "source": "\"fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-p9-release-'))\",",
+      "creator": "tests/release/p9-release-gate.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/release/release-rehearsal-compose.test.mjs",
+      "line": 31,
+      "source_sha256": "f6250688c39e83feae68663efa7d16fd599bff72f9b2796966072eff297bdedf",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-rehearsal-compose-'));",
+      "creator": "tests/release/release-rehearsal-compose.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/security/broker-http.test.mjs",
+      "line": 41,
+      "source_sha256": "74d89b7587f472556525ed294e870a80c8c9ce2b56787a8cbaa0842aa1c2d47a",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-broker-security-'));",
+      "creator": "tests/security/broker-http.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/security/broker-http.test.mjs",
+      "line": 88,
+      "source_sha256": "c51529db161566d9d67cce92d13d36e4eebbc49cdd615afec803f286837c894e",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-broker-profile-'));",
+      "creator": "tests/security/broker-http.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/security/broker-http.test.mjs",
+      "line": 133,
+      "source_sha256": "6aacc150d03101c42265c684e11871b08a9ea4225ab3797c3a62839f0258c3c8",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-host-profile-'));",
+      "creator": "tests/security/broker-http.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/security/credentials.test.mjs",
+      "line": 58,
+      "source_sha256": "3e26dd609b40ea87726eff16f25c103b80600a4ead38f804dbedd72f7caab9e9",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-credential-boundary-'));",
+      "creator": "tests/security/credentials.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/security/project-repository.test.mjs",
+      "line": 35,
+      "source_sha256": "7502d71e54b3414dd6ef63ac6856a8d47b2c9ad1ae2da83abfab0373688d49f0",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r3-path-policy-'));",
+      "creator": "tests/security/project-repository.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/security/project-repository.test.mjs",
+      "line": 37,
+      "source_sha256": "34a304827c6d3c8134b957fccb2a51daf877600f75b622269dd95a3a3480bee2",
+      "source": "const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r3-path-outside-'));",
+      "creator": "tests/security/project-repository.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/security/project-repository.test.mjs",
+      "line": 54,
+      "source_sha256": "8a85e04c9f6114d4bd6691ce03874a669ceacc0e351f718dbb67c48db833ff7d",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r3-upload-'));",
+      "creator": "tests/security/project-repository.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/security/v3-clean-p1.test.mjs",
+      "line": 11,
+      "source_sha256": "85ae53d01832ecf2e440f62823b1e9defe4ab895021cd8b14b5acbf1744bee30",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-security-'));",
+      "creator": "tests/security/v3-clean-p1.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/context-r5.test.mjs",
+      "line": 74,
+      "source_sha256": "868a4923d07abba1c7084ac2c0f51e3ba0547bcd0c48957c8503217182cb8c46",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-context-index-'));",
+      "creator": "tests/unit/context-r5.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/contracts.test.mjs",
+      "line": 25,
+      "source_sha256": "784d2308652ae3e6b1784894804b6db70fbcb56f41537c6877fec124a6c9c971",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-secret-bundle-'));",
+      "creator": "tests/unit/contracts.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/credential-vault.test.mjs",
+      "line": 10,
+      "source_sha256": "1c30981a544c7f7b195d5798621c1df6b2897bdb6253f7fdec0320950ae2aa64",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r2-vault-'));",
+      "creator": "tests/unit/credential-vault.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/database.test.mjs",
+      "line": 9,
+      "source_sha256": "12f98820bcf45bd3bb5d48eb2a76e95f1cbd6e81493f57e72c3e075d57b383e9",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-db-'));",
+      "creator": "tests/unit/database.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/identity-operations.test.mjs",
+      "line": 12,
+      "source_sha256": "4eb28128bca310799e3c86416912afa815fdd0b3f481fca41c1bccc7a5db9109",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r2-services-'));",
+      "creator": "tests/unit/identity-operations.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/migrations.test.mjs",
+      "line": 16,
+      "source_sha256": "b491a8159367f2a4bb03e9303ab430b967f6a4005f2950fbf64bbb7d7ad790f3",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), prefix));",
+      "creator": "tests/unit/migrations.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/real-runner.test.mjs",
+      "line": 11,
+      "source_sha256": "9ed4bec807a26191094a01a4deadcf27227ab0904f0a0a52b2a4c2fd7e7852f7",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-fixture-test-'));",
+      "creator": "tests/unit/real-runner.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/real-runner.test.mjs",
+      "line": 12,
+      "source_sha256": "732b5f74bf2da0ec8d0fbe884f302f5a2e3cbce660a135f1fe1c008a336d449e",
+      "source": "const secondRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-fixture-repeat-'));",
+      "creator": "tests/unit/real-runner.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/recovery-golden.test.mjs",
+      "line": 156,
+      "source_sha256": "9a888baf432b65abd42075296f2c59c3ba1c8297f307b4aa30b9390cd5438b62",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r5-negative-'));",
+      "creator": "tests/unit/recovery-golden.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/setup-service.test.mjs",
+      "line": 13,
+      "source_sha256": "c3d70fb02ad0d110c673f104da50808083a42bf5dab1f92eb00377a9c5bcb1cc",
+      "source": "const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-r2-setup-'));",
+      "creator": "tests/unit/setup-service.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/terminal-bundle.test.mjs",
+      "line": 14,
+      "source_sha256": "8480d1e38dcd8ad4fb6fe695954e769178a4502aa7ad820d3f087c3432cba862",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-terminal-bundle-'));",
+      "creator": "tests/unit/terminal-bundle.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/terminal-bundle.test.mjs",
+      "line": 34,
+      "source_sha256": "a98d1f0befbc13574139786e54d870de6d22d6bf77fb866d38ad15d8ac7cb285",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-terminal-tree-'));",
+      "creator": "tests/unit/terminal-bundle.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/terminal-bundle.test.mjs",
+      "line": 66,
+      "source_sha256": "f44dd3c6abebe722aadb7f13692e331f91596666d96ccb3513d2ba5c1384ec9e",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-terminal-submodule-'));",
+      "creator": "tests/unit/terminal-bundle.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "tests/unit/terminal-bundle.test.mjs",
+      "line": 77,
+      "source_sha256": "a3636870f78e69a0f7b41df00ba73d41c0cbb96a16ea62f37c0fd993d74c56c6",
+      "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-terminal-tamper-'));",
+      "creator": "tests/unit/terminal-bundle.test.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    }
+  ]
+}

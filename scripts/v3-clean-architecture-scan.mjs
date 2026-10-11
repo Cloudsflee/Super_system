@@ -46,7 +46,7 @@ for (const [name, command] of Object.entries(packageJson.scripts || {})) {
   if (!/^(?:dev|start)(?::clean)?$/.test(name)) continue;
   if (/apps[\\/]api[\\/](?!server\.mjs\b)[^\s'"`]+\.mjs/i.test(String(command))) findings.push({ label: 'non-unique clean process script', script: name, command });
 }
-if (packageJson.scripts?.['dev:broker'] !== 'node apps/runner-broker/clean-server.mjs') findings.push({ label: 'P6 Clean Broker process script mismatch' });
+if (packageJson.scripts?.['dev:broker'] !== 'node scripts/workspace-run.mjs -- node apps/runner-broker/clean-server.mjs') findings.push({ label: 'P6 Clean Broker process script mismatch' });
 if (packageJson.scripts?.['fixture:legacy:dev-broker'] !== 'node apps/runner-broker/server.mjs') findings.push({ label: 'historical Broker fixture script mismatch' });
 
 const tableText = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');

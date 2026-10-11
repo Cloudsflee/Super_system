@@ -3,10 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pnpmInvocation, runGateCommand } from './lib/gate-process.mjs';
 import { validateGateInventory } from './lib/gate-inventory.mjs';
+import { validateCreationSites } from './workspace-storage.mjs';
 
 const root = process.cwd();
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const failures = [];
+try { validateCreationSites(root); } catch (error) { failures.push(error.message); }
 const gateInventory = validateGateInventory();
 if (!gateInventory.valid) failures.push(...gateInventory.failures.map((failure) => `gate inventory: ${failure}`));
 

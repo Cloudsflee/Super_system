@@ -47,8 +47,8 @@ test('P6 migration, ownership, registry, paths and package gates are synchronize
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(Object.keys(packageJson.scripts).length, Object.keys(P1_PACKAGE_SCRIPT_DEFINITIONS).length);
   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
-  assert.equal(packageJson.scripts['dev:broker'], 'node apps/runner-broker/clean-server.mjs');
-  assert.equal(packageJson.scripts['test:p6'], 'node --test tests/p6/*.test.mjs');
+  assert.equal(packageJson.scripts['dev:broker'], 'node scripts/workspace-run.mjs -- node apps/runner-broker/clean-server.mjs');
+  assert.equal(packageJson.scripts['test:p6'], 'node scripts/workspace-run.mjs -- node --test tests/p6/*.test.mjs');
   assert.equal(packageJson.scripts['evidence:p6'], 'node scripts/v3-clean-p6-evidence.mjs');
   const verificationIds = createFormalVerificationPlan().map((entry) => entry.id);
   const p5EvidenceCheck = verificationIds.indexOf('evidence-p5');

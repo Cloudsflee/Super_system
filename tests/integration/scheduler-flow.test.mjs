@@ -65,6 +65,7 @@ async function domainFixture(options = {}) {
     runnerDigest: digest, codexAvailable: false, githubAvailable: false
   };
   const domain = new Domain({ db, config, broker });
+  try {
   let project = await domain.createProject({ name: 'Scheduler fixture', repository: options.fixtureRepository ? { source: { kind: 'fixture', id: 'designsignal-v1' } } : { local_path: 'projects/shared' } });
   const started = await domain.startIntake(project.id, { expected_revision: project.revision });
   const intake = await eventually(() => domain.getIntake(started.intake_id), (value) => ['ready', 'failed'].includes(value.status), 10_000);
@@ -73,6 +74,10 @@ async function domainFixture(options = {}) {
   project = await domain.getProject(project.id);
   project = await domain.confirmBrief(project.id, brief.revision, { expected_revision: project.revision, intake_revision: intake.revision });
   return { home, databaseFile, db, broker, config, domain, project };
+  } catch (error) {
+    try { await domain.shutdown(); } finally { await db.close(); }
+    throw error;
+  }
 }
 
 async function executionFor(domain, projectId, workflowRevision) {
@@ -117,7 +122,7 @@ test('repository scheduler allows two reads and keeps a write exclusive across e
       assert.equal(final.status, 'completed');
     }
   } finally {
-    await env.db.close();
+    try { await env.domain.shutdown(); } finally { await env.db.close(); }
   }
 });
 
@@ -152,7 +157,7 @@ test('stale cancellation has no side effects and a committed cancellation releas
     const final = await eventually(() => env.domain.getExecution(writer.id), (value) => value.status === 'completed');
     assert.equal(final.status, 'completed');
   } finally {
-    await env.db.close();
+    try { await env.domain.shutdown(); } finally { await env.db.close(); }
   }
 });
 
@@ -187,7 +192,7 @@ test('a second runner failure pauses for a human retry and creates a new immutab
     assert.equal(completed.runner.worktree_status, 'removed');
     assert.ok(completed.diff.files.includes('retry-state.txt'));
   } finally {
-    await env.db.close();
+    try { await env.domain.shutdown(); } finally { await env.db.close(); }
   }
 });
 
@@ -208,13 +213,14 @@ test('an unknown job after Broker state loss is a retryable failed attempt', asy
     env.broker.complete(retry);
     assert.equal((await eventually(() => env.domain.getExecution(execution.id), (value) => value.status === 'completed')).status, 'completed');
   } finally {
-    await env.db.close();
+    try { await env.domain.shutdown(); } finally { await env.db.close(); }
   }
 });
 
 test('restart recovery rebuilds repository reservations before dispatching pending work', async () => {
   const env = await domainFixture();
   let db = env.db;
+  let recovered;
   try {
     const readWorkflow = await env.domain.createWorkflow(env.project.id, { tasks: [{ id: 'inspect', level: 1, mode: 'read' }] });
     const read = await executionFor(env.domain, env.project.id, readWorkflow.revision);
@@ -232,7 +238,7 @@ test('restart recovery rebuilds repository reservations before dispatching pendi
     ]);
     await db.close();
     db = await openDatabase(env.databaseFile);
-    const recovered = new Domain({ db, config: env.config, broker: env.broker });
+    recovered = new Domain({ db, config: env.config, broker: env.broker });
     assert.equal(await recovered.recover(), 2);
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.equal(env.broker.submissions.length, 0);
@@ -246,6 +252,6 @@ test('restart recovery rebuilds repository reservations before dispatching pendi
     assert.equal((await eventually(() => recovered.getExecution(read.id), (value) => value.status === 'completed')).status, 'completed');
     assert.equal((await eventually(() => recovered.getExecution(writer.id), (value) => value.status === 'completed')).status, 'completed');
   } finally {
-    await db.close();
+    try { await recovered?.shutdown(); await env.domain.shutdown(); } finally { await db.close(); }
   }
 });

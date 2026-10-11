@@ -8,11 +8,22 @@ export async function fixture({ setupGateBypass = true, config: configOverrides 
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-v3-integration-'));
   const secret = 'integration-secret';
   const digest = `sha256:${'a'.repeat(64)}`;
-  const broker = await startBroker({ config: { host: '127.0.0.1', port: 0, secret, dataRoot: home, dataVolume: 'aiws-data-v3', runnerDigest: digest, executor: 'mock', runnerImage: `runner@${digest}` } });
+  let broker;
+  let app;
+  try {
+  broker = await startBroker({ config: { host: '127.0.0.1', port: 0, secret, dataRoot: home, dataVolume: 'aiws-data-v3', runnerDigest: digest, executor: 'mock', runnerImage: `runner@${digest}` } });
   const brokerPort = broker.server.address().port;
-  const app = await startApi({ githubOptions, config: { version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home, databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas'), dataVolume: 'aiws-data-v3', brokerUrl: `http://127.0.0.1:${brokerPort}`, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest, codexAvailable: false, githubAvailable: false, testOnlyBypassSetupGate: setupGateBypass, ...configOverrides } });
+  app = await startApi({ githubOptions, config: { version: '3.0.0', apiPrefix: '/api/v1', host: '127.0.0.1', port: 0, home, databaseFile: path.join(home, 'data', 'state.sqlite'), casRoot: path.join(home, 'cas'), dataVolume: 'aiws-data-v3', brokerUrl: `http://127.0.0.1:${brokerPort}`, brokerMode: 'http', brokerSecret: secret, runnerDigest: digest, codexAvailable: false, githubAvailable: false, testOnlyBypassSetupGate: setupGateBypass, ...configOverrides } });
   const base = `http://127.0.0.1:${app.server.address().port}`;
-  return { app, broker, base, home, digest, async close() { await app.close(); await broker.close(); } };
+  return { app, broker, base, home, digest, async close() {
+    try { await app.close(); } finally { await broker.close(); }
+  } };
+  } catch (error) {
+    const failures = [];
+    for (const resource of [app, broker]) { try { await resource?.close(); } catch (failure) { failures.push(failure); } }
+    if (failures.length) throw new AggregateError([error, ...failures], 'integration_fixture_initialization_and_cleanup_failed');
+    throw error;
+  }
 }
 
 export async function request(base, route, options = {}) {

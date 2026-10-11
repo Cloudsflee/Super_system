@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
+    "dev": "node ../../scripts/workspace-run.mjs -- node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5174 --strictPort",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
-    "test": "vitest run"
+    "test": "node ../../scripts/workspace-run.mjs -- node node_modules/vitest/vitest.mjs run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",

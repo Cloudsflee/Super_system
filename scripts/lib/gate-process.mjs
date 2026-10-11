@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { fileURLToPath } from 'node:url';
 
 export const GATE_ERROR_CODES = Object.freeze({
   notFound: 'gate_command_not_found',
@@ -68,7 +69,11 @@ export async function runGateCommand(invocation, options = {}) {
   const stderrCapture = boundedCapture(maxCaptureBytes);
   const stdoutForwarder = lineForwarder(options.stdout === false ? null : (options.stdout || process.stdout), root, options.stdoutPrefix || '');
   const stderrForwarder = lineForwarder(options.stderr === false ? null : (options.stderr || process.stderr), root, options.stderrPrefix || '');
-  const child = spawn(String(invocation.command), (invocation.args || []).map(String), {
+  const ownedInvocation = process.env.AIWS_STORAGE_RUN_ID && invocation.command_role === 'node'
+    && String(invocation.args?.[0] || '').endsWith('.mjs')
+    ? { command: process.execPath, args: [fileURLToPath(new URL('../workspace-run.mjs', import.meta.url)), '--', invocation.command, ...invocation.args] }
+    : invocation;
+  const child = spawn(String(ownedInvocation.command), (ownedInvocation.args || []).map(String), {
     cwd,
     env: gateEnvironment(options.env),
     stdio: ['ignore', 'pipe', 'pipe'],

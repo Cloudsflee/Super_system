@@ -29,7 +29,7 @@ test('P4 migration, ownership, registry and package gate inventories are synchro
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(Object.keys(packageJson.scripts).length, Object.keys(P1_PACKAGE_SCRIPT_DEFINITIONS).length);
   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
-  assert.equal(packageJson.scripts.test, 'node scripts/test.mjs');
+  assert.equal(packageJson.scripts.test, 'node scripts/workspace-run.mjs -- node scripts/test.mjs');
   assert.match(fs.readFileSync(path.join(root, 'scripts', 'test.mjs'), 'utf8'), /--test-skip-pattern=committed sanitized V2\.3 golden/);
   const [, cleanIntegrationArgs] = commandFor('clean', 'integration');
   const [, historicalIntegrationArgs] = commandFor('historical', 'integration');

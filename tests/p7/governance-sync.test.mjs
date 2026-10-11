@@ -63,7 +63,7 @@ test('P7 migration, ownership, registry, package gates and paths are synchronize
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   assert.equal(Object.keys(packageJson.scripts).length, Object.keys(P1_PACKAGE_SCRIPT_DEFINITIONS).length);
   assert.deepEqual(packageJson.scripts, Object.fromEntries(Object.entries(P1_PACKAGE_SCRIPT_DEFINITIONS).map(([name, value]) => [name, value.command])));
-  assert.equal(packageJson.scripts['test:p7'], 'node --test tests/p7/*.test.mjs');
+  assert.equal(packageJson.scripts['test:p7'], 'node scripts/workspace-run.mjs -- node --test tests/p7/*.test.mjs');
   assert.equal(packageJson.scripts['evidence:p7'], 'node scripts/v3-clean-p7-evidence.mjs');
   const verificationIds = createFormalVerificationPlan().map((entry) => entry.id);
   assert.ok(verificationIds.indexOf('test-p7') > verificationIds.indexOf('test-p6'));

@@ -540,3 +540,11 @@ P10 implementation rows are validated by `pnpm audit:parity` and
 `pnpm test:p10`; final status is bound only to
 `docs/evidence/v3-clean-p10-final-governance-20260829/verification.json`.
 Production cutover is explicitly non-business parity and remains excluded.
+
+Workspace storage maintenance (Platform/Testing, P10+) maps to
+REC-D0-GOVERNANCE-000. Source ownership: scripts/workspace-run.mjs,
+scripts/workspace-storage.mjs and scripts/lib/workspace-storage*.
+Behavior proof: tests/p10/workspace-storage.test.mjs; source inventory is checked
+by pnpm check and pnpm workspace:storage -- audit. Private local migration and
+rollback receipts live in the existing sibling archives; they confer no Catalog
+promotion and do not replace immutable P1-P10 Evidence.

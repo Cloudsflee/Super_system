@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -20,7 +20,7 @@ import {
   encodeCursor,
   decodeCursor,
   CursorError,
-  createCleanRuntime,
+  createCleanRuntime as createRuntime,
   createCleanHttpHandler,
   loadCleanConfig,
   ReceiptService,
@@ -32,6 +32,19 @@ import {
   CLEAN_TABLE_OWNERS
 } from '../../apps/api/src/clean/index.mjs';
 import { createApp as createCleanApp } from '../../apps/api/clean-server.mjs';
+
+const ownedRuntimes = new Set();
+function createCleanRuntime(...args) {
+  const runtime = createRuntime(...args);
+  ownedRuntimes.add(runtime);
+  return runtime;
+}
+afterEach(async () => {
+  const resources = [...ownedRuntimes]; ownedRuntimes.clear();
+  const results = await Promise.allSettled(resources.map(runtime => runtime.close()));
+  const errors = results.filter(row => row.status === 'rejected').map(row => row.reason);
+  if (errors.length) throw new AggregateError(errors, 'fixture_close_failed');
+});
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v3-clean-p1-'));
