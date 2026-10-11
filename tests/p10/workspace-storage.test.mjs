@@ -198,3 +198,13 @@ test('OS migration lock rejects concurrency and releases after its owner crashes
   assert.equal(applyManifest(m.manifest, 'apply').ok, true);
   assert.deepEqual(applyManifest(m.manifest, 'rollback').byte_exact_mismatches, []);
 });
+
+test('successful CLI preserves child stdout without adding stderr or a disk receipt', async t => {
+  const f = fixture(t);
+  const child = spawn(process.execPath, ['scripts/workspace-run.mjs', '--', 'node', '-e', 'process.stdout.write("child-output")'], { env: f.env, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = ''; let stderr = '';
+  child.stdout.on('data', chunk => { stdout += chunk; }); child.stderr.on('data', chunk => { stderr += chunk; });
+  const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
+  assert.equal(code, 0); assert.equal(stdout, 'child-output'); assert.equal(stderr, '');
+  assert.deepEqual(fs.readdirSync(f.archive), []); assert.deepEqual(fs.readdirSync(path.join(f.temp, 'runs')), []);
+});

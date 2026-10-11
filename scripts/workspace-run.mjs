@@ -136,7 +136,7 @@ export async function runManaged(argv, options = {}) {
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   try {
     const result = await runManaged(process.argv.slice(2));
-    process.stderr.write(`${JSON.stringify(result)}\n`);
+    if (result.exit_status !== 0) process.stderr.write(`${JSON.stringify(result)}\n`);
     process.exitCode = result.exit_status;
   } catch (error) { process.stderr.write(`${error.code || error.message}\n`); process.exitCode = 1; }
 }
