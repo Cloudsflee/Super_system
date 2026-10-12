@@ -1268,3 +1268,12 @@ Acceptance: `pnpm workspace:storage -- audit`, `pnpm test:p10`, two P1/P2 rounds
 the maintenance and user-plan gate inventory, and actual isolated rollback.
 Private manifests, original outputs, patch and rollback receipts stay in the
 existing archives/storage task directory. Business schema and /api/v2 are fixed.
+
+Unicode copy corrective maintenance retains the Node 24.14 toolchain and avoids
+its defective Windows native recursive-copy path with an accept-all JS filter
+(nodejs/node#61950). Existing file selections, collision rules, digests and
+publication transactions remain unchanged. Existing P6/P8/P9/P10 ownership and
+Catalog references cover the corrected sites and added tests; Catalog statuses
+and immutable Evidence are unchanged. See docs/testing.md for gate-sync review.
+Private recovery proof and the original mojibake trees are retained separately
+under the existing archives/encoding-fix task directory, never merged over data.

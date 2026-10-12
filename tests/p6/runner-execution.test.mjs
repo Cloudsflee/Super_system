@@ -4,6 +4,30 @@ import test from 'node:test';
 import { DeterministicRunnerAdapter } from '../../apps/api/src/clean/runner-adapters.mjs';
 import { signRunnerJobSpec, signRunnerReceipt, validateRunnerJobSpec, verifyRunnerReceipt } from '../../apps/api/src/clean/runner-protocol.mjs';
 import { close, open, prepare, waitOperation } from './helpers.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+
+test('candidate prepare and publication preserve Unicode paths, bytes and empty directories', async () => {
+  const state = await open();
+  try {
+    const fixture = await prepare(state, 'unicode-copy');
+    const candidates = state.runtime.execution.candidates;
+    candidates.root = path.join(state.root, '\u6bd5\u4e1a\u8bbe\u8ba1 copy');
+    const managed = state.runtime.files.workspaceDirectory(fixture.workspace);
+    const filename = '\u8d44\u6599 \u2713.bin';
+    const bytes = Buffer.from([0, 255, 1, 128, 10]);
+    fs.writeFileSync(path.join(managed, filename), bytes);
+    fs.mkdirSync(path.join(managed, '\u7a7a\u76ee\u5f55'));
+    const candidate = await candidates.prepare(fixture.execution, managed);
+    assert.deepEqual(fs.readFileSync(path.join(candidate, filename)), bytes);
+    assert.deepEqual(fs.readdirSync(path.join(candidate, '\u7a7a\u76ee\u5f55')), []);
+    assert.equal(await candidates.prepare(fixture.execution, managed), candidate);
+    await candidates.publish(fixture.execution, managed, state.principal);
+    assert.deepEqual(fs.readFileSync(path.join(managed, filename)), bytes);
+    assert.deepEqual(fs.readdirSync(path.join(managed, '\u7a7a\u76ee\u5f55')), []);
+    assert.deepEqual(fs.readdirSync(candidates.root).sort(), ['candidates', 'publication', 'rollback']);
+  } finally { await close(state); }
+});
 
 test('runner protocol rejects path, deadline, digest, capability and receipt tampering', () => {
   const key = generateKeyPairSync('ed25519'); const now = Date.now(); const spec = { schema_version: 'runner.job-spec.v2', job_spec_id: 'job_fixture', execution_ref: 'execution_fixture', generation: 1, task_ref: 'task_fixture', attempt: 1, runner_profile_ref: 'runner_fixture', runner_profile_revision: 1, runner_profile_hash: 'a'.repeat(64), image_digest: `sha256:${'b'.repeat(64)}`, deadline_at: new Date(now + 60_000).toISOString(), capabilities: ['network:none', 'workspace:read'], resource_profile: 'light', execution_mode: 'read', input_refs: [], input_paths: ['README.md'], output_paths: [], check_ids: [], workspace_ref: 'workspace_fixture', workspace_hash: 'c'.repeat(64), context_pack_ref: 'context_fixture', context_pack_hash: 'd'.repeat(64), service_key_id: 'runner_key_fixture', created_at: new Date(now).toISOString() };

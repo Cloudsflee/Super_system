@@ -1364,7 +1364,7 @@
     },
     {
       "file": "tests/p10/workspace-storage.test.mjs",
-      "line": 14,
+      "line": 32,
       "source_sha256": "011ee981ba3bace9be6e2b05f879bfcccce37e950c0778c4cfe9d3682b3ffe43",
       "source": "const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-storage-test-'));",
       "creator": "tests/p10/workspace-storage.test.mjs",
@@ -1374,7 +1374,7 @@
     },
     {
       "file": "tests/p10/workspace-storage.test.mjs",
-      "line": 22,
+      "line": 40,
       "source_sha256": "8e2d33614f785e21585efecb29c04b008d4db4bbb01bfe19d16cc7055ff8d027",
       "source": "const writer = \"const f=require('fs'),p=require('path'),o=require('os');f.writeFileSync(p.join(o.tmpdir(),'data.txt'),'fixture');\";",
       "creator": "tests/p10/workspace-storage.test.mjs",
@@ -1384,7 +1384,7 @@
     },
     {
       "file": "tests/p10/workspace-storage.test.mjs",
-      "line": 48,
+      "line": 66,
       "source_sha256": "96b3cf425fb450efbdbc646719ef7282908aebe9b47ec0d57a68922817e953c3",
       "source": "const result = await runManaged(['node', '-e', \"require('fs').writeFileSync(require('path').join(require('os').tmpdir(),'auth.json'),'private');process.exit(9)\"], { env: f.env, stdio: 'ignore' });",
       "creator": "tests/p10/workspace-storage.test.mjs",
@@ -1394,7 +1394,7 @@
     },
     {
       "file": "tests/p10/workspace-storage.test.mjs",
-      "line": 54,
+      "line": 72,
       "source_sha256": "9e8cda5da32ece03fcf41b44af1f03f69bcbe8484ccd1d4584a7a14b9adaabbc",
       "source": "const inner = \"require('fs').writeFileSync(process.env.STORAGE_TEST_OUTPUT,JSON.stringify({id:process.env.AIWS_STORAGE_RUN_ID,cmd:process.env.AIWS_STORAGE_COMMAND_ID,temp:require('os').tmpdir(),lock:process.env.AIWS_PORT_LEASE_ROOT}))\";",
       "creator": "tests/p10/workspace-storage.test.mjs",
@@ -1404,7 +1404,7 @@
     },
     {
       "file": "tests/p10/workspace-storage.test.mjs",
-      "line": 136,
+      "line": 154,
       "source_sha256": "68757dc2d03b799bd359bc20d587b1f703906ac9402de2c7536fee5acd0ba550",
       "source": "const result = await runManaged(['node', '-e', \"require('fs').unlinkSync(require('path').join(require('os').tmpdir(),'..','.owner.json'))\"], { env: f.env, stdio: 'ignore' });",
       "creator": "tests/p10/workspace-storage.test.mjs",
@@ -1414,7 +1414,7 @@
     },
     {
       "file": "tests/p10/workspace-storage.test.mjs",
-      "line": 150,
+      "line": 168,
       "source_sha256": "435103c23215d0205fc442711432dfe7288d090abce7c266050bc706159aec4a",
       "source": "const sampleRoot = fs.mkdtempSync(path.join(systemTemp, 'aiws-storage-cross-'));",
       "creator": "tests/p10/workspace-storage.test.mjs",

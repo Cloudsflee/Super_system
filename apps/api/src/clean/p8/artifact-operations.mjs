@@ -70,7 +70,8 @@ export class FilesystemOperationsAdapter {
 
 function copyPath(source, target) {
   const stat = fs.statSync(source);
-  if (stat.isDirectory()) fs.cpSync(source, target, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true });
+  // Retain all entries via JS traversal: Node 24.14 native copy corrupts Unicode paths.
+  if (stat.isDirectory()) fs.cpSync(source, target, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true, filter: () => true });
   else { fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 }); fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL); }
   for (const file of filesOf(target)) { const handle = fs.openSync(file.absolute, 'r+'); try { fs.fsyncSync(handle); } finally { fs.closeSync(handle); } }
   fsyncDirectory(path.dirname(target));

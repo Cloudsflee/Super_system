@@ -127,7 +127,8 @@ function createSnapshots(bundle) {
   const initial = { release: 'p9', bundle_sha256: sha256File(p9Archive), schema_version: 8, catalog: '27/0/27' };
   fs.writeFileSync(path.join(baseline, 'pointer.json'), `${JSON.stringify(initial)}\n`);
 
-  fs.cpSync(baseline, modified, { recursive: true });
+  // JS traversal preserves Unicode paths on Node 24.14 (nodejs/node#61950).
+  fs.cpSync(baseline, modified, { recursive: true, filter: () => true });
   fs.copyFileSync(path.resolve(bundle.path), path.join(modified, 'web', 'bundle.tgz'));
   fs.copyFileSync(path.join(root, 'feature-catalog.json'), path.join(modified, 'catalog', 'feature-catalog.json'));
   openCleanDatabase(path.join(modified, 'sqlite', 'state.sqlite'), {
@@ -363,8 +364,8 @@ async function dockerRelease() {
 function verifyBackupRestore(modified) {
   const backup = path.join(temporaryRoot, 'backup');
   const restored = path.join(temporaryRoot, 'restored');
-  fs.cpSync(modified, backup, { recursive: true });
-  fs.cpSync(backup, restored, { recursive: true });
+  fs.cpSync(modified, backup, { recursive: true, filter: () => true });
+  fs.cpSync(backup, restored, { recursive: true, filter: () => true });
   const mismatches = compareTrees(modified, restored);
   return {
     status: mismatches.length ? 'failed' : 'passed',
@@ -376,7 +377,7 @@ function verifyBackupRestore(modified) {
 
 function applyRollback(baseline) {
   const target = path.join(temporaryRoot, 'rollback-isolated');
-  fs.cpSync(baseline, target, { recursive: true });
+  fs.cpSync(baseline, target, { recursive: true, filter: () => true });
   fs.writeFileSync(activePointer, `${baseline}\n`);
   const mismatches = compareTrees(baseline, target);
   const db = new DatabaseSync(path.join(target, 'sqlite', 'state.sqlite'), { readOnly: true });

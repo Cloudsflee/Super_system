@@ -21,7 +21,9 @@ export class CandidateWorkspace {
     const before = this.manifestHash(managed);
     if (fs.existsSync(target)) fail('external_result_unknown');
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.cpSync(managed, target, { recursive: true, errorOnExist: true, force: false });
+    // Node 24.14 Windows native cpSync corrupts Unicode paths; retain every entry
+    // through the JS copy traversal (nodejs/node#61950), without changing policy.
+    fs.cpSync(managed, target, { recursive: true, errorOnExist: true, force: false, filter: () => true });
     if (this.manifestHash(target) !== before || this.manifestHash(managed) !== before) fail('workspace_changed');
     const payload = canonicalJson({ workspace_id: workspace.id, workspace_revision: Number(workspace.revision), base_hash: before });
     await this.db.withTransaction((tx) => createManifestInTransaction(tx, { id, kind: 'repository.candidate', status: 'verified', payload: JSON.parse(payload), createdAt: new Date().toISOString(), policy: this.policy }));
@@ -42,7 +44,7 @@ export class CandidateWorkspace {
     try {
       if (fs.existsSync(staging) || fs.existsSync(backup)) fail('external_result_unknown');
       fs.mkdirSync(path.dirname(staging), { recursive: true }); fs.mkdirSync(path.dirname(backup), { recursive: true });
-      fs.cpSync(candidate, staging, { recursive: true, force: false });
+      fs.cpSync(candidate, staging, { recursive: true, force: false, filter: () => true });
       const active = this.db.get("SELECT * FROM repository_locks WHERE id=? AND status='active'", [lock.lock.id]);
       if (!active || active.fencing_token !== lock.lock.fencing_token || Date.parse(active.expires_at) <= Date.now()) fail('workspace_lease_lost');
       if (this.manifestHash(managed) !== pin.base_hash || this.manifestHash(candidate) !== after || this.manifestHash(staging) !== after) fail('workspace_changed');

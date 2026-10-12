@@ -98,7 +98,8 @@ function copyCasRoot(source, target) {
   if (!fs.existsSync(source)) throw new Error('v3_cas_missing');
   if (fs.existsSync(target)) throw new Error('target_cas_must_be_new');
   fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
-  fs.cpSync(source, target, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true });
+  // Retain all entries via JS traversal: Node 24.14 native copy corrupts Unicode paths.
+  fs.cpSync(source, target, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true, filter: () => true });
   const manifest = [];
   for (const file of walk(target)) { fsyncFile(file.absolute); manifest.push({ path: file.relative.replaceAll('\\', '/'), sha256: digestFile(file.absolute), byte_length: fs.statSync(file.absolute).size }); }
   fsyncDirectory(path.dirname(target));

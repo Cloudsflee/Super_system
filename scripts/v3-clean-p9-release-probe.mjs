@@ -80,7 +80,8 @@ function createSnapshots(bundle) {
   if (archived.status !== 0) throw new Error('p8_web_archive_failed');
   const initial = { release: 'p8', bundle_sha256: sha256File(p8Archive), schema_version: 8 };
   fs.writeFileSync(path.join(baseline, 'pointer.json'), `${JSON.stringify(initial)}\n`);
-  fs.cpSync(baseline, modified, { recursive: true });
+  // JS traversal preserves Unicode paths on Node 24.14 (nodejs/node#61950).
+  fs.cpSync(baseline, modified, { recursive: true, filter: () => true });
   fs.copyFileSync(path.resolve(bundle.path), path.join(modified, 'web', 'bundle.tgz'));
   const next = { release: 'p9', bundle_sha256: bundle.sha256, schema_version: 8 };
   fs.writeFileSync(path.join(modified, 'pointer.json'), `${JSON.stringify(next)}\n`);
@@ -172,12 +173,12 @@ async function dockerRelease() {
 }
 
 function verifyBackupRestore(modified) {
-  const backup = path.join(temporaryRoot, 'backup'); const restored = path.join(temporaryRoot, 'restored'); fs.cpSync(modified, backup, { recursive: true }); fs.cpSync(backup, restored, { recursive: true });
+  const backup = path.join(temporaryRoot, 'backup'); const restored = path.join(temporaryRoot, 'restored'); fs.cpSync(modified, backup, { recursive: true, filter: () => true }); fs.cpSync(backup, restored, { recursive: true, filter: () => true });
   const mismatches = compareTrees(modified, restored); return { status: mismatches.length ? 'failed' : 'passed', source_sha256: treeHash(modified), restored_sha256: treeHash(restored), byte_exact_mismatches: mismatches };
 }
 
 function applyRollback(baseline) {
-  const target = path.join(temporaryRoot, 'rollback-isolated'); fs.cpSync(baseline, target, { recursive: true }); const mismatches = compareTrees(baseline, target);
+  const target = path.join(temporaryRoot, 'rollback-isolated'); fs.cpSync(baseline, target, { recursive: true, filter: () => true }); const mismatches = compareTrees(baseline, target);
   const db = new DatabaseSync(path.join(target, 'sqlite', 'state.sqlite'), { readOnly: true }); const userVersion = Number(db.prepare('PRAGMA user_version').get().user_version); const ledger = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => Number(row.version)); const fk = db.prepare('PRAGMA foreign_key_check').all(); db.close();
   const pointer = JSON.parse(fs.readFileSync(path.join(target, 'pointer.json'), 'utf8'));
   return { status: !mismatches.length && userVersion === 8 && JSON.stringify(ledger) === JSON.stringify([1,2,3,4,5,6,7,8]) && !fk.length ? 'passed' : 'failed', dry_run: { status: 'passed', writes: 0, exit_status: 0 }, apply_exit_status: 0, restored_user_version: userVersion, ledger, foreign_key_check: fk, restored_components: Object.fromEntries(['sqlite','cas','vault','workspace','broker','bridge','parser','web'].map((name) => [name, true])), pointer, byte_exact_mismatches: mismatches };

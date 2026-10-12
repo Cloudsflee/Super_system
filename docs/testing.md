@@ -1181,3 +1181,18 @@ two managed P1/P2 rounds, all user-plan gates, and isolated actual same/cross-vo
 rollback. A failed Gate freezes verification; a successful directory operation
 does not establish a release. Local receipts are in the existing sibling archives
 under the storage task's independent run directory.
+
+Unicode copy correction (Platform/Testing, P10+): Node 24.14's native recursive
+`fs.cpSync` can create mojibake siblings and terminate on Windows. Active copy
+sites retain all entries through `filter: () => true`, using the JS traversal;
+the existing task exclusion filter is unchanged. Do not remove these filters
+until the pinned toolchain includes nodejs/node#61950 and regressions pass.
+No global Node upgrade, runtime schema, authorization or copy-overwrite policy
+changes are part of this correction. Formal Evidence remains immutable.
+GS-001--GS-007 review: existing P6 runner, P8 backup/importer, P9/P10 release
+and storage test ownership/path mappings still apply; no command or Catalog
+status changes. New regressions in the already cataloged runner-execution and
+workspace-storage suites prove Unicode candidate publication, backup/restore,
+empty directories, byte equality and collision rejection. Run `test:p6`,
+`test:p8`, `test:p10`, `check`, source audit and `git diff --check`; archive
+literal failures without claiming full release verification.

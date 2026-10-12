@@ -9,6 +9,24 @@ import { spawn } from 'node:child_process';
 import { runManaged } from '../../scripts/workspace-run.mjs';
 import { snapshot, sealManifest, applyManifest, layout, loadManifest, digest } from '../../scripts/lib/workspace-storage.mjs';
 import { validateCreationSites } from '../../scripts/workspace-storage.mjs';
+import { FilesystemOperationsAdapter } from '../../apps/api/src/clean/p8/artifact-operations.mjs';
+
+test('Unicode backup and restore preserve bytes, empty directories and collision rejection', t => {
+  const f = fixture(t);
+  const source = path.join(f.root, '\u6bd5\u4e1a\u8bbe\u8ba1 source');
+  fs.mkdirSync(source); fs.mkdirSync(path.join(source, '\u7a7a'));
+  fs.writeFileSync(path.join(source, '\u8d44\u6599.bin'), Buffer.from([0, 255, 128, 1]));
+  const expected = snapshot(source);
+  const adapter = new FilesystemOperationsAdapter({ root: path.join(f.root, '\u5907\u4efd archive'), components: { workspace: source } });
+  adapter.createBackup({ backupId: 'unicode', createdAt: '2026-10-13T00:00:00Z' });
+  assert.equal(snapshot(path.join(adapter.root, 'backups/unicode/workspace')).sha256, expected.sha256);
+  assert.throws(() => adapter.createBackup({ backupId: 'unicode', createdAt: '2026-10-13T00:00:00Z' }), /already exists/);
+  adapter.prepareRestore({ backupId: 'unicode', targetVolumeRef: 'restored', preparedAt: '2026-10-13T00:00:00Z' });
+  assert.equal(snapshot(path.join(adapter.root, 'staging/restored/workspace')).sha256, expected.sha256);
+  assert.throws(() => adapter.prepareRestore({ backupId: 'unicode', targetVolumeRef: 'restored', preparedAt: '2026-10-13T00:00:00Z' }), /must be new/);
+  assert.equal(snapshot(source).sha256, expected.sha256);
+  assert.deepEqual(fs.readdirSync(f.root).sort(), ['archive', 'temp', '\u5907\u4efd archive', '\u6bd5\u4e1a\u8bbe\u8ba1 source'].sort());
+});
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aiws-storage-test-'));
