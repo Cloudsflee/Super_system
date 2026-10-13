@@ -83,7 +83,8 @@ export const P1_GATE_SYNC_CATALOG_PATHS = Object.freeze({
     'apps/api/src/clean/events.mjs',
     'apps/api/src/clean/platform.mjs',
     'apps/api/src/clean/receipts.mjs',
-    'apps/api/src/clean/runtime.mjs'
+    'apps/api/src/clean/runtime.mjs',
+    'scripts/web-bundle-budget.mjs'
   ]),
   behavior_tests: Object.freeze([
     'tests/unit/recovery-governance.test.mjs',
