@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { App, projectDeepLink, routeFromPath } from '../App';
 import { systemOnboardingKey } from '../features/setup';
@@ -34,6 +34,8 @@ it('keeps the six-entry drawer closed by default and traps, closes, and restores
   localStorage.setItem(systemOnboardingKey('account_shell'), '1');
   vi.stubGlobal('fetch', emptyShellFetch());
   render(<App />);
+  await screen.findByRole('button', { name: '打开导航' });
+  await act(async () => { await vi.dynamicImportSettled(); });
   await screen.findByRole('heading', { name: '项目' });
   const opener = screen.getByRole('button', { name: '打开导航' });
   const drawer = document.querySelector('#workspace-navigation') as HTMLElement;
@@ -91,6 +93,8 @@ it('keeps a draft project workflow deep-link on the canonical workbench', async 
     return envelope({});
   }));
   render(<App />);
+  await screen.findByRole('button', { name: '打开导航' });
+  await act(async () => { await vi.dynamicImportSettled(); });
   await screen.findByText('工作流草稿', { exact: true });
   expect(location.hash).toBe('#/projects/project_draft/workflow');
 });
@@ -115,6 +119,7 @@ it.each(['projects', 'brief', 'repository', 'workflow', 'context', 'evidence', '
   fireEvent.click(opener);
   const dialog = await screen.findByRole('dialog', { name: 'Assist 抽屉' });
   expect(dialog).toBeVisible();
+  await act(async () => { await vi.dynamicImportSettled(); });
   expect(await within(dialog).findByText(/选择项目后将自动恢复项目级会话/)).toBeVisible();
   expect(fetch.mock.calls.every(([input]) => !String(input).includes('/assist/sessions'))).toBe(true);
   expect(screen.getByRole('button', { name: '终端' })).toBeDisabled();

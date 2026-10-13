@@ -1223,3 +1223,7 @@ before child startup. Later children load the private, hash-checked assembly;
 it has an owner receipt and is deleted when that Node process exits. This
 removes repeated compiler contention without changing readiness deadlines,
 termination checks, gate selection or the development budget.
+Cold Web navigation tests wait for Vite's real dynamic imports to settle
+inside React act before asserting loaded content. They retain every visible
+content, focus and no-session-mutation assertion and the existing test timeout;
+no mock page or warmed build substitutes for the initial lazy module load.
