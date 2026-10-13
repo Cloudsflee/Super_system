@@ -19,6 +19,7 @@
     "fixture:legacy:dev-broker": "node apps/runner-broker/server.mjs",
     "start": "node apps/api/server.mjs",
     "build": "corepack pnpm --filter @aiws/web build",
+    "web:bundle-budget": "node scripts/web-bundle-budget.mjs",
     "check": "node scripts/check.mjs",
     "scan:clean": "node scripts/v3-clean-architecture-scan.mjs",
     "audit:p1": "node scripts/v3-clean-workspace-audit.mjs",

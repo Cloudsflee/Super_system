@@ -116,6 +116,7 @@ The daily channel is:
 
 ```text
 pnpm verify:dev
+pnpm web:bundle-budget
 pnpm verify:dev -- --base <git-ref>
 pnpm verify:dev -- --all
 pnpm verify:dev -- --explain
@@ -1196,3 +1197,16 @@ workspace-storage suites prove Unicode candidate publication, backup/restore,
 empty directories, byte equality and collision rejection. Run `test:p6`,
 `test:p8`, `test:p10`, `check`, source audit and `git diff --check`; archive
 literal failures without claiming full release verification.
+
+Integration maintenance (Platform/Testing, post-P10, GS-001--GS-007): the
+port-lease suite retains the no-descendant assertion using close events,
+closed output streams and port rebinding, and covers parent-first exit and
+concurrent disposal. Windows scopes reuse the workspace Job Object owner;
+cleanup failure retains diagnostics and blocks retries. Run direct, managed
+and nested Gate port tests ten times each, plus managed worktree isolation.
+Web coverage includes lazy Assist drawers and shared session recovery with
+retry after failure; workflow coverage preserves explicit candidates and
+Brief graph identifiers, dependencies and execution contracts. The managed
+package entrypoints and Web bundle budget are additive. Existing Catalog
+status and P1-P10 Evidence remain immutable; independent integration outputs
+and rollback proofs are archived outside Git. Failure blocks push.

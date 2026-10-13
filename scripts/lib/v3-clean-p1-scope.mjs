@@ -170,6 +170,7 @@ export const P1_PACKAGE_SCRIPT_DEFINITIONS = Object.freeze(Object.fromEntries(Ob
   'test:p9': { command: 'node scripts/workspace-run.mjs -- node --test tests/p9/*.test.mjs', role: 'p9_gate', phase: 'P9' },
   'test:p10': { command: 'node scripts/workspace-run.mjs -- node --test tests/p10/*.test.mjs', role: 'p10_gate', phase: 'P10' },
   'audit:parity': { command: 'node scripts/v3-clean-p10-parity.mjs', role: 'p10_gate', phase: 'P10' },
+  'web:bundle-budget': { command: 'node scripts/web-bundle-budget.mjs', role: 'maintenance_gate', phase: 'P10+' },
   'evidence:p3': { command: 'node scripts/v3-clean-p3-evidence.mjs', role: 'p3_evidence', phase: 'P3' },
   'evidence:p31': { command: 'node scripts/v3-clean-p31-evidence.mjs', role: 'p31_evidence', phase: 'P3.1' },
   'evidence:p4': { command: 'node scripts/v3-clean-p4-evidence.mjs', role: 'p4_evidence', phase: 'P4' },
@@ -451,6 +452,8 @@ const P9_FILES = new Set([
 const P9_PREFIXES = Object.freeze(['tests/p9/', 'apps/web/src/offline/', 'apps/web/src/features/outcome/', 'apps/web/src/features/delivery/']);
 
 const P10_FILES = new Set([
+  'scripts/web-bundle-budget.mjs',
+  'apps/web/src/session-recovery.ts',
   'scripts/lib/port-lease.mjs',
   'scripts/development-receipt.mjs',
   'apps/api/src/clean/migrations/009-final-business-parity-governance.mjs',

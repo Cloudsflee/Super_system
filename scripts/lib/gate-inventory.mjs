@@ -26,7 +26,7 @@ export const GATE_INVENTORY = Object.freeze({
     'pnpm workspace:storage -- audit', 'pnpm workspace:run -- node --test tests/p10/workspace-storage.test.mjs',
     'pnpm verify:dev', 'pnpm development:receipt', 'pnpm --filter @aiws/web typecheck',
     'pnpm --filter @aiws/web test', 'pnpm test:integration:clean',
-    'pnpm test:security:clean', 'pnpm test:release', 'pnpm verify',
+    'pnpm test:security:clean', 'pnpm test:release', 'pnpm web:bundle-budget', 'pnpm verify',
     'git diff --check', 'git status --short --branch'
   ])
 });

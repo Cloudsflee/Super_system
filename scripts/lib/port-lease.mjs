@@ -4,8 +4,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
-import { spawnGateProcess } from './gate-process.mjs';
+import { spawnGateProcess, terminateProcessTree } from './gate-process.mjs';
 
 export const PORT_RETRY_DELAYS_MS = Object.freeze([100, 250, 500, 1000, 2000]);
 const LOCK_DIRECTORY = process.env.AIWS_PORT_LEASE_ROOT || path.join(os.tmpdir(), 'aiws-port-leases-v1');
@@ -113,18 +112,10 @@ export async function waitForHttpReady(url, { child, readyOutput, timeoutMs = 30
 async function stopTree(child) {
   if (!child?.pid) return;
   const state = observeChild(child);
-  if (child.exitCode != null || child.signalCode != null) return;
   // Kill the group even when its leader already exited: descendants may still
   // own sockets and inherited stdout handles.
   if (process.platform === 'win32') {
-    try { child.kill(); } catch {}
-    const gracefulDeadline = Date.now() + 500;
-    while (!state.closed && child.exitCode == null && Date.now() < gracefulDeadline) await pause(20);
-    if (!state.closed && child.exitCode == null && child.signalCode == null) await new Promise((resolve, reject) => {
-      const killer = spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { shell: false, windowsHide: true, stdio: 'ignore' });
-      killer.once('error', reject);
-      killer.once('close', code => (code === 0 || state.closed || child.exitCode != null) ? resolve() : reject(errorWithCode('port_cleanup_process_failed')));
-    });
+    await terminateProcessTree(child);
   } else {
     try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
@@ -140,22 +131,25 @@ export async function startProbeWithPorts({ prefix, portCount = 2, start, retryD
   for (let attempt = 0; attempt <= retryDelays.length; attempt += 1) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`));
     const leases = [], children = [], browsers = [];
-    let disposed = false;
+    let disposal;
     const scope = {
       directory, leases, attempt: attempt + 1,
-      spawn(invocation, options) { const child = spawnGateProcess(invocation, options); observeChild(child); children.push(child); return child; },
+      spawn(invocation, options) { const child = spawnGateProcess(invocation, { ...options, ownedTree: true }); observeChild(child); children.push(child); return child; },
       childOutput(index) { const child = children[index]; return child ? (watched.get(child)?.output || '') : ''; },
       browser(browser) { browsers.push(browser); return browser; },
       async ready(index, url, options) { await waitForHttpReady(url, options); await leases[index].release(); },
-      async dispose() {
-        if (disposed) return;
+      dispose() {
+        if (disposal) return disposal;
+        disposal = (async () => {
         const failures = [];
         for (const browser of [...browsers].reverse()) try { await browser.close(); } catch (error) { failures.push(error); }
         for (const child of [...children].reverse()) try { await stopTree(child); } catch (error) { failures.push(error); }
+        if (failures.length) throw errorWithCode('port_cleanup_failed', new AggregateError(failures));
         for (const lease of leases) try { await lease.release(); } catch (error) { failures.push(error); }
         try { fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch (error) { failures.push(error); }
         if (failures.length) throw errorWithCode('port_cleanup_failed', new AggregateError(failures));
-        disposed = true;
+        })();
+        return disposal;
       }
     };
     try {
@@ -164,7 +158,8 @@ export async function startProbeWithPorts({ prefix, portCount = 2, start, retryD
       return { ...value, scope };
     } catch (error) {
       const retryable = isAddressInUseError(error) || children.some(child => isAddressInUseError(watched.get(child)?.output));
-      await scope.dispose();
+      try { await scope.dispose(); }
+      catch (cleanupError) { throw errorWithCode('port_start_cleanup_failed', new AggregateError([error, cleanupError])); }
       if (!retryable) throw error;
       if (attempt === retryDelays.length) throw errorWithCode('port_start_retry_exhausted', error);
       await pause(retryDelays[attempt]);

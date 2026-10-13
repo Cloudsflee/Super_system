@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
 
@@ -12,6 +13,7 @@ export const GATE_ERROR_CODES = Object.freeze({
 
 const DEFAULT_MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
+const ownedTrees = new WeakMap();
 const GIT_CONTEXT_VARIABLES = Object.freeze([
   'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_PREFIX',
   'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR'
@@ -154,14 +156,30 @@ export async function runGateCommand(invocation, options = {}) {
 
 export function spawnGateProcess(invocation, options = {}) {
   const root = path.resolve(options.workspaceRoot || options.cwd || process.cwd());
-  const child = spawn(String(invocation.command), (invocation.args || []).map(String), {
+  const owned = process.platform === 'win32' && options.ownedTree === true;
+  const directory = owned ? fs.mkdtempSync(path.join(os.tmpdir(), 'gate-process-')) : null;
+  const receipt = directory && path.join(directory, 'result.json');
+  const stopFile = directory && path.join(directory, 'stop');
+  const child = spawn(owned ? 'pwsh.exe' : String(invocation.command), owned
+    ? ['-NoProfile', '-NonInteractive', '-File', fileURLToPath(new URL('./workspace-process.ps1', import.meta.url))]
+    : (invocation.args || []).map(String), {
     cwd: path.resolve(options.cwd || root),
     env: gateEnvironment(options.env),
-    stdio: options.stdio || ['ignore', 'pipe', 'pipe'],
+    stdio: owned ? ['pipe', 'pipe', 'pipe'] : options.stdio || ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
     shell: false,
     detached: process.platform !== 'win32'
   });
+  if (owned) {
+    const state = { directory, receipt, stopFile, closed: false, failure: null, completion: null };
+    state.completion = new Promise(resolve => {
+      child.once('error', error => { state.failure = error; });
+      child.once('close', () => { state.closed = true; resolve(); });
+    });
+    ownedTrees.set(child, state);
+    child.stdin.on('error', error => { state.failure ||= error; });
+    child.stdin.end(JSON.stringify({ ...invocation, cwd: path.resolve(options.cwd || root), receipt, stop_file: stopFile }));
+  }
   if (child.stdout && options.stdout !== false) {
     const forwarder = lineForwarder(options.stdout || process.stdout, root, options.stdoutPrefix || '');
     child.stdout.on('data', (chunk) => forwarder.add(chunk));
@@ -191,6 +209,25 @@ export function gateEnvironment(overrides = {}) {
 }
 
 export async function terminateProcessTree(child, graceMs = 1500) {
+  const owned = child && ownedTrees.get(child);
+  if (owned) {
+    if (owned.stopping) return owned.stopping;
+    owned.stopping = (async () => {
+      if (!owned.closed) fs.writeFileSync(owned.stopFile, '', { flag: 'wx' });
+      let timer;
+      try {
+        await Promise.race([owned.completion, new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('port_cleanup_process_timeout')), 5000);
+        })]);
+      } finally { clearTimeout(timer); }
+      if (owned.failure) throw owned.failure;
+      if (!fs.existsSync(owned.receipt)) throw new Error('port_cleanup_receipt_missing');
+      const result = JSON.parse(fs.readFileSync(owned.receipt, 'utf8'));
+      if (result.error || result.active_processes !== 0) throw new Error(result.error || 'port_cleanup_process_failed');
+      fs.rmSync(owned.directory, { recursive: true });
+    })();
+    return owned.stopping;
+  }
   if (!child || child.exitCode != null || child.signalCode != null) return;
   if (process.platform === 'win32' && child.pid) {
     await new Promise((resolve) => {

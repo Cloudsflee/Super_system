@@ -163,8 +163,18 @@
       "exception": null
     },
     {
+      "file": "scripts/lib/gate-process.mjs",
+      "line": 160,
+      "source_sha256": "01566a3e208e620aa1899759ad2c35259864316f1de0b70b027ed7952b1b83e3",
+      "source": "const directory = owned ? fs.mkdtempSync(path.join(os.tmpdir(), 'gate-process-')) : null;",
+      "creator": "scripts/lib/gate-process.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
       "file": "scripts/lib/port-lease.mjs",
-      "line": 11,
+      "line": 10,
       "source_sha256": "80fdc84f50d9c241b86d2a9b0c991d31d7f02803e48caef7142ab0fcc9fe0a4d",
       "source": "const LOCK_DIRECTORY = process.env.AIWS_PORT_LEASE_ROOT || path.join(os.tmpdir(), 'aiws-port-leases-v1');",
       "creator": "scripts/lib/port-lease.mjs",
@@ -174,7 +184,7 @@
     },
     {
       "file": "scripts/lib/port-lease.mjs",
-      "line": 141,
+      "line": 132,
       "source_sha256": "46c8e39043613312c59e1c29c15108b977d820abef8c55636cb8f2e0963709bd",
       "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`));",
       "creator": "scripts/lib/port-lease.mjs",
@@ -1194,7 +1204,7 @@
     },
     {
       "file": "tests/p10/port-lease.test.mjs",
-      "line": 27,
+      "line": 38,
       "source_sha256": "b1405da4a63a2385ca63cbf9b2bf00d3207d8195a3fdbb77048ec0522c8f0f28",
       "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lease-exclusive-'));",
       "creator": "tests/p10/port-lease.test.mjs",

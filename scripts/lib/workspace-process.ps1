@@ -46,7 +46,7 @@ public static class StorageProcess {
     }
     b.Append('\\',slash*2); b.Append('"'); return b.ToString();
   }
-  public static long[] Run(string command,string[] args,string cwd) {
+  public static long[] Run(string command,string[] args,string cwd,string stopFile) {
     IntPtr job=CreateJobObject(IntPtr.Zero,null); ProcessInfo p=new ProcessInfo(); bool started=false;
     if(job==IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
     try {
@@ -59,13 +59,29 @@ public static class StorageProcess {
       started=true;
       if(!AssignProcessToJobObject(job,p.process)) throw new System.ComponentModel.Win32Exception();
       if(ResumeThread(p.thread)==0xffffffff) throw new System.ComponentModel.Win32Exception();
-      WaitForSingleObject(p.process,0xffffffff); uint code;
+      bool requested=false;
+      while(WaitForSingleObject(p.process,20)==258) {
+        if(!String.IsNullOrEmpty(stopFile) && System.IO.File.Exists(stopFile)) {
+          requested=true;
+          if(!TerminateJobObject(job,1)) throw new System.ComponentModel.Win32Exception();
+          break;
+        }
+      }
+      if(WaitForSingleObject(p.process,5000)!=0) throw new Exception("workspace_process_exit_timeout");
+      uint code;
       if(!GetExitCodeProcess(p.process,out code)) throw new System.ComponentModel.Win32Exception();
       Accounting accounting;
       if(!QueryInformationJobObject(job,1,out accounting,Marshal.SizeOf(typeof(Accounting)),IntPtr.Zero)) throw new System.ComponentModel.Win32Exception();
       uint remaining=accounting.active;
-      if(remaining>0) { TerminateJobObject(job,1); WaitForSingleObject(job,10000); }
-      return new long[]{code,remaining,p.pid};
+      if(remaining>0 && !TerminateJobObject(job,1)) throw new System.ComponentModel.Win32Exception();
+      var deadline=DateTime.UtcNow.AddMilliseconds(5000);
+      do {
+        if(!QueryInformationJobObject(job,1,out accounting,Marshal.SizeOf(typeof(Accounting)),IntPtr.Zero)) throw new System.ComponentModel.Win32Exception();
+        if(accounting.active==0) break;
+        if(DateTime.UtcNow>=deadline) throw new Exception("workspace_process_job_timeout");
+        System.Threading.Thread.Sleep(20);
+      } while(true);
+      return new long[]{code,remaining,p.pid,accounting.active,requested?1:0};
     } finally {
       if(started) { TerminateProcess(p.process,1); CloseHandle(p.thread); CloseHandle(p.process); }
       CloseHandle(job);
@@ -74,8 +90,8 @@ public static class StorageProcess {
 }
 '@
 try {
-  $result = [StorageProcess]::Run($request.command, [string[]]$request.args, $request.cwd)
-  $receipt = @{exit_status=$result[0];remaining_processes=$result[1];pid=$result[2]}
+  $result = [StorageProcess]::Run($request.command, [string[]]$request.args, $request.cwd, $request.stop_file)
+  $receipt = @{exit_status=$result[0];remaining_processes=$result[1];pid=$result[2];active_processes=$result[3];termination_requested=($result[4] -eq 1)}
   if ($request.receipt) { [IO.File]::WriteAllText($request.receipt, ($receipt | ConvertTo-Json -Compress)) }
   if ($result[1] -gt 0) { exit 1 }
   exit $result[0]

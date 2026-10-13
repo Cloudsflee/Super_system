@@ -744,6 +744,7 @@ pnpm fixture:legacy:integration
 pnpm fixture:legacy:security
 pnpm test:integration:clean
 pnpm test:security:clean
+pnpm web:bundle-budget
 pnpm verify:dev -- --base 5f2be38845d36236637c7f22a1b4df5611a6175b
 pnpm development:receipt -- --project-id <ROUND2_PROJECT_ID> --home <ROUND2_HOME>
 pnpm --filter @aiws/web test
