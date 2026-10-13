@@ -1,10 +1,9 @@
 # Owner: Platform/Testing. Phase: P10+. Windows process-tree ownership.
-param([string]$RequestJson)
+param([string]$RequestJson, [string]$CompileOnly)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
-$request = $(if ($RequestJson) { $RequestJson } else { [Console]::In.ReadToEnd() }) | ConvertFrom-Json
-Add-Type -TypeDefinition @'
+$nativeSource = @'
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
@@ -101,6 +100,15 @@ public static class StorageProcess {
   }
 }
 '@
+if ($CompileOnly) {
+  Add-Type -TypeDefinition $nativeSource -OutputAssembly $CompileOnly
+  exit 0
+}
+$request = $(if ($RequestJson) { $RequestJson } else { [Console]::In.ReadToEnd() }) | ConvertFrom-Json
+if ($request.assembly) {
+  if ((Get-FileHash -LiteralPath $request.assembly -Algorithm SHA256).Hash.ToLowerInvariant() -ne $request.assembly_sha256) { throw 'workspace_process_assembly_mismatch' }
+  Add-Type -LiteralPath $request.assembly
+} else { Add-Type -TypeDefinition $nativeSource }
 try {
   $result = [StorageProcess]::Run($request.command, [string[]]$request.args, $request.cwd, $request.stop_file)
   $receipt = @{exit_status=$result[0];remaining_processes=$result[1];pid=$result[2];active_processes=$result[3];termination_requested=($result[4] -eq 1);job_members_at_exit=@($result | Select-Object -Skip 5)}

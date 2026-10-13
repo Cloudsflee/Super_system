@@ -164,7 +164,17 @@
     },
     {
       "file": "scripts/lib/gate-process.mjs",
-      "line": 160,
+      "line": 27,
+      "source_sha256": "e8cb2ab0472b2c6d0c7a553c57fe955dfeef4a76a1b8b42c9e55c2332b4ffc1c",
+      "source": "const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-native-'));",
+      "creator": "scripts/lib/gate-process.mjs",
+      "cleanup_owner": "workspace:run + fixture resource owner",
+      "entrypoint": "pnpm workspace:run -- node",
+      "exception": null
+    },
+    {
+      "file": "scripts/lib/gate-process.mjs",
+      "line": 183,
       "source_sha256": "01566a3e208e620aa1899759ad2c35259864316f1de0b70b027ed7952b1b83e3",
       "source": "const directory = owned ? fs.mkdtempSync(path.join(os.tmpdir(), 'gate-process-')) : null;",
       "creator": "scripts/lib/gate-process.mjs",

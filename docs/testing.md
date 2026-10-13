@@ -1218,3 +1218,8 @@ both Clean and aggregate layers. IDs and statuses remain unchanged.
 Windows Job diagnostics retain the member PIDs observed at parent exit,
 alongside the final active count; an unexplained member remains a failure.
 Standalone success never substitutes for a full Gate receipt.
+Scoped Windows probes compile their existing Job owner once per Node process
+before child startup. Later children load the private, hash-checked assembly;
+it has an owner receipt and is deleted when that Node process exits. This
+removes repeated compiler contention without changing readiness deadlines,
+termination checks, gate selection or the development budget.

@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -14,6 +15,27 @@ export const GATE_ERROR_CODES = Object.freeze({
 const DEFAULT_MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000;
 const ownedTrees = new WeakMap();
+let nativeAssembly;
+function ownedProcessAssembly() {
+  const script = fileURLToPath(new URL('./workspace-process.ps1', import.meta.url));
+  const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  const sourceHash = hash(script);
+  if (nativeAssembly) {
+    if (nativeAssembly.sourceHash !== sourceHash || hash(nativeAssembly.assembly) !== nativeAssembly.assembly_sha256) throw new Error('workspace_process_assembly_mismatch');
+    return nativeAssembly;
+  }
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-native-'));
+  fs.writeFileSync(path.join(directory, '.owner.json'), JSON.stringify({ pid: process.pid, started_at: new Date().toISOString(), source_sha256: sourceHash }), { flag: 'wx' });
+  const assembly = path.join(directory, 'process.dll');
+  const result = spawnSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-File', script, '-CompileOnly', assembly], { windowsHide: true, shell: false, stdio: 'pipe', timeout: 5000 });
+  if (result.status !== 0) throw new Error('workspace_process_compile_failed');
+  nativeAssembly = { assembly, assembly_sha256: hash(assembly), sourceHash };
+  process.once('exit', () => {
+    try { fs.rmSync(directory, { recursive: true }); }
+    catch { process.exitCode = process.exitCode || 1; }
+  });
+  return nativeAssembly;
+}
 const GIT_CONTEXT_VARIABLES = Object.freeze([
   'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_PREFIX',
   'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR'
@@ -157,6 +179,7 @@ export async function runGateCommand(invocation, options = {}) {
 export function spawnGateProcess(invocation, options = {}) {
   const root = path.resolve(options.workspaceRoot || options.cwd || process.cwd());
   const owned = process.platform === 'win32' && options.ownedTree === true;
+  const assembly = owned ? ownedProcessAssembly() : null;
   const directory = owned ? fs.mkdtempSync(path.join(os.tmpdir(), 'gate-process-')) : null;
   const receipt = directory && path.join(directory, 'result.json');
   const stopFile = directory && path.join(directory, 'stop');
@@ -178,7 +201,7 @@ export function spawnGateProcess(invocation, options = {}) {
     });
     ownedTrees.set(child, state);
     child.stdin.on('error', error => { state.failure ||= error; });
-    child.stdin.end(JSON.stringify({ ...invocation, cwd: path.resolve(options.cwd || root), receipt, stop_file: stopFile }));
+    child.stdin.end(JSON.stringify({ ...invocation, ...assembly, cwd: path.resolve(options.cwd || root), receipt, stop_file: stopFile }));
   }
   if (child.stdout && options.stdout !== false) {
     const forwarder = lineForwarder(options.stdout || process.stdout, root, options.stdoutPrefix || '');
