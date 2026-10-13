@@ -541,6 +541,8 @@ P10 implementation rows are validated by `pnpm audit:parity` and
 `docs/evidence/v3-clean-p10-final-governance-20260829/verification.json`.
 Production cutover is explicitly non-business parity and remains excluded.
 
+## Post-P10 development reliability synchronization
+
 Workspace storage maintenance (Platform/Testing, P10+) maps to
 REC-D0-GOVERNANCE-000. Source ownership: scripts/workspace-run.mjs,
 scripts/workspace-storage.mjs and scripts/lib/workspace-storage*.
