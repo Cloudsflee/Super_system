@@ -3563,6 +3563,7 @@ function normalizeGraph(value) {
           id: String(node.id || node.node_key || opaqueId('node')),
           kind: node.kind === 'workstream' ? 'workstream' : 'task',
           title: String(node.title || node.name || node.id || 'Task').slice(0, 200),
+          ...(Number.isInteger(node.order) ? { order: node.order } : {}),
           parent_id: node.parent_id == null ? null : String(node.parent_id),
           depends_on: Array.isArray(node.depends_on || node.dependencies) ? (node.depends_on || node.dependencies).map(String) : [],
           config: node.config && typeof node.config === 'object' ? node.config : {},
@@ -3586,30 +3587,54 @@ function deterministicRepositoryAdapter() {
   };
 }
 async function deterministicGenerator(input) {
-  const candidate =
-    input?.candidate && Object.keys(input.candidate).length
-      ? input.candidate
-      : {
-          name: 'Generated workflow',
-          nodes: [
-            {
-              id: 'inspect',
-              kind: 'workstream',
-              title: 'Inspect',
-              config: {},
-              contract: { inputs: ['brief'], outputs: ['analysis'] }
-            },
-            {
-              id: 'deliver',
-              kind: 'task',
-              title: 'Deliver',
-              parent_id: 'inspect',
-              config: { execution: { argv: ['node', '--version'], cwd_role: 'task', mode: 'read', input_paths: [], output_paths: [], check_ids: [], resource_profile: 'light', deadline_seconds: 60, capabilities: ['network:none'] } },
-              contract: { inputs: ['analysis'], outputs: ['result'] }
-            }
-          ]
-        };
-  return candidate;
+  if (input?.candidate && Object.keys(input.candidate).length) return input.candidate;
+  const definitions = Array.isArray(input?.brief?.workstreams) ? input.brief.workstreams : [];
+  if (!definitions.length) {
+    throw new PlatformError('brief_workstreams_required', 'brief.workstreams is required without an explicit candidate', { field_path: 'brief.workstreams' }, 422);
+  }
+  const seen = new Set();
+  const nodes = definitions.map((stream, index) => {
+    const id = String(stream?.id || '').trim();
+    const title = String(stream?.name || stream?.title || '').trim();
+    if (!id || !title) throw new PlatformError('brief_workstream_invalid', 'workstream id and name are required', { index }, 422);
+    if (seen.has(id)) throw new PlatformError('brief_workstream_duplicate', 'workstream ids must be unique', { id }, 422);
+    if (stream.order != null && (!Number.isInteger(stream.order) || stream.order < 0)) throw new PlatformError('brief_workstream_order_invalid', 'workstream order must be a nonnegative integer', { id }, 422);
+    if (stream.dependsOn != null && !Array.isArray(stream.dependsOn)) throw new PlatformError('brief_workstream_dependency_invalid', 'dependsOn must be an array', { id }, 422);
+    if (stream.depends_on != null && !Array.isArray(stream.depends_on)) throw new PlatformError('brief_workstream_dependency_invalid', 'depends_on must be an array', { id }, 422);
+    seen.add(id);
+    const dependsOn = Array.isArray(stream.dependsOn) ? stream.dependsOn.map(String) : Array.isArray(stream.depends_on) ? stream.depends_on.map(String) : [];
+    return {
+      id,
+      kind: 'workstream',
+      title,
+      order: Number.isInteger(stream.order) ? stream.order : index + 1,
+      depends_on: dependsOn,
+      config: {},
+      contract: stream.contract || {}
+    };
+  });
+  const ids = new Set(nodes.map((node) => node.id));
+  for (const node of nodes) {
+    if (node.depends_on.some((dependency) => !ids.has(dependency) || dependency === node.id)) {
+      throw new PlatformError('brief_workstream_dependency_invalid', 'workstream dependency must reference another workstream', { id: node.id }, 422);
+    }
+  }
+  const visiting = new Set(), visited = new Set();
+  const visit = (node) => {
+    if (visiting.has(node.id)) throw new PlatformError('brief_workstream_dependency_invalid', 'workstream dependency cycle', { id: node.id }, 422);
+    if (visited.has(node.id)) return;
+    visiting.add(node.id);
+    for (const dependency of node.depends_on) visit(nodes.find((entry) => entry.id === dependency));
+    visiting.delete(node.id); visited.add(node.id);
+  };
+  nodes.forEach(visit);
+  const tasks = definitions.flatMap((stream) => (Array.isArray(stream.tasks) ? stream.tasks : []).map((task) => {
+    const id = String(task?.id ?? '').trim();
+    if (!id || seen.has(id)) throw new PlatformError('brief_workstream_duplicate', 'all graph node ids must be unique', {}, 422);
+    seen.add(id);
+    return { ...task, id, kind: 'task', parent_id: String(stream.id).trim(), title: task.title || task.name || id };
+  }));
+  return { name: String(input.brief.name || 'Generated workflow'), nodes: [...nodes, ...tasks] };
 }
 function deterministicCritic(candidate) {
   const nodes = Array.isArray(candidate?.nodes) ? candidate.nodes : [];
@@ -3618,4 +3643,4 @@ function deterministicCritic(candidate) {
     : { status: 'rejected', issues: [{ code: 'nodes_required' }] };
 }
 
-export { sanitizeSource, safeRelative, normalizeGraph };
+export { sanitizeSource, safeRelative, normalizeGraph, deterministicGenerator };

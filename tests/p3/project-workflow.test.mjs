@@ -77,7 +77,7 @@ async function prepareWorkflow(state, suffix = 'flow') {
   await waitForOperation(runtime, intake.operation.operation_id, principal.actorId);
   await runtime.projectWorkflow.createBrief(
     project.id,
-    { objective: 'exercise', acceptance: ['head'], expected_revision: 1, idempotency_key: `p3-${suffix}-brief-key` },
+    { content: { objective: 'exercise', acceptance: ['head'], workstreams: [{ id: 'exercise', name: 'Exercise', order: 1, dependsOn: [] }] }, expected_revision: 1, idempotency_key: `p3-${suffix}-brief-key` },
     principal
   );
   await runtime.projectWorkflow.confirmBrief(
