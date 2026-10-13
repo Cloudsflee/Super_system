@@ -127,11 +127,7 @@ export async function main(argv = process.argv.slice(2), root = process.cwd(), d
       // E2E owns a browser, Vite proxy and API child process. Keep it after
       // the parallel cold-build wave so proxy disconnect diagnostics from
       // another startup cannot turn a valid journey into a blocking failure.
-      // P10 already owns a parallel Node test wave with native Windows job
-      // startup and storage rollback. Start it after the short governance
-      // checks instead of competing with every other phase at process start.
-      // All selected commands and their fixed deadlines remain unchanged.
-      const phaseTests = selection.commands.filter((command) => /^test-p(?:1|2|3|31|4|5|6|7|8|9)$/.test(command.id)).map((command) => command.id);
+      const phaseTests = selection.commands.filter((command) => /^test-p(?:1|2|3|31|4|5|6|7|8|9|10)$/.test(command.id)).map((command) => command.id);
       const parallelIds = new Set(['web-test', 'build', 'integration-clean', 'security-clean', ...phaseTests]);
       const parallel = selection.commands.filter((command) => command.id.endsWith('-performance') || parallelIds.has(command.id));
       const regular = selection.commands.filter((command) => !command.id.endsWith('-performance') && !parallelIds.has(command.id));

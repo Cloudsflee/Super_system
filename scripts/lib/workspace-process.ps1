@@ -28,6 +28,7 @@ public static class StorageProcess {
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern IntPtr CreateJobObject(IntPtr attributes,string name);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetInformationJobObject(IntPtr job,int info,ref Limit value,int size);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool QueryInformationJobObject(IntPtr job,int info,out Accounting value,int size,IntPtr returned);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool QueryInformationJobObject(IntPtr job,int info,IntPtr value,int size,IntPtr returned);
   [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool CreateProcess(string app,StringBuilder cmd,IntPtr pa,IntPtr ta,bool inherit,uint flags,IntPtr env,string cwd,ref Startup startup,out ProcessInfo process);
   [DllImport("kernel32.dll", SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
   [DllImport("kernel32.dll")] static extern uint ResumeThread(IntPtr thread);
@@ -73,6 +74,15 @@ public static class StorageProcess {
       Accounting accounting;
       if(!QueryInformationJobObject(job,1,out accounting,Marshal.SizeOf(typeof(Accounting)),IntPtr.Zero)) throw new System.ComponentModel.Win32Exception();
       uint remaining=accounting.active;
+      long[] members;
+      IntPtr ids=Marshal.AllocHGlobal(65536);
+      try {
+        if(!QueryInformationJobObject(job,3,ids,65536,IntPtr.Zero)) throw new System.ComponentModel.Win32Exception();
+        int count=Marshal.ReadInt32(ids,4);
+        if(count<0 || 8+count*IntPtr.Size>65536) throw new Exception("workspace_process_members_invalid");
+        members=new long[count];
+        for(int i=0;i<count;i++) members[i]=Marshal.ReadIntPtr(ids,8+i*IntPtr.Size).ToInt64();
+      } finally { Marshal.FreeHGlobal(ids); }
       if(remaining>0 && !TerminateJobObject(job,1)) throw new System.ComponentModel.Win32Exception();
       var deadline=DateTime.UtcNow.AddMilliseconds(5000);
       do {
@@ -81,7 +91,9 @@ public static class StorageProcess {
         if(DateTime.UtcNow>=deadline) throw new Exception("workspace_process_job_timeout");
         System.Threading.Thread.Sleep(20);
       } while(true);
-      return new long[]{code,remaining,p.pid,accounting.active,requested?1:0};
+      long[] result=new long[5+members.Length];
+      result[0]=code;result[1]=remaining;result[2]=p.pid;result[3]=accounting.active;result[4]=requested?1:0;
+      Array.Copy(members,0,result,5,members.Length);return result;
     } finally {
       if(started) { TerminateProcess(p.process,1); CloseHandle(p.thread); CloseHandle(p.process); }
       CloseHandle(job);
@@ -91,7 +103,7 @@ public static class StorageProcess {
 '@
 try {
   $result = [StorageProcess]::Run($request.command, [string[]]$request.args, $request.cwd, $request.stop_file)
-  $receipt = @{exit_status=$result[0];remaining_processes=$result[1];pid=$result[2];active_processes=$result[3];termination_requested=($result[4] -eq 1)}
+  $receipt = @{exit_status=$result[0];remaining_processes=$result[1];pid=$result[2];active_processes=$result[3];termination_requested=($result[4] -eq 1);job_members_at_exit=@($result | Select-Object -Skip 5)}
   if ($request.receipt) { [IO.File]::WriteAllText($request.receipt, ($receipt | ConvertTo-Json -Compress)) }
   if ($result[1] -gt 0) { exit 1 }
   exit $result[0]

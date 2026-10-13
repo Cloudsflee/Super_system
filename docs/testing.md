@@ -1215,7 +1215,6 @@ generation must derive the graph from that saved input and still pass Critic,
 Proposal and Execution. Catalog path registration includes the extracted
 session module, Outbox consumer, bundle budget and workstream regression in
 both Clean and aggregate layers. IDs and statuses remain unchanged.
-The development Gate starts the internally parallel P10 suite in the regular
-sequence after governance checks to avoid competing with all phase startups.
-Selection, assertions, readiness/cleanup timeouts and the 120000 ms budget
-are unchanged; standalone success never substitutes for a full Gate receipt.
+Windows Job diagnostics retain the member PIDs observed at parent exit,
+alongside the final active count; an unexplained member remains a failure.
+Standalone success never substitutes for a full Gate receipt.
