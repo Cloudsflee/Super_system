@@ -92,7 +92,8 @@
         "apps/api/src/clean/events.mjs",
         "apps/api/src/clean/platform.mjs",
         "apps/api/src/clean/receipts.mjs",
-        "apps/api/src/clean/runtime.mjs"
+        "apps/api/src/clean/runtime.mjs",
+        "scripts/web-bundle-budget.mjs"
       ],
       "tables": [],
       "apis": [],
@@ -233,7 +234,9 @@
         "apps/web/src/test/project-preparation.test.tsx",
         "apps/web/src/workspace.ts",
         "apps/web/vite.config.ts",
-        "scripts/e2e.mjs"
+        "scripts/e2e.mjs",
+        "apps/web/src/session-recovery.ts",
+        "apps/web/src/offline/OutboxStatus.tsx"
       ],
       "retired_paths": [
         "apps/web/src/features/assets/AssetsPage.tsx",
@@ -1147,7 +1150,8 @@
         "tests/p3/project-workflow.test.mjs",
         "tests/p3/migration.test.mjs",
         "tests/p10/post-closure-restoration.test.mjs",
-        "tests/p10/real-development-loop.test.mjs"
+        "tests/p10/real-development-loop.test.mjs",
+        "tests/p10/workstream-generation.test.mjs"
       ],
       "ui_tests": [
         "apps/web/src/test/project-workflow-clean.test.tsx"
@@ -1166,7 +1170,8 @@
         "tests/p9/web-governance.test.mjs",
         "scripts/v3-clean-p9-release-probe.mjs",
         "tests/p10/post-closure-restoration.test.mjs",
-        "tests/p10/real-development-loop.test.mjs"
+        "tests/p10/real-development-loop.test.mjs",
+        "tests/p10/workstream-generation.test.mjs"
       ],
       "runtime_surface": "v3-clean",
       "parity_receipts": [

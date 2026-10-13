@@ -1210,3 +1210,8 @@ Brief graph identifiers, dependencies and execution contracts. The managed
 package entrypoints and Web bundle budget are additive. Existing Catalog
 status and P1-P10 Evidence remain immutable; independent integration outputs
 and rollback proofs are archived outside Git. Failure blocks push.
+The E2E Brief supplies its intended workstream and executable task explicitly;
+generation must derive the graph from that saved input and still pass Critic,
+Proposal and Execution. Catalog path registration includes the extracted
+session module, Outbox consumer, bundle budget and workstream regression in
+both Clean and aggregate layers. IDs and statuses remain unchanged.

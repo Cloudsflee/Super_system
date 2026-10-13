@@ -108,7 +108,7 @@ try {
   // the later execution fixtures can exercise the same project.
   const initialBrief = await pageApi(`/api/v2/projects/${project.id}/briefs`, {
     method: 'POST', headers: { 'Idempotency-Key': 'p10-e2e-initial-brief', 'X-Expected-Revision': String(project.revision) },
-    body: { content: { objective: 'Verify the Clean browser journey', users: ['Maintainer'], scope: { in: ['Web'], out: [] }, acceptance: ['browser verified'] }, expected_revision: project.revision }
+    body: { content: { objective: 'Verify the Clean browser journey', users: ['Maintainer'], scope: { in: ['Web'], out: [] }, acceptance: ['browser verified'], workstreams: [{ id: 'discover', name: 'Discover', order: 1, tasks: [{ id: 'deliver', title: 'Deliver', config: { execution: { mode: 'read', argv: ['node', '--version'], cwd_role: 'task', input_paths: [], output_paths: [], deadline_seconds: 60, resource_profile: 'light', capabilities: ['network:none', 'workspace:read'], check_ids: ['node_test'] } }, contract: { acceptance: ['node_test'] } }] }] }, expected_revision: project.revision }
   });
   assert(initialBrief.status === 201 && initialBrief.body.data?.brief?.current_revision, `initial-brief:${initialBrief.status}`);
   const afterBrief = await pageApi(`/api/v2/projects/${project.id}`);
