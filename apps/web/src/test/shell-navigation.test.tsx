@@ -115,7 +115,7 @@ it.each(['projects', 'brief', 'repository', 'workflow', 'context', 'evidence', '
   fireEvent.click(opener);
   const dialog = await screen.findByRole('dialog', { name: 'Assist 抽屉' });
   expect(dialog).toBeVisible();
-  expect(within(dialog).getByText(/选择项目后将自动恢复项目级会话/)).toBeVisible();
+  expect(await within(dialog).findByText(/选择项目后将自动恢复项目级会话/)).toBeVisible();
   expect(fetch.mock.calls.every(([input]) => !String(input).includes('/assist/sessions'))).toBe(true);
   expect(screen.getByRole('button', { name: '终端' })).toBeDisabled();
 });
