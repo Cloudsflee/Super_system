@@ -36,7 +36,6 @@ export type ApiV2Options = RequestInit & {
 };
 
 const RECOVERABLE_SESSION_CODES = new Set(['authentication_required', 'session_invalid', 'session_expired', 'session_revoked']);
-let sessionRecovery: Promise<void> | null = null;
 
 /** Strict clean-break client. Paths outside /api/v2 are rejected. */
 export async function apiV2<T>(path: string, options: ApiV2Options = {}): Promise<ApiV2Envelope<T>> {
@@ -53,7 +52,7 @@ export async function apiV2<T>(path: string, options: ApiV2Options = {}): Promis
   }
   let body = await response.json().catch(() => ({}));
   if (!response.ok && response.status === 401 && normalized !== '/api/v2/setup/session' && RECOVERABLE_SESSION_CODES.has(String((body as ApiErrorBody)?.error?.code || ''))) {
-    await recoverBrowserSession();
+    await import('./session-recovery').then(({ recoverBrowserSession }) => recoverBrowserSession());
     response = await fetch(normalized, { ...request, credentials: request.credentials || 'same-origin', headers });
     body = await response.json().catch(() => ({}));
   }
@@ -68,7 +67,7 @@ export async function fetchV2Binary(path: string, options: RequestInit = {}): Pr
   const initialBody = response.status === 401 ? await response.clone().json().catch(() => ({})) : {};
   if (!response.ok && response.status === 401 && RECOVERABLE_SESSION_CODES.has(String((initialBody as ApiErrorBody)?.error?.code || ''))) {
     try {
-      await recoverBrowserSession();
+      await import('./session-recovery').then(({ recoverBrowserSession }) => recoverBrowserSession());
       response = await fetch(normalized, request);
     } catch { /* preserve the original response for the caller */ }
   }
@@ -79,20 +78,6 @@ export async function fetchV2Binary(path: string, options: RequestInit = {}): Pr
   return response;
 }
 
-export function recoverBrowserSession(): Promise<void> {
-  if (sessionRecovery) return sessionRecovery;
-  const idempotencyKey = globalThis.crypto?.randomUUID?.() || `session-${Date.now()}`;
-  sessionRecovery = fetch('/api/v2/setup/session', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { accept: 'application/json', 'content-type': 'application/json', 'Idempotency-Key': idempotencyKey },
-    body: JSON.stringify({ idempotency_key: idempotencyKey })
-  }).then(async (response) => {
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new ApiError(response.status, body as ApiErrorBody);
-  }).finally(() => { sessionRecovery = null; });
-  return sessionRecovery;
-}
 
 export function mutateV2<T>(path: string, body: Record<string, unknown> = {}, method = 'POST', expectedRevisionOrOptions?: number | { expectedRevision?: number; idempotencyKey?: string }, explicitIdempotencyKey?: string): Promise<ApiV2Envelope<T>> {
   const mutation = typeof expectedRevisionOrOptions === 'object'

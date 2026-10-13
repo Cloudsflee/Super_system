@@ -4,8 +4,24 @@ import { canonicalJson, canonicalSha256 } from '../offline/canonical';
 import { deleteOfflineDb, openOfflineDb } from '../offline/db';
 import { OFFLINE_COMMAND_ALLOWLIST, OfflineOutbox, isOfflineCommandAllowed, shouldQueueOffline } from '../offline/outbox';
 import { isRetryableQueryError, workspaceQueryKey } from '../query';
+import { recoverBrowserSession } from '../session-recovery';
 
 const databases: string[] = [];
+
+it('shares in-flight session recovery and permits a fresh attempt after failure', async () => {
+  let respond!: (response: Response) => void;
+  const fetch = vi.spyOn(globalThis, 'fetch').mockImplementationOnce(() => new Promise(resolve => { respond = resolve; }));
+  const first = recoverBrowserSession();
+  const second = recoverBrowserSession();
+  expect(first).toBe(second);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const rejected = expect(first).rejects.toMatchObject({ status: 401, code: 'session_invalid' });
+  respond(new Response(JSON.stringify({ error: { code: 'session_invalid', message: 'expired' } }), { status: 401 }));
+  await rejected;
+  fetch.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+  await recoverBrowserSession();
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
 const scope = (suffix: string) => ({ actorId: `actor-${suffix}`, teamId: 'team-1', projectId: `project-${suffix}`, dbName: `aiws-p9-${suffix}-${crypto.randomUUID()}` });
 
 afterEach(async () => {

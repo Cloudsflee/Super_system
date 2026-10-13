@@ -54,7 +54,7 @@ async function sendRecord(record: OutboxRecord): Promise<OfflineResponse> {
     let response = await fetch(record.path, { method: record.method, credentials: 'same-origin', headers, body: record.canonical_body });
     if (response.status === 401) {
       try {
-        const { recoverBrowserSession } = await import('../api');
+        const { recoverBrowserSession } = await import('../session-recovery');
         await recoverBrowserSession();
         response = await fetch(record.path, { method: record.method, credentials: 'same-origin', headers, body: record.canonical_body });
       } catch { /* retain the original status so the record remains diagnosable */ }

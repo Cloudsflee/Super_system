@@ -36,7 +36,13 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       manifest: true,
-      rollupOptions: { output: { manualChunks: { 'vendor-react': ['react', 'react-dom'], 'vendor-icons': ['lucide-react'] } } }
+      rollupOptions: { output: { manualChunks: {
+        'vendor-react': ['react', 'react-dom'],
+        'vendor-icons': ['lucide-react'],
+        'vendor-query': ['@tanstack/react-query'],
+        'vendor-router': ['react-router-dom'],
+        'vendor-flow': ['@xyflow/react']
+      } } }
     },
     test: { environment: 'jsdom', setupFiles: './src/test/setup.ts', fileParallelism: false }
   };

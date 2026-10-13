@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createHashRouter, RouterProvider, useLocation, useNavigate, useRouteError } from 'react-router-dom';
 import {
@@ -7,26 +7,11 @@ import {
   WifiOff, Workflow, X
 } from 'lucide-react';
 import { apiV2 } from './api';
-import { AssistDrawer, AssistPage } from './features/assist';
-import { ApprovalPage } from './features/approvals';
-import { ConnectionsPage } from './features/connections';
-import { ContextPage, McpSettingsPage } from './features/context';
-import { FilesPage } from './features/files';
-import { ExecutionPage } from './features/execution';
-import { EvidencePage } from './features/evidence';
-import { DeliveryPage } from './features/delivery';
-import { IdentityAccessPage } from './features/identity';
-import { OperationsPage } from './features/operations';
-import { OutcomePage } from './features/outcome';
-import { ProjectOnboardingPage, ProjectWorkflowPage } from './features/project';
 import {
   SystemOnboarding, hasSystemOnboardingCompletion,
   type OnboardingAccount, type OnboardingCredential, type OnboardingProfile,
   type SetupState, type SystemOnboardingSnapshot
 } from './features/setup';
-import { SettingsPage } from './features/settings';
-import { TerminalPage } from './features/terminal';
-import { FinalBusinessParityPage } from './features/p10';
 import type { Project } from './types';
 import type { AssistPageContext, TerminalLaunchContext, WorkspacePageProps, WorkspaceRoute } from './workspace';
 import { projectDeepLink } from './api';
@@ -38,6 +23,26 @@ import { statusLabel } from './i18n';
 import { usePendingInteractions } from './hooks/usePendingInteractions';
 
 export type PageKey = WorkspaceRoute;
+
+// Keep the setup bootstrap synchronous; business pages load only when selected.
+const AssistPage = lazy(() => import('./features/assist/AssistPage').then((module) => ({ default: module.AssistPage })));
+const AssistDrawer = lazy(() => import('./features/assist/AssistDrawer').then((module) => ({ default: module.AssistDrawer })));
+const ApprovalPage = lazy(() => import('./features/approvals/ApprovalPage').then((module) => ({ default: module.ApprovalPage })));
+const ConnectionsPage = lazy(() => import('./features/connections/ConnectionsPage').then((module) => ({ default: module.ConnectionsPage })));
+const ContextPage = lazy(() => import('./features/context/ContextPage').then((module) => ({ default: module.ContextPage })));
+const McpSettingsPage = lazy(() => import('./features/context/McpSettingsPage').then((module) => ({ default: module.McpSettingsPage })));
+const FilesPage = lazy(() => import('./features/files/FilesPage').then((module) => ({ default: module.FilesPage })));
+const ExecutionPage = lazy(() => import('./features/execution/ExecutionPage').then((module) => ({ default: module.ExecutionPage })));
+const EvidencePage = lazy(() => import('./features/evidence/EvidencePage').then((module) => ({ default: module.EvidencePage })));
+const DeliveryPage = lazy(() => import('./features/delivery/DeliveryPage').then((module) => ({ default: module.DeliveryPage })));
+const IdentityAccessPage = lazy(() => import('./features/identity/IdentityAccessPage').then((module) => ({ default: module.IdentityAccessPage })));
+const OperationsPage = lazy(() => import('./features/operations/OperationsPage').then((module) => ({ default: module.OperationsPage })));
+const OutcomePage = lazy(() => import('./features/outcome/OutcomePage').then((module) => ({ default: module.OutcomePage })));
+const ProjectWorkflowPage = lazy(() => import('./features/project/ProjectWorkflowPage').then((module) => ({ default: module.ProjectWorkflowPage })));
+const ProjectOnboardingPage = lazy(() => import('./features/project/ProjectOnboardingPage').then((module) => ({ default: module.ProjectOnboardingPage })));
+const SettingsPage = lazy(() => import('./features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })));
+const TerminalPage = lazy(() => import('./features/terminal/TerminalPage').then((module) => ({ default: module.TerminalPage })));
+const FinalBusinessParityPage = lazy(() => import('./features/p10/FinalBusinessParityPage').then((module) => ({ default: module.FinalBusinessParityPage })));
 
 const PRIMARY_NAV: Array<{ key: WorkspaceRoute; label: string; icon: ComponentType<{ size?: number }> }> = [
   { key: 'projects', label: '项目', icon: FolderGit2 },
@@ -84,6 +89,10 @@ const PAGES: Record<WorkspaceRoute, ComponentType<WorkspacePageProps>> = {
 const ROUTES = new Set<WorkspaceRoute>(Object.keys(PAGES) as WorkspaceRoute[]);
 const PROJECT_ROUTES = new Set<WorkspaceRoute>(['onboarding', 'brief', 'repository', 'workflow', 'context', 'governance', 'execution', 'assist', 'outcome', 'delivery']);
 const SETTINGS_ROUTES = new Set<WorkspaceRoute>(['settings', 'identity', 'exchange', 'gateway', 'runner', 'connections']);
+
+function PageLoading({ label = '正在加载工作区' }: { label?: string }) {
+  return <div className="onboarding-loader" role="status" aria-live="polite"><LoaderCircle className="spin" size={20} />{label}</div>;
+}
 
 export function routeFromPath(pathname: string): WorkspaceRoute {
   const clean = String(pathname || '').split(/[?#]/, 1)[0].replace(/^\/+|\/+$/g, '');
@@ -371,7 +380,7 @@ function WorkspaceLayout() {
         {updateAvailable && <button className="network-pill update" onClick={() => window.location.reload()}>更新</button>}
         <span className="local-pill"><span />127.0.0.1</span>
       </header>
-      <main className={!online ? 'offline-main' : undefined}><Page {...pageProps} />{!online && <div className="offline-overlay" role="status"><WifiOff size={24} /><div><strong>离线</strong><small>已加载内容保留；受保护的网络操作将在恢复连接后继续。</small></div></div>}</main>
+      <main className={!online ? 'offline-main' : undefined}><Suspense fallback={<PageLoading />}><Page {...pageProps} /></Suspense>{!online && <div className="offline-overlay" role="status"><WifiOff size={24} /><div><strong>离线</strong><small>已加载内容保留；受保护的网络操作将在恢复连接后继续。</small></div></div>}</main>
     </div>
     {quickTool && <QuickToolDrawer tool={quickTool} pageProps={pageProps} onClose={closeQuickTool} />}
     {notice && <div className={`toast ${notice.tone}`} role="status">{notice.text}</div>}
@@ -397,7 +406,7 @@ function QuickToolDrawer({ tool, pageProps, onClose }: { tool: Extract<Workspace
   const page = tool === 'assist'
     ? <AssistDrawer {...pageProps} />
     : <Page {...pageProps} />;
-  return <div className="quick-tool-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside ref={ref} className={`quick-tool-drawer${tool === 'assist' ? ' assist-quick-tool' : ''}`} role="dialog" aria-modal="true" aria-label={`${PAGE_LABELS[tool]} 抽屉`}><header><strong>{PAGE_LABELS[tool]}</strong><div><button className="button" onClick={() => { window.location.hash = pageProps.projectId ? projectDeepLink(pageProps.projectId, tool) : `#/${tool}`; onClose(); }}>打开完整页面</button><button className="icon-button" aria-label="关闭工具抽屉" title="关闭" onClick={onClose}><X size={16} /></button></div></header><div className="quick-tool-content">{page}</div></aside></div>;
+  return <div className="quick-tool-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside ref={ref} className={`quick-tool-drawer${tool === 'assist' ? ' assist-quick-tool' : ''}`} role="dialog" aria-modal="true" aria-label={`${PAGE_LABELS[tool]} 抽屉`}><header><strong>{PAGE_LABELS[tool]}</strong><div><button className="button" onClick={() => { window.location.hash = pageProps.projectId ? projectDeepLink(pageProps.projectId, tool) : `#/${tool}`; onClose(); }}>打开完整页面</button><button className="icon-button" aria-label="关闭工具抽屉" title="关闭" onClick={onClose}><X size={16} /></button></div></header><div className="quick-tool-content"><Suspense fallback={<PageLoading label={`正在加载${PAGE_LABELS[tool]}`} />}>{page}</Suspense></div></aside></div>;
 }
 
 function RouteErrorBoundary() {
